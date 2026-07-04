@@ -1,0 +1,9 @@
+- name: Ansible smoke test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Hello, Ansible!
+      ansible.builtin.debug:
+        msg: "Hello, Ansible!"
