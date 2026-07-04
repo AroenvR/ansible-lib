@@ -1,6 +1,7 @@
 # TODO
 
 Docs: todo
+ansible-playbook -i localhost, /shared/ping.yml
 
 ## Set up as subtree
 

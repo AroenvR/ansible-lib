@@ -1,0 +1,196 @@
+---
+- name: Create and verify a containerized GitLab instance
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+    # Override with: -e gitlab_keep_container=true
+    gitlab_keep_container: false
+
+    # Smoke-test defaults. These avoid clobbering a real GitLab container named "gitlab".
+    gitlab_container_name: gitlab-smoke
+    gitlab_image: docker.io/gitlab/gitlab-ee:latest
+    gitlab_home: /tmp/gitlab-container-smoke
+    gitlab_hostname: gitlab.example.com
+
+    # High host ports so this can run rootless and avoid host 80/443/22 conflicts.
+    gitlab_http_port: 8929
+    gitlab_https_port: 8443
+    gitlab_ssh_port: 2424
+
+    # GitLab can be very slow on first boot.
+    gitlab_startup_retries: 180
+    gitlab_startup_delay_seconds: 10
+
+    gitlab_omnibus_config: >-
+      external_url 'http://localhost:8929';
+      gitlab_rails['gitlab_shell_ssh_port'] = 2424
+
+  tasks:
+    - name: Run GitLab container smoke test
+      block:
+        - name: Ensure Podman is installed
+          ansible.builtin.command: podman --version
+          register: podman_version
+          changed_when: false
+
+        - name: Check whether smoke-test GitLab container already exists
+          ansible.builtin.command:
+            argv:
+              - podman
+              - container
+              - exists
+              - "{{ gitlab_container_name }}"
+          register: existing_gitlab_container
+          changed_when: false
+          failed_when: false
+
+        - name: Refuse to overwrite existing container when keep mode is enabled
+          ansible.builtin.fail:
+            msg: >-
+              Container {{ gitlab_container_name }} already exists. Remove it manually or choose a
+              different gitlab_container_name before running with gitlab_keep_container=true.
+          when:
+            - gitlab_keep_container | bool
+            - existing_gitlab_container.rc == 0
+
+        - name: Remove previous smoke-test GitLab container
+          ansible.builtin.command:
+            argv:
+              - podman
+              - rm
+              - --force
+              - "{{ gitlab_container_name }}"
+          when:
+            - not gitlab_keep_container | bool
+            - existing_gitlab_container.rc == 0
+
+        - name: Ensure GitLab persistent directories exist
+          ansible.builtin.file:
+            path: "{{ gitlab_home }}/{{ item }}"
+            state: directory
+            mode: "0755"
+          loop:
+            - config
+            - logs
+            - data
+
+        - name: Create GitLab container
+          ansible.builtin.command:
+            argv:
+              - podman
+              - run
+              - --detach
+              - --hostname
+              - "{{ gitlab_hostname }}"
+              - --env
+              - "GITLAB_OMNIBUS_CONFIG={{ gitlab_omnibus_config }}"
+              - --publish
+              - "{{ gitlab_http_port }}:{{ gitlab_http_port }}"
+              - --publish
+              - "{{ gitlab_https_port }}:443"
+              - --publish
+              - "{{ gitlab_ssh_port }}:22"
+              - --name
+              - "{{ gitlab_container_name }}"
+              - --restart
+              - "{{ 'always' if gitlab_keep_container | bool else 'no' }}"
+              - --volume
+              - "{{ gitlab_home }}/config:/etc/gitlab"
+              - --volume
+              - "{{ gitlab_home }}/logs:/var/log/gitlab"
+              - --volume
+              - "{{ gitlab_home }}/data:/var/opt/gitlab"
+              - --shm-size
+              - 256m
+              - "{{ gitlab_image }}"
+          register: gitlab_create
+
+        - name: Assert GitLab container exists
+          ansible.builtin.command:
+            argv:
+              - podman
+              - container
+              - exists
+              - "{{ gitlab_container_name }}"
+          changed_when: false
+
+        - name: Assert GitLab container is running
+          ansible.builtin.command:
+            argv:
+              - podman
+              - inspect
+              - --format
+              - "{{ '{{.State.Running}}' }}"
+              - "{{ gitlab_container_name }}"
+          register: gitlab_running
+          changed_when: false
+          failed_when: gitlab_running.stdout != "true"
+
+        - name: Wait for GitLab HTTP endpoint to respond
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ gitlab_http_port }}/users/sign_in"
+            method: GET
+            status_code:
+              - 200
+              - 302
+            return_content: false
+          register: gitlab_http_check
+          retries: "{{ gitlab_startup_retries }}"
+          delay: "{{ gitlab_startup_delay_seconds }}"
+          until: gitlab_http_check is succeeded
+
+        - name: Assert GitLab services are running inside the container
+          ansible.builtin.command:
+            argv:
+              - podman
+              - exec
+              - "{{ gitlab_container_name }}"
+              - gitlab-ctl
+              - status
+          register: gitlab_ctl_status
+          changed_when: false
+          failed_when: gitlab_ctl_status.rc != 0
+
+      rescue:
+        - name: Show GitLab container logs after failure
+          ansible.builtin.command:
+            argv:
+              - podman
+              - logs
+              - --tail
+              - "200"
+              - "{{ gitlab_container_name }}"
+          register: gitlab_failure_logs
+          changed_when: false
+          failed_when: false
+
+        - name: Print GitLab failure logs
+          ansible.builtin.debug:
+            var: gitlab_failure_logs.stdout_lines
+
+        - name: Fail after GitLab smoke-test failure
+          ansible.builtin.fail:
+            msg: GitLab smoke test failed. See container logs above.
+
+      always:
+        - name: Tear down GitLab smoke-test container unless keep flag is enabled
+          ansible.builtin.command:
+            argv:
+              - podman
+              - rm
+              - --force
+              - "{{ gitlab_container_name }}"
+          register: gitlab_teardown_container
+          changed_when: gitlab_teardown_container.rc == 0
+          failed_when: false
+          when: not gitlab_keep_container | bool
+
+        - name: Remove GitLab smoke-test data unless keep flag is enabled
+          ansible.builtin.file:
+            path: "{{ gitlab_home }}"
+            state: absent
+          when: not gitlab_keep_container | bool
