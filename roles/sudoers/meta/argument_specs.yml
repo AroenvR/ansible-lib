@@ -1,0 +1,37 @@
+---
+argument_specs:
+  main:
+    short_description: Manage sudo rules as validated drop-in files in /etc/sudoers.d.
+    description:
+      - Writes one file per rule to /etc/sudoers.d and validates it with visudo before it goes live.
+      - Never edits /etc/sudoers itself.
+      - Installs sudo only when it is missing. That is the only step that needs package repository access.
+    options:
+      sudoers_rules:
+        type: list
+        elements: dict
+        default: []
+        description: Rules to manage. Each rule becomes the file /etc/sudoers.d/<name>.
+        options:
+          name:
+            type: str
+            required: true
+            description:
+              - File name in /etc/sudoers.d. Letters, digits, '-' and '_' only.
+              - sudo silently ignores files whose name contains a dot, so the role rejects such names.
+          who:
+            type: str
+            description: User name, or group name prefixed with '%'. Required when I(state=present).
+          commands:
+            type: list
+            elements: str
+            description: Absolute command paths the rule allows, e.g. C(/usr/bin/systemctl restart myapp). Required when I(state=present).
+          nopasswd:
+            type: bool
+            default: false
+            description: Allow the commands without asking for a password.
+          state:
+            type: str
+            choices: [present, absent]
+            default: present
+            description: Use C(absent) to delete a rule this role created earlier.

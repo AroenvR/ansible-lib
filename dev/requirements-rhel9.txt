@@ -1,0 +1,9 @@
+# Mirrors the Ansible controller that RHEL 9.6 ships (AppStream: ansible-core 2.14.18,
+# which bundles Jinja2 3.1.2).
+ansible-core==2.14.18
+jinja2==3.1.2
+
+# Test runner: same versions as the ubuntu2204 toolchain.
+molecule==6.0.3
+molecule-plugins[podman]==23.5.3
+ansible-compat==4.1.11

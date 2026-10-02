@@ -1,1 +1,11 @@
-/ai_generated
+# Development directories
+.venv
+.venv/
+dist
+dist/
+
+# Archives
+*.tgz
+*.zip
+*.gpg
+*.bak

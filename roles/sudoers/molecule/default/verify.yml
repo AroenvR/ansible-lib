@@ -1,0 +1,30 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check the complete sudo configuration is valid
+      ansible.builtin.command: visudo --check
+      changed_when: false
+
+    - name: List what the deploy user may run
+      ansible.builtin.command: sudo --list --other-user=deploy
+      register: __sudoers_privileges
+      changed_when: false
+
+    - name: Inspect the managed rule file
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/deploy_restart_app
+      register: __sudoers_rule
+
+    - name: Inspect the stale rule file
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/old_rule
+      register: __sudoers_old_rule
+
+    - name: Assert the rule is active, read-only and the stale rule is gone
+      ansible.builtin.assert:
+        that:
+          - "'(ALL) NOPASSWD: /usr/bin/systemctl restart myapp' in __sudoers_privileges.stdout"
+          - __sudoers_rule.stat.mode == '0440'
+          - not __sudoers_old_rule.stat.exists

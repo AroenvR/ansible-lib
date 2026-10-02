@@ -1,0 +1,87 @@
+---
+# Lint, test and release acme.infra. Every step runs a make target, so a
+# pipeline does exactly what `make` does locally (see CONTRIBUTING.md).
+name: CI
+
+"on":
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    # Weekly, to catch changes in base images and package repositories.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # Ansible loads the collection from this path (see CONTRIBUTING.md).
+    working-directory: ansible_collections/acme/infra
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: ansible_collections/acme/infra
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: make lint
+
+  test:
+    name: test (toolchain ${{ matrix.toolchain }}, ${{ matrix.platform }} container)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [ubuntu2204, rhel9]
+        platform: [ubuntu2204, rhel9]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: ansible_collections/acme/infra
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.10"
+      # Rootful Podman (sudo) runs the systemd test containers reliably on hosted runners.
+      - run: >-
+          sudo make image-${{ matrix.platform }} test-${{ matrix.toolchain }}
+          PLATFORM=${{ matrix.platform }} PYTHON_COMPAT="$(command -v python3.10)"
+
+  native:
+    name: test (Ubuntu 22.04's own ansible-core package)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: ansible_collections/acme/infra
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: sudo make native-ubuntu2204 PYTHON_LINT="$(command -v python3.12)"
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, test, native]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: ansible_collections/acme/infra
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: make check-tag dist TAG="$GITHUB_REF_NAME"
+      - name: Publish the release tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" dist/acme-infra-*.tar.gz
+          --title "$GITHUB_REF_NAME" --notes "See CHANGELOG.md for what changed."

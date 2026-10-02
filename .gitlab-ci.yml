@@ -1,0 +1,107 @@
+---
+# Lint, test and release acme.infra. Every job runs a make target, so a
+# pipeline does exactly what `make` does locally (see CONTRIBUTING.md).
+#
+# The test jobs start Podman containers inside the job, which the runner must
+# allow. The runner-check job reports what the runner offers; the test jobs
+# only run once it passes.
+
+variables:
+  # Job images. Override them in Settings > CI/CD > Variables, e.g. to use an
+  # internal registry mirror. Pin them to a tag or digest once the pipeline is green.
+  PYTHON_IMAGE: docker.io/library/python:3.12
+  PODMAN_IMAGE: quay.io/podman/stable:latest
+  # Ansible loads the collection from <dir>/ansible_collections/acme/infra
+  # (see CONTRIBUTING.md), so every job works on a copy at this path.
+  COLLECTION_DIR: /tmp/src/ansible_collections/acme/infra
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^v/
+    # Add a weekly schedule under Build > Pipeline schedules to catch changes in
+    # base images and package repositories.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+stages: [check, test, release]
+
+.copy-to-collection-dir: &copy-to-collection-dir
+  - mkdir -p "$(dirname "$COLLECTION_DIR")"
+  - cp -a . "$COLLECTION_DIR"
+  - cd "$COLLECTION_DIR"
+
+.with-podman:
+  image: $PODMAN_IMAGE
+  needs: [runner-check]
+  before_script:
+    # The Podman image is Fedora; the toolchains need Python 3.10.
+    - dnf install --assumeyes --quiet make python3.10
+    - *copy-to-collection-dir
+
+.on-release-tag:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
+lint:
+  stage: check
+  image: $PYTHON_IMAGE
+  before_script: *copy-to-collection-dir
+  script:
+    - make lint PYTHON_LINT=python3
+
+runner-check:
+  stage: check
+  image: $PODMAN_IMAGE
+  script:
+    - sh dev/ci/runner-check.sh
+
+test:
+  stage: test
+  extends: .with-podman
+  parallel:
+    matrix:
+      - TOOLCHAIN: [ubuntu2204, rhel9]
+        PLATFORM: [ubuntu2204, rhel9]
+  script:
+    - make image-$PLATFORM test-$TOOLCHAIN PLATFORM=$PLATFORM PYTHON_COMPAT=python3.10
+
+native:
+  stage: test
+  extends: .with-podman
+  script:
+    - make native-ubuntu2204 PYTHON_LINT=python3
+
+publish:
+  stage: release
+  image: $PYTHON_IMAGE
+  extends: .on-release-tag
+  before_script: *copy-to-collection-dir
+  script:
+    - make check-tag dist TAG="$CI_COMMIT_TAG" PYTHON_LINT=python3
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - >-
+      curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      --upload-file "dist/acme-infra-$VERSION.tar.gz"
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/acme-infra-$VERSION.tar.gz"
+    - echo "VERSION=$VERSION" > "$CI_PROJECT_DIR/release.env"
+  artifacts:
+    reports:
+      dotenv: release.env
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  extends: .on-release-tag
+  needs: [publish]
+  script:
+    - echo "Creating release $CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: $CI_COMMIT_TAG
+    description: See CHANGELOG.md for what changed.
+    assets:
+      links:
+        - name: acme-infra-$VERSION.tar.gz
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/acme-infra-$VERSION.tar.gz
+          link_type: package

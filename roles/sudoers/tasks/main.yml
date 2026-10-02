@@ -1,0 +1,44 @@
+---
+- name: Check that rule names are usable as sudoers.d file names
+  ansible.builtin.assert:
+    that: item.name is match('^[A-Za-z0-9_-]+$')
+    fail_msg: >-
+      Rule name '{{ item.name }}' may only contain letters, digits, '-' and '_';
+      sudo silently ignores sudoers.d files with other characters.
+    quiet: true
+  loop: "{{ sudoers_rules }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Install only when missing: the dnf module contacts every enabled repository
+# even for packages that are already installed, which fails on offline hosts.
+- name: Gather installed packages
+  ansible.builtin.package_facts:
+
+- name: Install sudo when it is missing
+  ansible.builtin.package:
+    name: sudo
+    state: present
+  when: "'sudo' not in ansible_facts['packages']"
+
+- name: Write sudo rules, validated by visudo before they go live
+  ansible.builtin.template:
+    src: rule.j2
+    dest: "/etc/sudoers.d/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  loop: "{{ sudoers_rules }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.state | default('present') == 'present'
+
+- name: Remove sudo rules marked absent
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/{{ item.name }}"
+    state: absent
+  loop: "{{ sudoers_rules }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.state | default('present') == 'absent'

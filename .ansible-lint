@@ -1,0 +1,10 @@
+---
+profile: production
+# Lint the checkout as-is; never install copies of it or download anything.
+offline: true
+exclude_paths:
+  - .venv/
+  - dist/
+skip_list:
+  # We support ansible-core 2.12 on purpose: it is what Ubuntu 22.04 ships.
+  - meta-runtime[unsupported-version]

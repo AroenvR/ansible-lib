@@ -1,0 +1,8 @@
+---
+# Test-only collections needed by Molecule's Podman driver. Never shipped.
+# Pinned to versions verified with ansible-core 2.12 (ansible.posix 1.6+ needs 2.14+).
+collections:
+  - name: containers.podman
+    version: "1.10.3"
+  - name: ansible.posix
+    version: "1.5.4"

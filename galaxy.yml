@@ -1,0 +1,34 @@
+---
+# Collection metadata: identity, version and what ends up in the release tarball.
+namespace: acme
+name: infra
+version: 0.1.0
+readme: README.md
+description: Tested building blocks for RHEL 9 and Ubuntu 22.04 servers.
+authors:
+  - Platform Team <platform@example.com>
+license_file: LICENSE
+tags:
+  - linux
+  - infrastructure
+
+# Deliberately empty: the library only uses ansible.builtin, so consumers need
+# nothing beyond the ansible-core package their OS ships. Adding an entry here
+# makes every consumer (including offline ones) ship that collection too.
+dependencies: {}
+
+repository: https://git.example.com/platform/acme-infra
+
+# Development-only files never ship to consumers.
+build_ignore:
+  - .config
+  - .github
+  - .gitignore
+  - .gitlab-ci.yml
+  - .ansible-lint
+  - .venv
+  - CONTRIBUTING.md
+  - Makefile
+  - dev
+  - dist
+  - roles/*/molecule
