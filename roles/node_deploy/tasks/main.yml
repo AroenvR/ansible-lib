@@ -1,0 +1,121 @@
+---
+# Named after the package, the same way node_setup and node_image do it.
+- name: Work out the service, image and file names from package.json
+  vars:
+    __node_deploy_package: "{{ lookup('file', node_deploy_project ~ '/package.json') | from_json }}"
+    __node_deploy_slug: "{{ __node_deploy_package.name | regex_replace('^@', '') | replace('/', '-') }}"
+  ansible.builtin.set_fact:
+    __node_deploy_service: "{{ __node_deploy_slug }}"
+    __node_deploy_image: "localhost/{{ __node_deploy_package.name | regex_replace('^@', '') }}:{{ __node_deploy_package.version }}"
+    __node_deploy_archive: "{{ node_deploy_project }}/.image/{{ __node_deploy_slug }}-{{ __node_deploy_package.version }}.tar"
+    __node_deploy_quadlet: "{{ node_deploy_project }}/deploy/{{ __node_deploy_slug }}.container"
+    __node_deploy_env_file: "{{ node_deploy_project }}/deploy/container.env"
+
+- name: Check the image and the deploy files are there
+  ansible.builtin.assert:
+    that: __node_deploy_needed.path is file
+    fail_msg: "{{ __node_deploy_needed.path }} is missing. {{ __node_deploy_needed.fix }}"
+    quiet: true
+  loop:
+    - path: "{{ __node_deploy_archive }}"
+      fix: "Build it first: ansible-playbook acme.infra.node_image"
+    - path: "{{ __node_deploy_quadlet }}"
+      fix: "Run ansible-playbook acme.infra.node_setup first."
+    - path: "{{ __node_deploy_env_file }}"
+      fix: It holds the container's settings and secrets and is not in git. Create it; it may be empty.
+  loop_control:
+    loop_var: __node_deploy_needed
+    label: "{{ __node_deploy_needed.path | basename }}"
+
+- name: Look up the Podman version on the server
+  ansible.builtin.command: podman --version
+  register: __node_deploy_podman
+  changed_when: false
+  failed_when: false
+
+- name: Check that Podman 4.4 or newer is installed
+  ansible.builtin.assert:
+    that:
+      - __node_deploy_podman.rc == 0
+      - __node_deploy_podman.stdout.split()[-1] is version('4.4', '>=')
+    fail_msg: >-
+      The service needs Podman 4.4 or newer for Quadlet (RHEL 9.2 or newer); found:
+      {{ __node_deploy_podman.stdout | default('none', true) }}. An administrator installs it: sudo dnf install podman
+    quiet: true
+
+- name: Look up the account the service runs as
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", user]
+
+# Where rootless Podman and `systemctl --user` find this account's session. SSH
+# logins set it already; setting it also covers other ways of connecting.
+- name: Point Podman and systemd at the account's session
+  ansible.builtin.set_fact:
+    __node_deploy_session:
+      XDG_RUNTIME_DIR: /run/user/{{ ansible_facts.user_uid }}
+
+- name: Install and start the service
+  environment: "{{ __node_deploy_session }}"
+  block:
+    - name: Let the account run services while nobody is logged in, so the service starts at boot
+      ansible.builtin.command:
+        argv: [loginctl, enable-linger, "{{ ansible_facts.user_id }}"]
+        creates: /var/lib/systemd/linger/{{ ansible_facts.user_id }}
+      register: __node_deploy_linger
+      failed_when: false
+
+    - name: Check the account may run services while nobody is logged in
+      ansible.builtin.assert:
+        that: __node_deploy_linger.rc | default(0) == 0
+        fail_msg: >-
+          {{ ansible_facts.user_id }} cannot enable lingering itself ({{ __node_deploy_linger.stderr | default('') }}).
+          Without polkit only root can: an administrator runs this once on {{ inventory_hostname }}:
+          sudo loginctl enable-linger {{ ansible_facts.user_id }}
+        quiet: true
+
+    - name: Create the service's directory and the Quadlet directory
+      ansible.builtin.file:
+        path: "{{ __node_deploy_dir }}"
+        state: directory
+        mode: "0700"
+      loop: ["~/{{ __node_deploy_service }}", "{{ node_deploy_quadlet_dir }}"]
+      loop_control:
+        loop_var: __node_deploy_dir
+
+    # The handlers (handlers/main.yml) load the image and restart the service,
+    # but only for what changed: a rerun without changes changes nothing.
+    - name: Copy the image archive {{ __node_deploy_archive | basename }}
+      ansible.builtin.copy:
+        src: "{{ __node_deploy_archive }}"
+        dest: ~/{{ __node_deploy_service }}/image.tar
+        mode: "0600"
+      notify: [Load the image, Restart the service]
+
+    - name: Copy the container's settings and secrets
+      ansible.builtin.copy:
+        src: "{{ __node_deploy_env_file }}"
+        dest: ~/{{ __node_deploy_service }}/container.env
+        mode: "0600"
+      notify: Restart the service
+
+    - name: Install the Quadlet file, set to the image {{ __node_deploy_image }}
+      ansible.builtin.copy:
+        content: "{{ lookup('file', __node_deploy_quadlet) | regex_replace('(?m)^Image=.*$', 'Image=' ~ __node_deploy_image) }}\n"
+        dest: "{{ node_deploy_quadlet_dir }}/{{ __node_deploy_service }}.container"
+        mode: "0644"
+      notify: [Make systemd read the Quadlet file, Restart the service]
+
+    - name: Load the image and restart the service now, where needed
+      ansible.builtin.meta: flush_handlers
+
+    - name: Make sure this service runs, {{ __node_deploy_service }}
+      ansible.builtin.systemd:
+        name: "{{ __node_deploy_service }}.service"
+        scope: user
+        state: started
+
+- name: Show how to check the service
+  ansible.builtin.debug:
+    msg: >-
+      {{ __node_deploy_image }} runs as the service {{ __node_deploy_service }} of {{ ansible_facts.user_id }}.
+      Check it there: systemctl --user status {{ __node_deploy_service }}

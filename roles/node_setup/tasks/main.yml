@@ -1,0 +1,52 @@
+---
+- name: Check the project has a package.json
+  ansible.builtin.assert:
+    that: (node_setup_project ~ '/package.json') is file
+    fail_msg: "No package.json in {{ node_setup_project }}. Run the setup from the project root."
+    quiet: true
+
+# Named after the package, the same way node_image and node_deploy do it:
+# "@acme/orders-api" becomes the service acme-orders-api and the image
+# localhost/acme/orders-api:<version>.
+- name: Work out the service and image names from package.json
+  vars:
+    __node_setup_package: "{{ lookup('file', node_setup_project ~ '/package.json') | from_json }}"
+  ansible.builtin.set_fact:
+    __node_setup_name: "{{ __node_setup_package.name }}"
+    __node_setup_service: "{{ __node_setup_package.name | regex_replace('^@', '') | replace('/', '-') }}"
+    __node_setup_image: "localhost/{{ __node_setup_package.name | regex_replace('^@', '') }}:{{ __node_setup_package.version }}"
+    __node_setup_dir: "{{ node_setup_project }}/deploy"
+
+- name: Create the deploy directory
+  ansible.builtin.file:
+    path: "{{ __node_setup_dir }}"
+    state: directory
+    mode: "0755"
+
+# These belong to the project once written, so they are only written when
+# missing: running the setup again never overwrites the project's changes.
+- name: Write the project's deployment files, where missing
+  ansible.builtin.template:
+    src: "{{ __node_setup_file.template }}"
+    dest: "{{ __node_setup_dir }}/{{ __node_setup_file.name }}"
+    mode: "{{ __node_setup_file.mode }}"
+    force: false
+  loop:
+    - { template: service.container.j2, name: "{{ __node_setup_service }}.container", mode: "0644" }
+    - { template: container.env.j2, name: container.env, mode: "0600" }
+    - { template: inventory.yml.j2, name: inventory.yml, mode: "0644" }
+    - { template: gitignore.j2, name: .gitignore, mode: "0644" }
+  loop_control:
+    loop_var: __node_setup_file
+    label: "{{ __node_setup_file.name }}"
+
+# The guide documents acme.infra, so every run replaces it with the current one.
+- name: Write the guide, README.md
+  ansible.builtin.template:
+    src: README.md.j2
+    dest: "{{ __node_setup_dir }}/README.md"
+    mode: "0644"
+
+- name: Show what to do next
+  ansible.builtin.debug:
+    msg: "Wrote {{ __node_setup_dir }}. Next steps are in {{ __node_setup_dir }}/README.md."

@@ -1,0 +1,95 @@
+# Building and deploying {{ __node_setup_name }}
+
+This directory was written by `ansible-playbook acme.infra.node_setup`. Running that
+again replaces this guide with the one of the installed acme.infra and leaves the
+other files alone: they are yours.
+
+| File | What it is | In git |
+|---|---|---|
+| `{{ __node_setup_service }}.container` | How the service runs on a server (a [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html) file) | Yes |
+| `inventory.yml` | The servers to deploy to | Yes |
+| `container.env` | The container's settings and secrets | **No** |
+| `README.md` | This guide | Yes |
+
+Every command below runs from the project root, on a machine with ansible-core
+and the acme.infra collection installed (see acme.infra's README).
+
+## 1. Build the image
+
+```sh
+ansible-playbook acme.infra.node_image
+```
+
+This needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04) and network access to
+the container and npm registries. The image lands in `.image/` as
+`{{ __node_setup_service }}-<version>.tar`, with the version from package.json. What the project
+needs (the `build` and `start:prod` scripts, an optional `.nvmrc`) and the
+build options: `ansible-doc -t role acme.infra.node_image`.
+
+## 2. Configure
+
+- `container.env`: the environment variables the app gets, one `KEY=value` per line.
+- `{{ __node_setup_service }}.container`: the port on the server (`PublishPort=`, 3000 by
+  default), the data directory, restart behaviour. Leave `Image=` as it is: the
+  deploy sets it.
+- `inventory.yml`: the servers. It lists this machine by default.
+
+## 3. Deploy
+
+```sh
+ansible-playbook acme.infra.node_deploy -i deploy/inventory.yml
+```
+
+For every server it copies the image of the version in package.json and loads
+it into Podman, installs `{{ __node_setup_service }}.container` and `container.env`, and starts
+the service, or restarts it when something changed. The service runs rootless,
+as the account Ansible logs in with, and starts again after a reboot.
+
+What each server needs, set up once by an administrator:
+
+- RHEL 9.2 or newer with Podman: `sudo dnf install podman`.
+- The account the service runs as: an ordinary user, no sudo needed. The deploy
+  lets it run services while nobody is logged in (`loginctl enable-linger`).
+  Where polkit is not installed, an administrator runs that once instead:
+  `sudo loginctl enable-linger <account>`.
+- SSH access for that account. Not needed for `localhost`.
+- For other machines to reach the service, its port open in the firewall:
+  `sudo firewall-cmd --permanent --add-port=3000/tcp && sudo firewall-cmd --reload`.
+
+Where things are on the server, in the account's home directory:
+
+| Path | What |
+|---|---|
+| `~/.config/containers/systemd/{{ __node_setup_service }}.container` | The Quadlet file |
+| `~/{{ __node_setup_service }}/container.env` | Settings and secrets |
+| `~/{{ __node_setup_service }}/data/` | The app's `/data`, kept across deploys |
+| `~/{{ __node_setup_service }}/image.tar` | The image last deployed |
+
+## 4. Check it
+
+On the server, as the account the service runs as:
+
+```sh
+systemctl --user status {{ __node_setup_service }}
+journalctl --user --unit {{ __node_setup_service }}
+curl http://localhost:3000/
+```
+
+## In a pipeline
+
+A pipeline runs the same commands. The runner needs Podman for the build and
+SSH access to the servers for the deploy.
+
+```sh
+ansible-galaxy collection install --force <the acme.infra tarball this project uses>
+npm ci && npm run test
+ansible-playbook acme.infra.node_image
+printf '%s\n' "$CONTAINER_ENV" > deploy/container.env   # from a secret variable
+ansible-playbook acme.infra.node_deploy -i deploy/inventory.yml
+```
+
+## Updating acme.infra
+
+Install the newer release, then run `ansible-playbook acme.infra.node_setup`
+again to get its guide. To compare your files with the newest defaults, move
+one away and run the setup: it writes a fresh copy.

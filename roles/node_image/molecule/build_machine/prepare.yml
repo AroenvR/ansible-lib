@@ -1,5 +1,6 @@
 ---
-- name: Prepare
+# Puts the source code of every test app (vars/apps.yml) in its own directory.
+- name: Prepare the node_image test apps
   hosts: localhost
   gather_facts: false
   vars_files: [vars/apps.yml]
@@ -13,7 +14,7 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Copy the local test apps
+    - name: Copy the test apps that live in this scenario
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/{{ item.source }}/"
         dest: "{{ node_image_test_dir }}/{{ item.name }}/"
@@ -22,7 +23,7 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Download NestJS's REST sample at each commit
+    - name: Download NestJS's REST sample at each pinned commit
       ansible.builtin.unarchive:
         src: https://github.com/nestjs/nest/archive/{{ item.nestjs_ref }}.tar.gz
         remote_src: true

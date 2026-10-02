@@ -1,5 +1,5 @@
 ---
-# Lint, test and release acme.infra. Every job runs a make target, so a
+# Lint, test and publish acme.infra. Every job runs a make target, so a
 # pipeline does exactly what `make` does locally (see CONTRIBUTING.md).
 #
 # The test jobs start Podman containers inside the job, which the runner must
@@ -17,14 +17,11 @@ variables:
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_TAG =~ /^v/
-    # Add a weekly schedule under Build > Pipeline schedules to catch changes in
-    # base images and package repositories.
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    # Experimental phase: every branch, on every push, schedule or manual run.
+    # main and accept get pipelines of their own later.
+    - if: $CI_COMMIT_BRANCH
 
-stages: [check, test, release]
+stages: [check, test, publish]
 
 .copy-to-collection-dir: &copy-to-collection-dir
   - mkdir -p "$(dirname "$COLLECTION_DIR")"
@@ -35,13 +32,9 @@ stages: [check, test, release]
   image: $PODMAN_IMAGE
   needs: [runner-check]
   before_script:
-    # The Podman image is Fedora; the toolchains need Python 3.10.
+    # The Podman image is Fedora; the test venvs need Python 3.10.
     - dnf install --assumeyes --quiet make python3.10
     - *copy-to-collection-dir
-
-.on-release-tag:
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
 
 lint:
   stage: check
@@ -56,39 +49,57 @@ runner-check:
   script:
     - sh dev/ci/runner-check.sh
 
-test:
+servers:
   stage: test
   extends: .with-podman
   parallel:
     matrix:
-      - TOOLCHAIN: [ubuntu2204, rhel9]
-        PLATFORM: [ubuntu2204, rhel9]
+      - ANSIBLE: ["2.12", "2.14"]
   script:
-    - make image-$PLATFORM test-$TOOLCHAIN PLATFORM=$PLATFORM PYTHON_COMPAT=python3.10
+    - make images test-servers-$ANSIBLE PYTHON_COMPAT=python3.10
 
-test-local:
+build-machine:
   stage: test
   extends: .with-podman
   parallel:
     matrix:
-      - TOOLCHAIN: [ubuntu2204, rhel9]
+      - ANSIBLE: ["2.12", "2.14"]
   script:
-    - make test-local-$TOOLCHAIN PYTHON_COMPAT=python3.10
+    - make test-build-machine-$ANSIBLE PYTHON_COMPAT=python3.10
 
 native:
   stage: test
   extends: .with-podman
   script:
-    - make native-ubuntu2204 PYTHON_LINT=python3
+    - make test-native PYTHON_LINT=python3
 
-publish:
-  stage: release
+# Every other branch: a build kept for 7 days. GitLab keeps each pipeline's
+# build until it expires; download one from the job's artifacts.
+branch-build:
+  stage: publish
   image: $PYTHON_IMAGE
-  extends: .on-release-tag
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
   before_script: *copy-to-collection-dir
   script:
-    - make check-tag dist TAG="$CI_COMMIT_TAG" PYTHON_LINT=python3
-    - VERSION="${CI_COMMIT_TAG#v}"
+    - make dist-branch BRANCH="$CI_COMMIT_BRANCH" PYTHON_LINT=python3
+    - cp dist/acme-infra.*.tgz "$CI_PROJECT_DIR/"
+  artifacts:
+    paths: ["acme-infra.*.tgz"]
+    expire_in: 7 days
+
+# The default branch (main): the next version, uploaded to the package registry
+# and published as a release, which also creates its tag.
+publish:
+  stage: publish
+  image: $PYTHON_IMAGE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  resource_group: release  # two pushes in a row must not claim the same version
+  before_script: *copy-to-collection-dir
+  script:
+    - make dist-release PYTHON_LINT=python3
+    - VERSION=$(make --silent version)
     - >-
       curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"
       --upload-file "dist/acme-infra-$VERSION.tar.gz"
@@ -99,15 +110,17 @@ publish:
       dotenv: release.env
 
 release:
-  stage: release
+  stage: publish
   image: registry.gitlab.com/gitlab-org/cli:latest
-  extends: .on-release-tag
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   needs: [publish]
   script:
-    - echo "Creating release $CI_COMMIT_TAG"
+    - echo "Creating release v$VERSION"
   release:
-    tag_name: $CI_COMMIT_TAG
-    name: $CI_COMMIT_TAG
+    tag_name: v$VERSION
+    ref: $CI_COMMIT_SHA
+    name: v$VERSION
     description: See CHANGELOG.md for what changed.
     assets:
       links:

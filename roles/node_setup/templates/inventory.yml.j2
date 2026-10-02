@@ -1,0 +1,13 @@
+---
+# The servers `ansible-playbook acme.infra.node_deploy -i deploy/inventory.yml`
+# deploys {{ __node_setup_service }} to. It runs there as a rootless service of the
+# account Ansible logs in with. See README.md for what a server needs.
+all:
+  hosts:
+    # This machine, as the current user. Remove it to deploy to servers only.
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ '{{' }} ansible_playbook_python {{ '}}' }}"
+    # A server, reached over SSH as the account the service runs as:
+    # orders-1.example.com:
+    #   ansible_user: orders

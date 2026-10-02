@@ -1,0 +1,24 @@
+---
+argument_specs:
+  main:
+    short_description: Deploy a Node.js project's image as a rootless Podman service
+    description:
+      - Deploys the image that acme.infra.node_image built, using the files that
+        acme.infra.node_setup wrote into the project's deploy/ directory.
+      - On each server it copies the image archive of the version in package.json and loads
+        it, installs the Quadlet file with Image= set to that version, copies
+        deploy/container.env, and starts the service, or restarts it when something changed.
+      - The service runs rootless, as the account Ansible connects with, and starts at boot.
+        For that the role enables lingering for the account, so no login is needed.
+      - Servers need RHEL 9.2 or newer with Podman 4.4 or newer (Quadlet) installed. No
+        root access and no network access are needed.
+    options:
+      node_deploy_project:
+        type: str
+        default: "{{ lookup('env', 'PWD') }}"
+        description: The project's root directory on the Ansible machine. Defaults to the current directory.
+      node_deploy_quadlet_dir:
+        type: str
+        default: ~/.config/containers/systemd
+        description: Where the Quadlet file goes on the server. The default is where systemd finds
+          a user's Quadlet files.

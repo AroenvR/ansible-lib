@@ -1,12 +1,13 @@
 ---
-# Lint, test and release acme.infra. Every step runs a make target, so a
+# Lint, test and publish acme.infra. Every step runs a make target, so a
 # pipeline does exactly what `make` does locally (see CONTRIBUTING.md).
 name: CI
 
 "on":
+  # Experimental phase: every push to every branch. main and accept get
+  # pipelines of their own later.
   push:
-    branches: [claude/node_backend_utils] # TODO: Set dynamically
-    tags: ["v*"] # TODO: Set dynamically
+    branches: ["**"]
   pull_request:
   schedule:
     # TODO: Set dynamically (per branch?)
@@ -33,14 +34,13 @@ jobs:
           python-version: "3.12"
       - run: make lint
 
-  test:
-    name: test (toolchain ${{ matrix.toolchain }}, ${{ matrix.platform }} container)
+  servers:
+    name: server roles · ansible-core ${{ matrix.ansible }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [ubuntu2204, rhel9]
-        platform: [ubuntu2204, rhel9]
+        ansible: ["2.12", "2.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -50,16 +50,16 @@ jobs:
           python-version: "3.10"
       # Rootful Podman (sudo) runs the systemd test containers reliably on hosted runners.
       - run: >-
-          sudo make image-${{ matrix.platform }} test-${{ matrix.toolchain }}
-          PLATFORM=${{ matrix.platform }} PYTHON_COMPAT="$(command -v python3.10)"
+          sudo make images test-servers-${{ matrix.ansible }}
+          PYTHON_COMPAT="$(command -v python3.10)"
 
-  test-local:
-    name: test (toolchain ${{ matrix.toolchain }}, build machine)
+  build-machine:
+    name: build-machine roles · ansible-core ${{ matrix.ansible }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [ubuntu2204, rhel9]
+        ansible: ["2.12", "2.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -68,10 +68,10 @@ jobs:
         with:
           python-version: "3.10"
       # Roles such as node_image run on the build machine itself (here: the runner).
-      - run: sudo make test-local-${{ matrix.toolchain }} PYTHON_COMPAT="$(command -v python3.10)"
+      - run: sudo make test-build-machine-${{ matrix.ansible }} PYTHON_COMPAT="$(command -v python3.10)"
 
   native:
-    name: test (Ubuntu 22.04's own ansible-core package)
+    name: Ubuntu 22.04's own ansible-core and Podman
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -80,12 +80,45 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
-      - run: sudo make native-ubuntu2204 PYTHON_LINT="$(command -v python3.12)"
+      - run: sudo make test-native PYTHON_LINT="$(command -v python3.12)"
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, test, test-local, native]
+  # Every other branch: a build kept for 7 days, only the newest one per branch.
+  branch-build:
+    name: branch build (kept 7 days)
+    if: github.event_name == 'push' && github.ref_name != github.event.repository.default_branch
+    needs: [lint, servers, build-machine, native]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write  # to delete this branch's older builds
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: ansible_collections/acme/infra
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - id: build
+        run: |
+          make dist-branch BRANCH="$GITHUB_REF_NAME" PYTHON_LINT="$(command -v python3.12)"
+          echo "file=$(ls dist/acme-infra.*.tgz)" >> "$GITHUB_OUTPUT"
+      - id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          path: ansible_collections/acme/infra/${{ steps.build.outputs.file }}
+          archive: false  # download the .tgz itself, not a zip around it
+          retention-days: 7
+      - run: sh dev/ci/github-prune-builds.sh "${{ steps.upload.outputs.artifact-id }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # The default branch (main): the next version, tagged and published as a release.
+  release:
+    name: release (next version)
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    needs: [lint, servers, build-machine, native]
+    runs-on: ubuntu-24.04
+    concurrency: release  # two pushes in a row must not claim the same version
     permissions:
       contents: write
     steps:
@@ -95,10 +128,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
-      - run: make check-tag dist TAG="$GITHUB_REF_NAME"
-      - name: Publish the release tarball
+      - run: make dist-release PYTHON_LINT="$(command -v python3.12)"
+      - name: Tag the commit and publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME" dist/acme-infra-*.tar.gz
-          --title "$GITHUB_REF_NAME" --notes "See CHANGELOG.md for what changed."
+        run: |
+          version=$(make --silent version)
+          gh release create "v$version" "dist/acme-infra-$version.tar.gz" \
+            --target "$GITHUB_SHA" --title "v$version" --notes "See CHANGELOG.md for what changed."

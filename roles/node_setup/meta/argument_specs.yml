@@ -1,0 +1,18 @@
+---
+argument_specs:
+  main:
+    short_description: Prepare a Node.js project for building and deploying with acme.infra
+    description:
+      - Writes a deploy/ directory into the project, for the project's git repository.
+      - It holds a guide (README.md) for building, configuring and deploying the project,
+        the Quadlet file that runs the image as a rootless Podman service on a server,
+        an environment file for the container's settings and secrets (kept out of git),
+        and an inventory of the servers to deploy to.
+      - Run it again after updating acme.infra. It replaces README.md and never touches
+        the other files, which belong to the project.
+      - Runs on any machine with ansible-core. Needs no network access.
+    options:
+      node_setup_project:
+        type: str
+        default: "{{ lookup('env', 'PWD') }}"
+        description: The project's root directory, which holds package.json. Defaults to the current directory.

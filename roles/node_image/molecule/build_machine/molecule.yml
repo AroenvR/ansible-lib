@@ -1,0 +1,18 @@
+---
+# Builds, runs and queries an image of every app in vars/apps.yml. node_image
+# runs where Ansible runs, so this scenario uses the machine running the tests
+# as the build machine: there are no test containers to create.
+scenario:
+  name: build_machine
+driver:
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      # The tested ansible-core's own Python. The machine's python3 may be newer
+      # than that ansible-core supports (GitHub's runners have 3.12, which breaks
+      # HTTPS downloads in ansible-core 2.12 and 2.14).
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+platforms:
+  - name: localhost

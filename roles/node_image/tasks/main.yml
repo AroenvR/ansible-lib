@@ -65,6 +65,13 @@
     state: directory
     mode: "0755"
 
+# The output directory ignores itself, so the project's .gitignore needs no entry.
+- name: Keep the output directory out of git
+  ansible.builtin.copy:
+    content: "*\n"
+    dest: "{{ node_image_output_dir }}/.gitignore"
+    mode: "0644"
+
 # Loops in this role use their own loop variable names, so the role can be
 # called from a loop (which uses "item") without the two clashing.
 - name: Write the Containerfile and the list of files kept out of the image
@@ -96,13 +103,13 @@
     loop_var: __node_image_failed
     label: "{{ __node_image_failed.__node_image_base }}"
 
-- name: Look up the image before building
+- name: Look up the current image {{ __node_image_tag }}
   ansible.builtin.command:
     argv: [podman, images, --quiet, --no-trunc, "{{ __node_image_tag }}"]
   register: __node_image_before
   changed_when: false
 
-- name: Build the image
+- name: Build the image {{ __node_image_tag }}
   ansible.builtin.command:
     argv:
       - podman
@@ -113,13 +120,13 @@
       - "{{ node_image_source }}"
   changed_when: false  # The next task decides whether the image changed.
 
-- name: Look up the image after building
+- name: Look up the image after building {{ __node_image_tag }}
   ansible.builtin.command:
     argv: [podman, images, --quiet, --no-trunc, "{{ __node_image_tag }}"]
   register: __node_image_after
   changed_when: __node_image_after.stdout != __node_image_before.stdout
 
-- name: Save the image as an archive
+- name: Save the image as an archive {{ __node_image_archive | basename }}
   ansible.builtin.command:
     argv: [podman, save, --format=oci-archive, "--output={{ __node_image_archive }}", "{{ __node_image_tag }}"]
   when: __node_image_after is changed or __node_image_archive is not file

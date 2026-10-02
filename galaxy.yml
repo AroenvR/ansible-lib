@@ -2,6 +2,9 @@
 # Collection metadata: identity, version and what ends up in the release tarball.
 namespace: acme
 name: infra
+# Releases are made by CI from main: each gets the next patch version after the
+# latest v* tag, or this version when it is higher. Raise it here to release a
+# new minor or major version (see CONTRIBUTING.md).
 version: 0.1.0
 readme: README.md
 description: Tested building blocks for RHEL 9 and Ubuntu 22.04 servers.

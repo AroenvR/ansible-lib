@@ -1,5 +1,5 @@
 ---
-- name: Prepare
+- name: Prepare the servers for the sudoers tests
   hosts: all
   tasks:
     - name: Create the user the test rule grants rights to

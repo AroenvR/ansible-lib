@@ -1,0 +1,11 @@
+---
+- name: Run node_setup on the test project
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Run node_setup
+      ansible.builtin.include_role:
+        name: acme.infra.node_setup
+      vars:
+        node_setup_project: "{{ node_setup_test_project }}"

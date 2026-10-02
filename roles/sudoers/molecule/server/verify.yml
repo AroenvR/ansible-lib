@@ -1,5 +1,5 @@
 ---
-- name: Verify
+- name: Check sudo grants exactly the managed rules
   hosts: all
   gather_facts: false
   tasks:
@@ -28,3 +28,4 @@
           - "'(ALL) NOPASSWD: /usr/bin/systemctl restart myapp' in __sudoers_privileges.stdout"
           - __sudoers_rule.stat.mode == '0440'
           - not __sudoers_old_rule.stat.exists
+        success_msg: PASSED sudoers granted the managed rule (read-only, valid for visudo) and removed the stale one.

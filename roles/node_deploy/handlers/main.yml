@@ -1,0 +1,20 @@
+---
+# They run in this order, after the tasks that changed something notify them.
+- name: Load the image
+  ansible.builtin.command:
+    argv: [podman, load, --input, "{{ ansible_facts.user_dir }}/{{ __node_deploy_service }}/image.tar"]
+  environment: "{{ __node_deploy_session }}"
+  changed_when: true
+
+- name: Make systemd read the Quadlet file
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+  environment: "{{ __node_deploy_session }}"
+
+- name: Restart the service
+  ansible.builtin.systemd:
+    name: "{{ __node_deploy_service }}.service"
+    scope: user
+    state: restarted
+  environment: "{{ __node_deploy_session }}"

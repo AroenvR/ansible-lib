@@ -1,0 +1,4 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml.
+node_deploy_project: "{{ lookup('env', 'PWD') }}"
+node_deploy_quadlet_dir: ~/.config/containers/systemd

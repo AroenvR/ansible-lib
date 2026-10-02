@@ -1,0 +1,2 @@
+---
+node_deploy_test_project: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/node-deploy-test', true) }}/deploy-test-app"

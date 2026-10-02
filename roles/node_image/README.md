@@ -23,14 +23,13 @@ the container starts.
 - The server listens on port 3000 (or `process.env.PORT`) on all interfaces, as
   NestJS does by default. An app listening only on `localhost` is unreachable
   from outside the container.
-- `.image/` in your `.gitignore`: that is where the result goes.
 
 ## What the build machine needs
 
 - Podman 3.4 or newer, ansible-core and this collection. RHEL 9
   (`dnf install podman ansible-core`) and Ubuntu 22.04
   (`apt install podman ansible-core`) both work. Then install the collection as
-  described in the [collection README](../../README.md#use-it-in-your-project).
+  described in the [collection README](../../README.md#get-it).
 - Network access during the build to `registry.access.redhat.com` (base images),
   the npm registry, `nodejs.org` (node-gyp downloads the Node.js headers for
   native modules) and anything your dependencies download in their install
@@ -44,9 +43,10 @@ From the project root:
 ansible-playbook acme.infra.node_image
 ```
 
-The result lands in `.image/`: the image as `<name>-<version>.tar`, plus the
-generated `Containerfile` for reference. Load and try it, with environment
-variables from a file and a host directory mounted at `/data`:
+The result lands in `.image/`, which keeps itself out of git: the image as
+`<name>-<version>.tar`, plus the generated `Containerfile` for reference. To
+deploy it, see [node_deploy](../node_deploy/README.md). To just try it, with
+environment variables from a file and a host directory mounted at `/data`:
 
 ```sh
 podman load --input .image/orders-api-1.4.0.tar
@@ -86,4 +86,4 @@ All options, with their defaults: `ansible-doc -t role acme.infra.node_image`.
   such as `legacy-peer-deps=true`) but is not in the final image.
 - Base images are refreshed whenever the registry has newer ones (security
   fixes); with no registry access the build uses the cached ones.
-- Running the image as a service that starts at boot is not part of this role.
+- Running the image as a service that starts at boot: [node_deploy](../node_deploy/README.md).

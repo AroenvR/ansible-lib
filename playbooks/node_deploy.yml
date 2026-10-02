@@ -1,0 +1,11 @@
+---
+# Deploys the Node.js project in the current directory to every server in the
+# inventory, as a rootless Podman service that starts at boot. Run it from the
+# project root, after acme.infra.node_setup and acme.infra.node_image:
+#   ansible-playbook acme.infra.node_deploy -i deploy/inventory.yml
+# Options: ansible-doc -t role acme.infra.node_deploy
+- name: Deploy the Node.js project as a rootless Podman service
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: acme.infra.node_deploy

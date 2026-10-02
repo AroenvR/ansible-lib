@@ -1,0 +1,17 @@
+---
+- name: Create the node_setup test project
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Create the project directory
+      ansible.builtin.file:
+        path: "{{ node_setup_test_project }}"
+        state: directory
+        mode: "0755"
+
+    - name: Write its package.json, with a scoped name
+      ansible.builtin.copy:
+        content: '{ "name": "@acme/orders-api", "version": "1.4.0" }'
+        dest: "{{ node_setup_test_project }}/package.json"
+        mode: "0644"

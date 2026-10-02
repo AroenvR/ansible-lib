@@ -1,0 +1,49 @@
+---
+- name: Prepare the RHEL 9 test server, as an administrator would
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install Podman
+      ansible.builtin.dnf:
+        name: podman
+        state: present
+
+    - name: Create the account the service runs as
+      ansible.builtin.user:
+        name: app
+
+    # A server with polkit lets the account do this itself (node_deploy does);
+    # the test server has no polkit, so it is done here as an administrator would.
+    - name: Let the account run services while nobody is logged in
+      ansible.builtin.command:
+        argv: [loginctl, enable-linger, app]
+        creates: /var/lib/systemd/linger/app
+
+- name: Prepare the test project, as a developer would
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Copy the test app
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/app/"
+        dest: "{{ node_deploy_test_project }}/"
+        mode: preserve
+
+    - name: Run node_setup
+      ansible.builtin.include_role:
+        name: acme.infra.node_setup
+      vars:
+        node_setup_project: "{{ node_deploy_test_project }}"
+
+    - name: Put a setting in the container's environment file
+      ansible.builtin.copy:
+        content: "GREETING=hello from container.env\n"
+        dest: "{{ node_deploy_test_project }}/deploy/container.env"
+        mode: "0600"
+
+    - name: Run node_image
+      ansible.builtin.include_role:
+        name: acme.infra.node_image
+      vars:
+        node_image_source: "{{ node_deploy_test_project }}"

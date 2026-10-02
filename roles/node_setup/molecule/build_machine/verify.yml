@@ -1,0 +1,52 @@
+---
+- name: Check the files node_setup writes, and that a rerun keeps the project's changes
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  vars:
+    __node_setup_test_quadlet: "{{ node_setup_test_deploy }}/acme-orders-api.container"
+  tasks:
+    - name: Inspect the environment file
+      ansible.builtin.stat:
+        path: "{{ node_setup_test_deploy }}/container.env"
+      register: __node_setup_test_env
+
+    - name: Check the files are there and named after the package
+      ansible.builtin.assert:
+        that:
+          - __node_setup_test_quadlet is file
+          - (node_setup_test_deploy ~ '/inventory.yml') is file
+          - (node_setup_test_deploy ~ '/README.md') is file
+          - lookup('file', node_setup_test_deploy ~ '/.gitignore') is search('^container\.env$', multiline=True)
+          - __node_setup_test_env.stat.mode == '0600'
+          - lookup('file', __node_setup_test_quadlet) is search('^Image=localhost/acme/orders-api:1\.4\.0$', multiline=True)
+          - lookup('file', node_setup_test_deploy ~ '/README.md') is search('systemctl --user status acme-orders-api')
+          - (lookup('file', node_setup_test_deploy ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
+        success_msg: PASSED node_setup wrote the guide, the Quadlet file, the inventory and a private, git-ignored environment file.
+
+    - name: Change the project's files and damage the guide, as time would
+      ansible.builtin.copy:
+        content: "{{ __node_setup_test_change.content }}"
+        dest: "{{ node_setup_test_deploy }}/{{ __node_setup_test_change.file }}"
+        mode: preserve
+      loop:
+        - { file: container.env, content: "GREETING=kept\n" }
+        - { file: acme-orders-api.container, content: "# changed by the project\n" }
+        - { file: README.md, content: "outdated guide\n" }
+      loop_control:
+        loop_var: __node_setup_test_change
+        label: "{{ __node_setup_test_change.file }}"
+
+    - name: Run node_setup again
+      ansible.builtin.include_role:
+        name: acme.infra.node_setup
+      vars:
+        node_setup_project: "{{ node_setup_test_project }}"
+
+    - name: Check the rerun replaced the guide only
+      ansible.builtin.assert:
+        that:
+          - lookup('file', node_setup_test_deploy ~ '/container.env') == 'GREETING=kept'
+          - lookup('file', __node_setup_test_quadlet) == '# changed by the project'
+          - lookup('file', node_setup_test_deploy ~ '/README.md') is search('# Building and deploying @acme/orders-api')
+        success_msg: PASSED running node_setup again restored the guide and kept the project's own files.

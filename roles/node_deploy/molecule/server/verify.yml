@@ -1,0 +1,37 @@
+---
+- name: Check the deployed service works, and comes back by itself when the server restarts
+  hosts: all
+  remote_user: app
+  gather_facts: false
+  tasks:
+    - name: Query the service
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/
+      register: __node_deploy_test_before
+      until: __node_deploy_test_before is succeeded
+      retries: 30
+      delay: 2
+
+    - name: Restart the test server, as a reboot would
+      ansible.builtin.command:
+        argv: [podman, restart, "{{ inventory_hostname }}"]
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Query the service again once the server is back
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/
+      register: __node_deploy_test_after
+      until: __node_deploy_test_after is succeeded
+      retries: 60
+      delay: 2
+
+    - name: Check the service's settings, its data and its start at boot
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_before.json.greeting == 'hello from container.env'
+          - __node_deploy_test_after.json.starts > __node_deploy_test_before.json.starts
+        success_msg: >-
+          PASSED node_deploy: the service answers with the setting from container.env, started
+          by itself when the server restarted, and kept its data (start count
+          {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).

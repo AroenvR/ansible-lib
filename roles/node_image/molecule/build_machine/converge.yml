@@ -1,10 +1,10 @@
 ---
-- name: Converge
+- name: Build an image of every node_image test app
   hosts: localhost
   gather_facts: false
   vars_files: [vars/apps.yml]
   tasks:
-    - name: Build an image of every test app
+    - name: Run node_image for each test app
       ansible.builtin.include_role:
         name: acme.infra.node_image
       vars:

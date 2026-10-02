@@ -1,0 +1,17 @@
+---
+# Runs node_setup on a test project with a scoped package name, then checks the
+# files it writes and that running it again keeps the project's own changes.
+# That the Quadlet file really works is tested by node_deploy, which deploys
+# with it. node_setup runs where Ansible runs, so there are no test containers.
+scenario:
+  name: build_machine
+driver:
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      # The tested ansible-core's own Python, see node_image's build_machine scenario.
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+platforms:
+  - name: localhost
