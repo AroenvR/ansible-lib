@@ -1,0 +1,95 @@
+---
+- name: Look up the Podman version on the build machine
+  ansible.builtin.command: podman --version
+  register: __node_image_podman
+  changed_when: false
+  failed_when: false
+
+- name: Check that Podman 4 or newer is installed
+  ansible.builtin.assert:
+    that:
+      - __node_image_podman.rc == 0
+      - __node_image_podman.stdout.split()[-1] is version('4.0', '>=')
+    fail_msg: >-
+      The build needs Podman 4 or newer on this machine (found: {{ __node_image_podman.stdout | default('none', true) }}).
+      On RHEL 9: dnf install podman.
+    quiet: true
+
+- name: Check the project has the files the build needs
+  ansible.builtin.assert:
+    that: (node_image_source ~ '/' ~ item) is file
+    fail_msg: "{{ node_image_source }}/{{ item }} is missing. The build needs package.json, package-lock.json and .nvmrc."
+    quiet: true
+  loop: [package.json, package-lock.json, .nvmrc]
+
+- name: Read package.json and .nvmrc
+  ansible.builtin.set_fact:
+    __node_image_package: "{{ lookup('file', node_image_source ~ '/package.json') | from_json }}"
+    __node_image_node_version: "{{ lookup('file', node_image_source ~ '/.nvmrc') | trim | regex_replace('^v', '') }}"
+
+- name: Check package.json has a name and a version, and .nvmrc a version number
+  ansible.builtin.assert:
+    that:
+      - __node_image_package.name is defined
+      - __node_image_package.version is defined
+      - __node_image_node_version is match('^[0-9]+(\.|$)')
+    fail_msg: >-
+      package.json needs "name" and "version", and .nvmrc a Node.js version
+      such as 24 or v24.3.0 (found '{{ __node_image_node_version }}').
+    quiet: true
+
+- name: Work out the image tag, Node.js major version and archive path
+  ansible.builtin.set_fact:
+    __node_image_tag: "{{ __node_image_package.name | regex_replace('^@', '') }}:{{ __node_image_package.version }}"
+    __node_image_node_major: "{{ __node_image_node_version.split('.')[0] }}"
+    __node_image_archive: >-
+      {{ node_image_output_dir }}/{{ __node_image_package.name | regex_replace('^@', '') | replace('/', '-') }}-{{ __node_image_package.version }}.tar
+
+- name: Create the output directory
+  ansible.builtin.file:
+    path: "{{ node_image_output_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Write the Containerfile and the list of files kept out of the image
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ node_image_output_dir }}/{{ item }}"
+    mode: "0644"
+  loop: [Containerfile, containerignore]
+
+- name: Look up the image before building
+  ansible.builtin.command:
+    argv: [podman, images, --quiet, --no-trunc, "{{ __node_image_tag }}"]
+  register: __node_image_before
+  changed_when: false
+
+# --pull=newer refreshes the base images when the registry has newer ones
+# (security fixes) and falls back to cached ones when it is unreachable.
+- name: Build the image
+  ansible.builtin.command:
+    argv:
+      - podman
+      - build
+      - --pull=newer
+      - --file={{ node_image_output_dir }}/Containerfile
+      - --ignorefile={{ node_image_output_dir }}/containerignore
+      - --tag={{ __node_image_tag }}
+      - "{{ node_image_source }}"
+  changed_when: false  # The next task decides whether the image changed.
+
+- name: Look up the image after building
+  ansible.builtin.command:
+    argv: [podman, images, --quiet, --no-trunc, "{{ __node_image_tag }}"]
+  register: __node_image_after
+  changed_when: __node_image_after.stdout != __node_image_before.stdout
+
+- name: Save the image as an archive
+  ansible.builtin.command:
+    argv: [podman, save, --format=oci-archive, "--output={{ __node_image_archive }}", "{{ __node_image_tag }}"]
+  when: __node_image_after is changed or __node_image_archive is not file
+  changed_when: true
+
+- name: Show where the image is
+  ansible.builtin.debug:
+    msg: "Built {{ __node_image_tag }} into {{ __node_image_archive }}. Load it with: podman load --input {{ __node_image_archive | basename }}"

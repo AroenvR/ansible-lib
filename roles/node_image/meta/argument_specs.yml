@@ -1,0 +1,54 @@
+---
+argument_specs:
+  main:
+    short_description: Build a production container image of a Node.js project with Podman.
+    description:
+      - Runs on the machine where Ansible runs (the build machine) and needs Podman 4 or newer there.
+      - Reads the image name and tag from package.json (C(name):C(version)) and the Node.js major version from .nvmrc.
+      - Builds in two stages on Red Hat UBI 9. The build stage (ubi9/nodejs-<major>) has gcc, g++, make and Python 3,
+        so native npm modules compile; it runs C(npm ci), C(npm run build) when package.json has a build script,
+        and removes dev dependencies. The runtime stage (ubi9/nodejs-<major>-minimal) has no compilers and runs as user 1001.
+      - Writes the generated Containerfile and the image archive (C(podman save), OCI format) to I(node_image_output_dir).
+      - Needs network access during the build to I(node_image_registry), I(node_image_npm_registry) and,
+        for native modules, nodejs.org (node-gyp downloads the Node.js headers).
+    options:
+      node_image_source:
+        type: str
+        default: "{{ lookup('env', 'PWD') }}"
+        description: Project directory with package.json, package-lock.json and .nvmrc. Defaults to the current directory.
+      node_image_output_dir:
+        type: str
+        default: "{{ node_image_source }}/.image"
+        description: Where the generated Containerfile and the image archive are written. Never part of the image.
+      node_image_port:
+        type: int
+        default: 3000
+        description: Port the app listens on. Set as the PORT environment variable and exposed by the image.
+      node_image_command:
+        type: list
+        elements: str
+        default: [npm, start]
+        description: Command that starts the app when the container starts.
+      node_image_build_packages:
+        type: list
+        elements: str
+        default: []
+        description: Extra RPM packages for the build stage, e.g. C(libpq-devel) when a native module needs it.
+      node_image_runtime_packages:
+        type: list
+        elements: str
+        default: []
+        description: Extra RPM packages for the runtime stage, e.g. C(libpq) for a native module built against it.
+      node_image_ignore:
+        type: list
+        elements: str
+        default: []
+        description: Extra patterns kept out of the image, in .containerignore syntax. .git, node_modules and .env files are always excluded.
+      node_image_registry:
+        type: str
+        default: registry.access.redhat.com
+        description: Registry holding the ubi9/nodejs-<major> images. Point it at an internal mirror if needed.
+      node_image_npm_registry:
+        type: str
+        default: https://registry.npmjs.org/
+        description: npm registry used during the build. Point it at an internal proxy if needed.

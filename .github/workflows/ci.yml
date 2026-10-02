@@ -53,6 +53,23 @@ jobs:
           sudo make image-${{ matrix.platform }} test-${{ matrix.toolchain }}
           PLATFORM=${{ matrix.platform }} PYTHON_COMPAT="$(command -v python3.10)"
 
+  test-local:
+    name: test (toolchain ${{ matrix.toolchain }}, build machine)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [ubuntu2204, rhel9]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: ansible_collections/acme/infra
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.10"
+      # Roles such as node_image run on the build machine itself (here: the runner).
+      - run: sudo make test-local-${{ matrix.toolchain }} PYTHON_COMPAT="$(command -v python3.10)"
+
   native:
     name: test (Ubuntu 22.04's own ansible-core package)
     runs-on: ubuntu-24.04
@@ -67,7 +84,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, test, native]
+    needs: [lint, test, test-local, native]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

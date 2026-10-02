@@ -25,7 +25,7 @@ installed copy. `make help` lists all targets.
 | `lint` | (current ansible-lint) | Style, correctness, documented interfaces |
 | `ubuntu2204` | Ubuntu 22.04's `ansible-core` 2.12, Jinja2 3.0.3 | Molecule tests on both OS containers |
 | `rhel9` | RHEL 9.6's `ansible-core` 2.14.18, Jinja2 3.1.2 | Molecule tests on both OS containers |
-| `native` | Ubuntu 22.04's own `ansible-core` package (2.12.0) | Each role's scenario, after installing the release tarball the way a consumer does |
+| `native` | Ubuntu 22.04's own `ansible-core` package (2.12.0) | Each server role's scenario, after installing the release tarball the way a consumer does |
 
 Lint passing does **not** prove a role works on ansible-core 2.12; the Molecule
 toolchains do. Versions are pinned in `dev/requirements-*.txt`. The `native`
@@ -33,6 +33,11 @@ test exists because the real OS package can differ from its PyPI twin; Ubuntu's
 `ansible-galaxy` crash was found this way. It runs the scenario playbooks
 without Molecule, so keep `prepare.yml`, `converge.yml` and `verify.yml` free of
 Molecule-only variables.
+
+Roles that act on servers keep their tests in `molecule/default/` and run in the
+OS containers (`make test-<toolchain>`). Roles that run on the build machine
+itself, like `node_image`, keep them in `molecule/local/` and run on the machine
+running the tests (`make test-local-<toolchain>`).
 
 Test containers (`dev/images/`) mimic default server installs. The RHEL one is
 based on UBI, whose repositories hold a subset of RHEL. On a subscribed RHEL
@@ -94,6 +99,10 @@ molecule destroy    # clean up when done
 - Document every public variable in `meta/argument_specs.yml`, with the same
   default as `defaults/main.yml`. `make lint` enforces both.
 - Keep the interface small: add a variable only when someone needs it.
+- Defaults must not read files or run lookups that can fail: role argument
+  validation evaluates every default before the first task runs. Read files in tasks.
+- When a role is meant for people who don't write Ansible, also ship a playbook in
+  `playbooks/`, so it runs as `ansible-playbook acme.infra.<name>`.
 
 ## CI
 
@@ -106,6 +115,7 @@ on GitLab, add the weekly schedule under Build > Pipeline schedules).
 |---|---|---|
 | lint | `make lint` | Python 3.10+ |
 | test (4 jobs: 2 toolchains x 2 OS containers) | `make test-<toolchain> PLATFORM=<os>` | Podman that can start containers |
+| test-local (2 jobs: one per toolchain) | `make test-local-<toolchain>` | Same, plus access to Red Hat's registry and npm |
 | native | `make native-ubuntu2204` | Same |
 | release (tags only) | `make check-tag dist` | All jobs above green |
 

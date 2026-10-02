@@ -1,0 +1,11 @@
+---
+# Builds a production container image of the Node.js project in the current
+# directory. Run it from the project root:
+#   ansible-playbook acme.infra.node_image [-e @image.yml]
+# Options: ansible-doc -t role acme.infra.node_image
+- name: Build the Node.js project's container image
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: acme.infra.node_image

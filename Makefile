@@ -17,11 +17,20 @@ VERSION       := $(shell sed -n 's/^version: *//p' galaxy.yml)
 TARBALL       := dist/acme-infra-$(VERSION).tar.gz
 
 # Ansible loads acme.infra straight from this checkout, which is why it must live
-# at <dir>/ansible_collections/acme/infra. Test-only collections live in the venv.
+# at <dir>/ansible_collections/acme/infra.
 ifeq ($(filter %/ansible_collections/acme/infra,$(CURDIR)),)
 $(error Clone this repository into <dir>/ansible_collections/acme/infra, see CONTRIBUTING.md)
 endif
-export ANSIBLE_COLLECTIONS_PATH := $(CURDIR)/$(VENV)/collections
+
+# Runs Molecule with toolchain $1 for every role that has scenario $2.
+define molecule
+	for r in $(ROLES); do \
+	  [ -d roles/$$r/molecule/$2 ] || continue; \
+	  (cd roles/$$r && PATH="$(CURDIR)/$(VENV)/$1/bin:$$PATH" \
+	    ANSIBLE_COLLECTIONS_PATH="$(CURDIR)/$(VENV)/collections" \
+	    molecule test --scenario-name $2 $3) || exit 1; \
+	done
+endef
 
 .PHONY: help setup images lint test native dist build check-tag clean
 
@@ -44,6 +53,8 @@ $(addprefix $(VENV)/,$(TOOLCHAINS)): $(VENV)/%: dev/requirements-%.txt
 	$@/bin/pip install -r $<
 	touch $@
 
+# Installed with the rhel9 toolchain: its ansible-galaxy (2.14) is proven against
+# today's Galaxy server; 2.12's has not been tested there.
 $(VENV)/collections: dev/collections.yml | $(VENV)/rhel9
 	$(VENV)/rhel9/bin/ansible-galaxy collection install -r $< -p $@
 	touch $@
@@ -53,17 +64,18 @@ images: $(addprefix image-,$(PLATFORMS)) ## Build all Podman test containers
 image-%: ## Build one test container, e.g. make image-rhel9
 	podman build -t localhost/acme-test/$* dev/images/$*
 
+# ansible-lint resolves acme.infra (used by playbooks/) from this checkout.
 lint: $(VENV)/lint ## Lint all content and check every role's documented interface
-	$(VENV)/lint/bin/ansible-lint
+	ANSIBLE_COLLECTIONS_PATH="$(abspath $(CURDIR)/../../..)" $(VENV)/lint/bin/ansible-lint
 	$(VENV)/lint/bin/python dev/check_role_docs.py
 
-test: $(addprefix test-,$(TOOLCHAINS)) ## Test every role with both toolchains
+test: $(addprefix test-,$(TOOLCHAINS)) $(addprefix test-local-,$(TOOLCHAINS)) ## Run all Molecule tests with both toolchains
 
-test-%: $(VENV)/% $(VENV)/collections ## Test every role with one toolchain, e.g. make test-rhel9 PLATFORM=ubuntu2204
-	for r in $(ROLES); do \
-	  (cd roles/$$r && PATH="$(CURDIR)/$(VENV)/$*/bin:$$PATH" \
-	    molecule test --all $(if $(PLATFORM),--platform-name $(PLATFORM))) || exit 1; \
-	done
+test-%: $(VENV)/% $(VENV)/collections ## Test the server roles in the OS containers, e.g. make test-rhel9 PLATFORM=ubuntu2204
+	$(call molecule,$*,default,$(if $(PLATFORM),--platform-name $(PLATFORM)))
+
+test-local-%: $(VENV)/% $(VENV)/collections ## Test the roles that run on the build machine itself, e.g. make test-local-rhel9
+	$(call molecule,$*,local,)
 
 native: native-ubuntu2204 ## Run every role with the ansible-core package the OS itself ships
 

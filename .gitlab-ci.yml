@@ -66,6 +66,15 @@ test:
   script:
     - make image-$PLATFORM test-$TOOLCHAIN PLATFORM=$PLATFORM PYTHON_COMPAT=python3.10
 
+test-local:
+  stage: test
+  extends: .with-podman
+  parallel:
+    matrix:
+      - TOOLCHAIN: [ubuntu2204, rhel9]
+  script:
+    - make test-local-$TOOLCHAIN PYTHON_COMPAT=python3.10
+
 native:
   stage: test
   extends: .with-podman

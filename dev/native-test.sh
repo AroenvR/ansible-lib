@@ -21,6 +21,8 @@ playbook() {
 }
 
 for role in "$@"; do
+  # Roles without a default scenario run on the build machine, not on servers.
+  [ -d "roles/$role/molecule/default" ] || continue
   scenario=/src/roles/$role/molecule/default
   echo "=== $role: prepare, converge, idempotence, verify"
   if podman exec "$container" test -f "$scenario/prepare.yml"; then playbook "$scenario/prepare.yml"; fi

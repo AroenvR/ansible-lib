@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Build the test app's image
+      ansible.builtin.include_role:
+        name: acme.infra.node_image
+      vars:
+        node_image_source: "{{ playbook_dir }}/app"
+        node_image_output_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/image"

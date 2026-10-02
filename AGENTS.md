@@ -40,7 +40,8 @@ the git root).
 ```sh
 make setup images            # once: venvs, test-only collections, test containers
 make lint                    # ansible-lint (production profile) + interface check
-make test-ubuntu2204 ROLES=<role> PLATFORM=ubuntu2204   # fastest TDD loop
+make test-ubuntu2204 ROLES=<role> PLATFORM=ubuntu2204   # fastest TDD loop (server roles)
+make test-local-ubuntu2204 ROLES=<role>                 # roles that run on the build machine
 make build                   # everything CI runs: lint, both toolchains, native test
 make dist                    # release tarball in dist/
 ```
@@ -54,7 +55,9 @@ test runs them with plain `ansible-playbook`.
 | Path | Purpose |
 |---|---|
 | `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface |
-| `roles/<role>/molecule/default/` | That role's tests (prepare, converge, verify) |
+| `roles/<role>/molecule/default/` | Tests of a server role, run in the OS test containers |
+| `roles/<role>/molecule/local/` | Tests of a build-machine role (e.g. `node_image`), run on the test machine itself |
+| `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook acme.infra.<name>` |
 | `dev/` | Toolchain pins, test images, native test, CI helper scripts. Never shipped |
 | `.config/molecule/config.yml` | Molecule settings shared by all roles |
 | `.github/workflows/ci.yml`, `.gitlab-ci.yml` | CI; both only call make targets |
@@ -69,6 +72,8 @@ source of truth.
   version the maintainer provided. Files they have edited so far:
   `.gitignore` and the `on:` block of `.github/workflows/ci.yml` (including its
   TODO comments). Only change their lines when they ask; suggest changes in chat instead.
+  They also keep private directories that are not in the zip and restore them
+  after overwriting; ignore them unless told otherwise.
 - **Deliver every change as a complete zip** of the repository root (the zip
   root is the repository root), excluding `.git/`, `.venv/`, `dist/` and tool
   caches. The maintainer overwrites their checkout with it, so every file in the
@@ -95,17 +100,27 @@ source of truth.
   compatibility. Only the Molecule toolchains and the native test do.
 - ansible-lint cannot parse GitLab's `!reference` tag; use YAML anchors.
 - `meta-runtime[unsupported-version]` is skipped on purpose (2.12 is supported).
+- Role argument validation evaluates every default before the first task, so a
+  default with a failing lookup (e.g. reading package.json) breaks the role with
+  an unreadable error. Read files in tasks instead.
+- The agent's sandbox cannot reach Red Hat's registry or nodejs.org. `node_image`
+  was verified there with Ubuntu-based stand-in images; only CI exercises real UBI.
 
 ## Status
 
 Last updated 2026-10-02.
 
-- GitHub Actions: lint, `rhel9` toolchain and native test pass. The `ubuntu2204`
-  toolchain failure is fixed by `--upgrade-deps`; awaiting the confirming run.
+- GitHub Actions: all jobs green (run #8). `node_image` and its `test-local`
+  jobs are new and have not run in CI yet.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
+- Node.js backends, decided with the maintainer: built images are delivered as
+  archive files (`podman save`); they will run on RHEL 9 hosts only, with
+  rootless Podman managed through Quadlet, on ports 3000-3999. Projects use npm
+  with package-lock.json and pin Node.js in .nvmrc. Next: a role that runs such
+  an image as a rootless Quadlet service.
 - Open: the maintainer's TODOs in `ci.yml` (`on:` filters cannot use expressions;
-  schedules always run on the default branch); the first real utility role;
-  placeholders (`acme` namespace, `LICENSE`, URLs in `galaxy.yml`, CONTRIBUTING.md, README.md).
+  schedules always run on the default branch); placeholders (`acme` namespace,
+  `LICENSE`, URLs in `galaxy.yml`, CONTRIBUTING.md, README.md).
 
 Update this section whenever the status changes.

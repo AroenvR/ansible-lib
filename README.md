@@ -1,6 +1,7 @@
 # acme.infra
 
-Tested building blocks (Ansible roles) for RHEL 9 and Ubuntu 22.04 servers.
+Tested building blocks (Ansible roles and ready-made playbooks) for RHEL 9 and
+Ubuntu 22.04 servers and for building container images.
 Developing the collection itself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Compatibility
@@ -70,12 +71,21 @@ tar -xzf acme-infra-0.1.0.tar.gz -C collections/ansible_collections/acme/infra
 
 ## Roles
 
-| Role | Purpose | Needs repository access |
-|---|---|---|
-| [sudoers](roles/sudoers/README.md) | sudo rules as validated drop-in files | Only if sudo is missing |
+| Role | Purpose | Runs on | Needs network access |
+|---|---|---|---|
+| [sudoers](roles/sudoers/README.md) | sudo rules as validated drop-in files | Servers | Only if sudo is missing |
+| [node_image](roles/node_image/README.md) | Production container image of a Node.js project | The build machine | Yes, during the build |
 
 Every role documents its variables; read them offline with
 `ansible-doc -t role acme.infra.<role>`.
+
+## Ready-made playbooks
+
+For people who don't write Ansible: run these by name, no playbook of your own needed.
+
+| Playbook | What it does |
+|---|---|
+| `ansible-playbook acme.infra.node_image` | Builds the Node.js project in the current directory into an image archive, see [node_image](roles/node_image/README.md) |
 
 ## Versioning
 
