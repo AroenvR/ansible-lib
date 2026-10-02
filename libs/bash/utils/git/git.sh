@@ -6,7 +6,8 @@
 # Source all of this package's functions
 #######################################
 source_git_utilities() {
-  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
   source "$script_dir/git_branch.sh" 
   source "$script_dir/git_commit_checksum.sh"
