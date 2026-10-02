@@ -72,10 +72,10 @@ This library is easily consumed as a git subtree.
 
 Add new subtree:
 ```bash
-git subtree add --prefix=lib/bash git@github.com:AroenvR/bash-lib.git main --squash
+git subtree add --prefix=libs/bash git@github.com:AroenvR/bash-lib.git main --squash
 ```
 
 Pull subtree changes:
 ```bash
-git subtree pull --prefix=lib/bash git@github.com:AroenvR/bash-lib.git main --squash
+git subtree pull --prefix=libs/bash git@github.com:AroenvR/bash-lib.git main --squash
 ```
