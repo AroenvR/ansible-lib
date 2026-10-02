@@ -45,9 +45,6 @@ UTILS_SOURCE_SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Down-source git utilities.
 . "$UTILS_SOURCE_SCRIPT_PATH/git/git.sh"
 
-# Down-source podman utilities.
-. "$UTILS_SOURCE_SCRIPT_PATH/podman/podman.sh"
-
 #######################################
 # Execute a command from a different directory.
 # Globals:
