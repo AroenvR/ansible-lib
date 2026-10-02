@@ -5,7 +5,7 @@ name: CI
 
 "on":
   push:
-    branches: [claude/acme_infra] # TODO: Set dynamically
+    branches: [claude/node_backend_utils] # TODO: Set dynamically
     tags: ["v*"] # TODO: Set dynamically
   pull_request:
   schedule:
