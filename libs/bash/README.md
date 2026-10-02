@@ -9,9 +9,6 @@ This library aggregates reusable shell functions organized into focused modules:
 
 ```plaintext
 <bash_lib_root>/
-├── __tests__/          # Helpers for this library's testing suites.
-│   └── bootstrap.sh/   # Bootstrapper for test suites.
-│
 ├── utils/              # Utility functions provided by this library.
 │   ├── environment/    # Environment variable utility functions.
 │   ├── file_management/# File management utility functions.
@@ -51,7 +48,7 @@ source "$BASH_LIB_SRC"
 source_default_environment "$SCRIPT_DIR/.env.example"
 
 # Log setup success
-log "Executing the $LOG_PREFIX script in directory: $SCRIPT_DIR"
+log "Executing $LOG_PREFIX in directory: $SCRIPT_DIR"
 
 #######################################
 #           Setup complete!           #
