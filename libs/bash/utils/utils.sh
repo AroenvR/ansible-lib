@@ -42,6 +42,9 @@ UTILS_SOURCE_SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Down-source file management utilities.
 . "$UTILS_SOURCE_SCRIPT_PATH/file_management/file_management.sh"
 
+# Down-source git utilities.
+. "$UTILS_SOURCE_SCRIPT_PATH/git/git.sh"
+
 # Down-source podman utilities.
 . "$UTILS_SOURCE_SCRIPT_PATH/podman/podman.sh"
 
