@@ -1,0 +1,71 @@
+---
+# Checks one test app's image the way a backend would use it: started with an
+# environment file and a mounted host directory, then queried over HTTP.
+- name: Read the package.json of {{ node_image_test_app.name }}
+  ansible.builtin.set_fact:
+    __node_image_test_path: "{{ node_image_test_dir }}/{{ node_image_test_app.name }}"
+    __node_image_test_package: "{{ lookup('file', node_image_test_dir ~ '/' ~ node_image_test_app.name ~ '/package.json') | from_json }}"
+
+- name: Write the environment file the container gets
+  ansible.builtin.copy:
+    content: "GREETING=hello from the env file\n"
+    dest: "{{ __node_image_test_path }}.env"
+    mode: "0600"
+
+- name: Create the host directory mounted into the container
+  ansible.builtin.file:
+    path: "{{ __node_image_test_path }}-data"
+    state: directory
+    mode: "0755"
+
+- name: Run and query the app
+  block:
+    - name: Start the app with the environment file and the mounted directory
+      ansible.builtin.command:
+        argv:
+          - podman
+          - run
+          - --detach
+          - --name=node-image-verify
+          - --publish=127.0.0.1:3999:3000
+          - --env-file={{ __node_image_test_path }}.env
+          - --volume={{ __node_image_test_path }}-data:/data:Z,U
+          - "{{ __node_image_test_package.name }}:{{ __node_image_test_package.version }}"
+      changed_when: false
+
+    - name: Query the app over HTTP
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3999{{ node_image_test_app.request | default('/cats') }}
+        return_content: true
+      register: __node_image_test_response
+      until: __node_image_test_response is succeeded
+      retries: 30
+      delay: 2
+
+    - name: Inspect the running container
+      ansible.builtin.command:
+        argv: [podman, exec, node-image-verify, sh, -c, "{{ item }}"]
+      loop:
+        - node --version
+        - printenv GREETING
+        - id -u > /data/written-by-app && cat /data/written-by-app
+        - command -v gcc || command -v cc || echo none
+      register: __node_image_test_inside
+      changed_when: false
+  always:
+    - name: Remove the app container
+      ansible.builtin.command:
+        argv: [podman, rm, --force, node-image-verify]
+      changed_when: false
+
+- name: Check the image works as a backend would use it, for {{ node_image_test_app.name }}
+  vars:
+    __node_image_test_major: "{{ (node_image_test_app.nvmrc | default('') | regex_replace('^v', '')).split('.')[0] }}"
+  ansible.builtin.assert:
+    that:
+      - node_image_test_app.expect | default('[]') in __node_image_test_response.content
+      - __node_image_test_major == '' or __node_image_test_inside.results[0].stdout.startswith('v' ~ __node_image_test_major ~ '.')
+      - __node_image_test_inside.results[1].stdout == 'hello from the env file'
+      - __node_image_test_inside.results[2].stdout == '1001'
+      - __node_image_test_inside.results[3].stdout == 'none'
+      - (__node_image_test_path ~ '/.image/' ~ __node_image_test_package.name ~ '-' ~ __node_image_test_package.version ~ '.tar') is file

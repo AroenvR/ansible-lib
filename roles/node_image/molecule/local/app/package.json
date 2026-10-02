@@ -5,6 +5,6 @@
   "description": "Test app for acme.infra.node_image: a native addon, a build script and a start script.",
   "scripts": {
     "build": "node -e \"require('fs').writeFileSync('build-info.json', JSON.stringify({ built: true }))\"",
-    "start": "node server.js"
+    "start:prod": "node server.js"
   }
 }

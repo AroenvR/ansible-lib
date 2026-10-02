@@ -2,58 +2,11 @@
 - name: Verify
   hosts: localhost
   gather_facts: false
-  vars:
-    __node_image_test_tag: acme-node-fixture:1.0.0
-    __node_image_test_archive: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/image/acme-node-fixture-1.0.0.tar"
-    __node_image_test_node_major: "{{ lookup('file', playbook_dir ~ '/app/.nvmrc') | trim }}"
+  vars_files: [vars/apps.yml]
   tasks:
-    - name: Inspect the image
-      ansible.builtin.command:
-        argv: [podman, image, inspect, "{{ __node_image_test_tag }}"]
-      register: __node_image_test_inspect
-      changed_when: false
-
-    - name: Read the Node.js version in the image
-      ansible.builtin.command:
-        argv: [podman, run, --rm, "{{ __node_image_test_tag }}", node, --version]
-      register: __node_image_test_node
-      changed_when: false
-
-    - name: Look for a compiler in the runtime image
-      ansible.builtin.command:
-        argv: [podman, run, --rm, "{{ __node_image_test_tag }}", sh, -c, "command -v gcc || command -v cc"]
-      register: __node_image_test_compiler
-      changed_when: false
-      failed_when: false
-
-    - name: Run the app and query it
-      block:
-        - name: Start the app from the image
-          ansible.builtin.command:
-            argv: [podman, run, --detach, --name=node-image-verify, --publish=127.0.0.1:3999:3000, "{{ __node_image_test_tag }}"]
-          changed_when: false
-
-        - name: Query the app
-          ansible.builtin.uri:
-            url: http://127.0.0.1:3999/
-            return_content: true
-          register: __node_image_test_response
-          until: __node_image_test_response is succeeded
-          retries: 15
-          delay: 1
-      always:
-        - name: Remove the app container
-          ansible.builtin.command:
-            argv: [podman, rm, --force, node-image-verify]
-          changed_when: false
-
-    - name: Assert the image is complete, minimal and runs as non-root
-      ansible.builtin.assert:
-        that:
-          - __node_image_test_archive is file
-          - (__node_image_test_inspect.stdout | from_json)[0].Config.User == '1001'
-          - __node_image_test_node.stdout is match('^v' ~ __node_image_test_node_major ~ '\.')
-          - __node_image_test_compiler.rc != 0
-          - __node_image_test_response.json.addon == 'native addon works'
-          - __node_image_test_response.json.build.built
-          - __node_image_test_response.json.nodeEnv == 'production'
+    - name: Run, query and inspect every test app's image
+      ansible.builtin.include_tasks: tasks/verify_app.yml
+      loop: "{{ node_image_test_apps }}"
+      loop_control:
+        loop_var: node_image_test_app
+        label: "{{ node_image_test_app.name }}"

@@ -10,6 +10,7 @@ Developing the collection itself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 |---|---|
 | Ansible controller | The `ansible-core` package of Ubuntu 22.04 (2.12) or RHEL 9.6 (2.14), or newer |
 | Managed servers | Ubuntu 22.04, RHEL 9 |
+| Image build machines | Ubuntu 22.04, RHEL 9, with Podman 3.4 or newer |
 | Other collections | None. Only `ansible.builtin` is used. |
 
 ## What a managed server needs

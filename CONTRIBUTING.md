@@ -39,6 +39,12 @@ OS containers (`make test-<toolchain>`). Roles that run on the build machine
 itself, like `node_image`, keep them in `molecule/local/` and run on the machine
 running the tests (`make test-local-<toolchain>`).
 
+Versions to support are test data, not code. `node_image` builds, runs and
+queries every app listed in `roles/node_image/molecule/local/vars/apps.yml`
+(today NestJS 10, 11, 12 and NestJS's default branch, on Node.js 22 and 24). To
+cover another version, add an entry there. Cover each version once rather than
+every combination: the list grows by one line per case instead of multiplying.
+
 Test containers (`dev/images/`) mimic default server installs. The RHEL one is
 based on UBI, whose repositories hold a subset of RHEL. On a subscribed RHEL
 host Podman gives it the full RHEL repositories.

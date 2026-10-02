@@ -5,43 +5,57 @@
   changed_when: false
   failed_when: false
 
-- name: Check that Podman 4 or newer is installed
+- name: Check that Podman 3.4 or newer is installed
   ansible.builtin.assert:
     that:
       - __node_image_podman.rc == 0
-      - __node_image_podman.stdout.split()[-1] is version('4.0', '>=')
+      - __node_image_podman.stdout.split()[-1] is version('3.4', '>=')
     fail_msg: >-
-      The build needs Podman 4 or newer on this machine (found: {{ __node_image_podman.stdout | default('none', true) }}).
-      On RHEL 9: dnf install podman.
+      The build needs Podman 3.4 or newer on this machine (found: {{ __node_image_podman.stdout | default('none', true) }}).
+      On RHEL 9: dnf install podman. On Ubuntu 22.04: apt install podman.
     quiet: true
 
-- name: Check the project has the files the build needs
+- name: Check the project has a package.json
   ansible.builtin.assert:
-    that: (node_image_source ~ '/' ~ item) is file
-    fail_msg: "{{ node_image_source }}/{{ item }} is missing. The build needs package.json, package-lock.json and .nvmrc."
+    that: (node_image_source ~ '/package.json') is file
+    fail_msg: "No package.json in {{ node_image_source }}. Run the build from the project root."
     quiet: true
-  loop: [package.json, package-lock.json, .nvmrc]
 
-- name: Read package.json and .nvmrc
+# .nvmrc and package-lock.json are optional.
+- name: Read package.json, and .nvmrc if there is one
   ansible.builtin.set_fact:
     __node_image_package: "{{ lookup('file', node_image_source ~ '/package.json') | from_json }}"
-    __node_image_node_version: "{{ lookup('file', node_image_source ~ '/.nvmrc') | trim | regex_replace('^v', '') }}"
+    __node_image_has_lockfile: "{{ (node_image_source ~ '/package-lock.json') is file }}"
+    __node_image_node_version: >-
+      {{ (lookup('file', node_image_source ~ '/.nvmrc') if (node_image_source ~ '/.nvmrc') is file else node_image_node_version)
+      | string | trim | regex_replace('^v', '') }}
 
-- name: Check package.json has a name and a version, and .nvmrc a version number
+- name: Check package.json and the Node.js version
   ansible.builtin.assert:
     that:
       - __node_image_package.name is defined
       - __node_image_package.version is defined
+      - "'build' in __node_image_package.scripts | default({})"
+      - "'start:prod' in __node_image_package.scripts | default({})"
       - __node_image_node_version is match('^[0-9]+(\.|$)')
     fail_msg: >-
-      package.json needs "name" and "version", and .nvmrc a Node.js version
-      such as 24 or v24.3.0 (found '{{ __node_image_node_version }}').
+      package.json needs "name", "version" and the scripts "build" and "start:prod"
+      (the NestJS convention), and .nvmrc a Node.js version such as 24 or v24.3.0
+      (found '{{ __node_image_node_version }}').
     quiet: true
 
-- name: Work out the image tag, Node.js major version and archive path
+- name: Warn that builds without package-lock.json are not reproducible
+  ansible.builtin.debug:
+    msg: >-
+      No package-lock.json, so dependencies are resolved anew on every build (npm install)
+      and two builds of the same code can differ. Commit package-lock.json to avoid that.
+  when: not __node_image_has_lockfile | bool
+
+- name: Work out the base images, image tag and archive path
   ansible.builtin.set_fact:
+    __node_image_builder: "{{ node_image_registry }}/ubi9/nodejs-{{ __node_image_node_version.split('.')[0] }}"
+    __node_image_runtime: "{{ node_image_registry }}/ubi9/nodejs-{{ __node_image_node_version.split('.')[0] }}-minimal"
     __node_image_tag: "{{ __node_image_package.name | regex_replace('^@', '') }}:{{ __node_image_package.version }}"
-    __node_image_node_major: "{{ __node_image_node_version.split('.')[0] }}"
     __node_image_archive: >-
       {{ node_image_output_dir }}/{{ __node_image_package.name | regex_replace('^@', '') | replace('/', '-') }}-{{ __node_image_package.version }}.tar
 
@@ -51,12 +65,36 @@
     state: directory
     mode: "0755"
 
+# Loops in this role use their own loop variable names, so the role can be
+# called from a loop (which uses "item") without the two clashing.
 - name: Write the Containerfile and the list of files kept out of the image
   ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "{{ node_image_output_dir }}/{{ item }}"
+    src: "{{ __node_image_file }}.j2"
+    dest: "{{ node_image_output_dir }}/{{ __node_image_file }}"
     mode: "0644"
   loop: [Containerfile, containerignore]
+  loop_control:
+    loop_var: __node_image_file
+
+# Pulling refreshes the base images (security fixes). Without registry access
+# the build falls back to the cached copies, so a failed pull is only a warning.
+- name: Pull the latest base images
+  ansible.builtin.command:
+    argv: [podman, pull, "{{ __node_image_base }}"]
+  loop: ["{{ __node_image_builder }}", "{{ __node_image_runtime }}"]
+  loop_control:
+    loop_var: __node_image_base
+  register: __node_image_pull
+  changed_when: false
+  failed_when: false
+
+- name: Warn about base images that could not be pulled
+  ansible.builtin.debug:
+    msg: "Could not pull {{ __node_image_failed.__node_image_base }}; the build uses the cached copy if there is one."
+  loop: "{{ __node_image_pull.results | selectattr('rc', 'ne', 0) | list }}"
+  loop_control:
+    loop_var: __node_image_failed
+    label: "{{ __node_image_failed.__node_image_base }}"
 
 - name: Look up the image before building
   ansible.builtin.command:
@@ -64,14 +102,11 @@
   register: __node_image_before
   changed_when: false
 
-# --pull=newer refreshes the base images when the registry has newer ones
-# (security fixes) and falls back to cached ones when it is unreachable.
 - name: Build the image
   ansible.builtin.command:
     argv:
       - podman
       - build
-      - --pull=newer
       - --file={{ node_image_output_dir }}/Containerfile
       - --ignorefile={{ node_image_output_dir }}/containerignore
       - --tag={{ __node_image_tag }}

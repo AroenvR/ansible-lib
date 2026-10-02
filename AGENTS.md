@@ -103,22 +103,40 @@ source of truth.
 - Role argument validation evaluates every default before the first task, so a
   default with a failing lookup (e.g. reading package.json) breaks the role with
   an unreadable error. Read files in tasks instead.
-- The agent's sandbox cannot reach Red Hat's registry or nodejs.org. `node_image`
-  was verified there with Ubuntu-based stand-in images; only CI exercises real UBI.
+- The agent's sandbox cannot reach Red Hat's registry, nodejs.org or GitHub
+  tarballs. `node_image` was verified there with stand-in images and locally
+  served samples; only CI exercises real UBI and GitHub.
+- A role called from a loop shares the caller's `item`. Loops inside roles use
+  their own `loop_var` (`__<role>_<name>`), and so do loops calling a role.
+- NestJS's default branch is `master`, not `main`. Its samples have no lockfile
+  and conflicting peer dependencies; NestJS installs them with
+  `--legacy-peer-deps`, so the tests write that into the sample's `.npmrc`.
+- Podman inside Podman (the native test) needs its own subnet: both default to
+  10.88.0.0/16, which makes the inner containers unreachable. The native image
+  changes the inner one.
 
 ## Status
 
 Last updated 2026-10-02.
 
-- GitHub Actions: all jobs green (run #8). `node_image` and its `test-local`
-  jobs are new and have not run in CI yet.
+- GitHub Actions: all jobs green (run #8). `node_image`, its `test-local` jobs
+  and the NestJS test matrix are new and have not run in CI yet.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
-- Node.js backends, decided with the maintainer: built images are delivered as
-  archive files (`podman save`); they will run on RHEL 9 hosts only, with
-  rootless Podman managed through Quadlet, on ports 3000-3999. Projects use npm
-  with package-lock.json and pin Node.js in .nvmrc. Next: a role that runs such
-  an image as a rootless Quadlet service.
+- Node.js backends, decided with the maintainer:
+  - Images are built on RHEL 9 or Ubuntu 22.04 build machines (Podman 3.4+) and
+    delivered as archive files (`podman save`). The image itself is always RHEL
+    (UBI); which RHEL major is still open (UBI 9 for now).
+  - Projects follow the NestJS convention: `package.json` with `build` and
+    `start:prod`. `.nvmrc` is optional (default: current LTS, 24);
+    `package-lock.json` is optional (`npm ci` with it, `npm install` without).
+  - Supported versions are test data, not code: one case per version in
+    `roles/node_image/molecule/local/vars/apps.yml` (NestJS 10, 11, 12 pinned,
+    plus `master`). Cover each version once; no cartesian products.
+  - Images run on RHEL 9 hosts only, rootless, through Quadlet, on ports
+    3000-3999. Environment variables (an untracked env file) and a data mount are
+    runtime settings, never baked into the image. Next: a role that runs such an
+    image as a rootless Quadlet service.
 - Open: the maintainer's TODOs in `ci.yml` (`on:` filters cannot use expressions;
   schedules always run on the default branch); placeholders (`acme` namespace,
   `LICENSE`, URLs in `galaxy.yml`, CONTRIBUTING.md, README.md).

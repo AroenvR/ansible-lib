@@ -3,11 +3,14 @@ argument_specs:
   main:
     short_description: Build a production container image of a Node.js project with Podman.
     description:
-      - Runs on the machine where Ansible runs (the build machine) and needs Podman 4 or newer there.
-      - Reads the image name and tag from package.json (C(name):C(version)) and the Node.js major version from .nvmrc.
+      - Runs on the machine where Ansible runs (the build machine) and needs Podman 3.4 or newer there.
+      - Needs package.json with C(name), C(version) and the scripts C(build) and C(start:prod) (the NestJS convention).
+        The image is tagged C(name):C(version) and starts with C(npm run start:prod).
+      - Takes the Node.js major version from .nvmrc, or I(node_image_node_version) when there is none.
       - Builds in two stages on Red Hat UBI 9. The build stage (ubi9/nodejs-<major>) has gcc, g++, make and Python 3,
-        so native npm modules compile; it runs C(npm ci), C(npm run build) when package.json has a build script,
-        and removes dev dependencies. The runtime stage (ubi9/nodejs-<major>-minimal) has no compilers and runs as user 1001.
+        so native npm modules compile; it installs dependencies (C(npm ci) with package-lock.json, otherwise
+        C(npm install)), runs C(npm run build) and removes dev dependencies. The runtime stage
+        (ubi9/nodejs-<major>-minimal) has no compilers and runs as user 1001.
       - Writes the generated Containerfile and the image archive (C(podman save), OCI format) to I(node_image_output_dir).
       - Needs network access during the build to I(node_image_registry), I(node_image_npm_registry) and,
         for native modules, nodejs.org (node-gyp downloads the Node.js headers).
@@ -20,15 +23,14 @@ argument_specs:
         type: str
         default: "{{ node_image_source }}/.image"
         description: Where the generated Containerfile and the image archive are written. Never part of the image.
+      node_image_node_version:
+        type: str
+        default: "24"
+        description: Node.js major version used when the project has no .nvmrc. Follows the current LTS release that Red Hat publishes images for.
       node_image_port:
         type: int
         default: 3000
         description: Port the app listens on. Set as the PORT environment variable and exposed by the image.
-      node_image_command:
-        type: list
-        elements: str
-        default: [npm, start]
-        description: Command that starts the app when the container starts.
       node_image_build_packages:
         type: list
         elements: str
