@@ -40,7 +40,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_PREFIX="${LOG_PREFIX:-script}"
 
 # !!! Edit path to bash library !!!
-BASH_LIB_SRC="$SCRIPT_DIR/../../lib/bash/source.sh";
+BASH_LIB_SRC="$SCRIPT_DIR/../libs/bash/source.sh";
 if [[ ! -f "$BASH_LIB_SRC" ]]; then
   echo "Failed to find bash library at: $BASH_LIB_SRC"
   exit 1
