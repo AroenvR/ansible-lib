@@ -73,6 +73,15 @@
           sudo loginctl enable-linger {{ ansible_facts.user_id }}
         quiet: true
 
+    # SSH logins start it anyway; without a login, lingering starts it (in seconds).
+    - name: Wait for the account's systemd instance, which runs the service
+      ansible.builtin.wait_for:
+        path: /run/user/{{ ansible_facts.user_uid }}/systemd/private
+        timeout: 60
+        msg: >-
+          The systemd instance of {{ ansible_facts.user_id }} is not running on {{ inventory_hostname }}.
+          An administrator can see why: sudo journalctl --unit user@{{ ansible_facts.user_uid }}.service
+
     - name: Create the service's directory and the Quadlet directory
       ansible.builtin.file:
         path: "{{ __node_deploy_dir }}"

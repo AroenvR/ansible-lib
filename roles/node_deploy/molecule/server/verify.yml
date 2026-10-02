@@ -4,13 +4,27 @@
   remote_user: app
   gather_facts: false
   tasks:
-    - name: Query the service
-      ansible.builtin.uri:
-        url: http://127.0.0.1:3000/
-      register: __node_deploy_test_before
-      until: __node_deploy_test_before is succeeded
-      retries: 30
-      delay: 2
+    - name: Query the service, showing its status and log if it does not answer
+      block:
+        - name: Query the service
+          ansible.builtin.uri:
+            url: http://127.0.0.1:3000/
+          register: __node_deploy_test_before
+          until: __node_deploy_test_before is succeeded
+          retries: 30
+          delay: 2
+      rescue:
+        - name: Show the service's status and log
+          ansible.builtin.command:
+            argv:
+              - sh
+              - -c
+              - >-
+                export XDG_RUNTIME_DIR=/run/user/$(id -u);
+                systemctl --user status deploy-test-app --no-pager --lines=0;
+                journalctl --user --unit=deploy-test-app --no-pager --lines=40
+          changed_when: false
+          failed_when: true
 
     - name: Restart the test server, as a reboot would
       ansible.builtin.command:

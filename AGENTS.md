@@ -130,8 +130,11 @@ source of truth.
 - Quadlet: systemd specifiers (`%h`) work in `Volume=` and `EnvironmentFile=`.
   Avoid `StateDirectory=` for a user service's data: systemd 252 (RHEL 9) puts it
   in ~/.config, newer versions in ~/.local/state.
-- Red Hat's ubi-init image (the RHEL test server) masks systemd-logind, so
-  `loginctl` fails ("Could not activate remote peer") until a test unmasks it.
+- Red Hat's ubi-init image (the RHEL test server) cannot run an account's
+  systemd instance (user@.service) as it is: systemd-logind is masked (`loginctl`
+  fails with "Could not activate remote peer") and the PAM stack of user@.service
+  fails, after which /run/user/<uid> disappears again. node_deploy's test fixes
+  both in prepare.yml and prints the journal of user@.service if it still fails.
 - node_deploy's test runs rootless Podman inside the RHEL 9 test container:
   privileged, `/home` on a volume (no overlay on overlay), and `remote_user: app`
   (the Podman connection runs `podman exec --user`). In the agent's sandbox it
@@ -142,9 +145,10 @@ source of truth.
 
 Last updated 2026-10-02.
 
-- GitHub Actions: the latest run failed only in node_deploy's test (systemd-logind
-  masked in the UBI test image, fixed since); everything else passed. node_deploy's
-  test beyond its preparation and the publish jobs have not run in CI yet.
+- GitHub Actions: the latest runs failed only in node_deploy's test, on gaps of
+  the UBI test image (masked systemd-logind, then the PAM stack of user@.service;
+  both fixed since); everything else passed. node_deploy's test beyond loading
+  the image, and the publish jobs, have not run in CI yet.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
 - Releases, decided with the maintainer: CI runs on every push to every branch

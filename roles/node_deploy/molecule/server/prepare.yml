@@ -3,22 +3,34 @@
   hosts: all
   gather_facts: false
   tasks:
-    - name: Install Podman
+    - name: Install Podman, and the PAM module that starts an account's systemd instance
       ansible.builtin.dnf:
-        name: podman
+        name: [podman, systemd-pam]
         state: present
 
-    # Red Hat's ubi-init image masks systemd-logind, which every RHEL server runs
-    # and lingering needs.
+    # Two gaps of Red Hat's ubi-init image that a real RHEL server does not have,
+    # which keep an account's systemd instance (user@.service) from starting:
+    # systemd-logind is masked, and the PAM stack of user@.service fails in it.
     - name: Run systemd-logind, as on any RHEL server
       ansible.builtin.systemd:
         name: systemd-logind
         masked: false
         state: started
 
+    - name: Give an account's systemd instance a PAM stack that works in this container
+      ansible.builtin.copy:
+        content: |
+          # Test container only. A real server keeps the stack systemd ships.
+          # pam_systemd gives the systemd instance its runtime directory.
+          account  required pam_permit.so
+          session  optional pam_systemd.so
+        dest: /etc/pam.d/systemd-user
+        mode: "0644"
+
     - name: Create the account the service runs as
       ansible.builtin.user:
         name: app
+      register: __node_deploy_test_account
 
     # A server with polkit lets the account do this itself (node_deploy does);
     # the test server has no polkit, so it is done here as an administrator would.
@@ -26,6 +38,21 @@
       ansible.builtin.command:
         argv: [loginctl, enable-linger, app]
         creates: /var/lib/systemd/linger/app
+
+    - name: Wait for the account's systemd instance, showing why if it does not start
+      block:
+        - name: Wait for the account's systemd instance, which lingering starts
+          ansible.builtin.wait_for:
+            path: /run/user/{{ __node_deploy_test_account.uid }}/systemd/private
+            timeout: 30
+      rescue:
+        - name: Show why the account's systemd instance did not start
+          ansible.builtin.command: >-
+            journalctl --boot --no-pager --lines=30
+            --unit=user@{{ __node_deploy_test_account.uid }}.service
+            --unit=user-runtime-dir@{{ __node_deploy_test_account.uid }}.service
+          changed_when: false
+          failed_when: true
 
 - name: Prepare the test project, as a developer would
   hosts: localhost
