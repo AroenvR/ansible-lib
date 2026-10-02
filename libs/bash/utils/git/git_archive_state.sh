@@ -42,6 +42,6 @@ git_archive_state() {
     archive_name=".git.$branch.$commit.$datetime.tgz" # TODO: Support .tar.gz and .zip
     archive_path="$out_dir/$archive_name"
 
-    info "Creating tarball of '$git_dir' at '$archive_path'"
+    info "Creating tarball of '$git_dir' at '$out_dir/' named '$archive_name'"
     tar -C "$git_parent" -czf "$archive_path" "$git_name"
 }
