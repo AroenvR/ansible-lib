@@ -23,6 +23,14 @@ Each tarball holds only what runs: no tests, no dev tooling.
 - **Branch builds** (`acme-infra.<branch>.<commit>.<time>.tgz`), to try out
   work in progress: the newest build of each branch is an artifact of its CI
   run (GitHub: Actions > the run > Artifacts) for 7 days.
+- **Your own build**, of any checkout of this repository, for example before CI
+  has published one. From the repository root, with any ansible-core 2.12 or newer:
+
+  ```sh
+  ansible-playbook build.yml   # writes dist/acme-infra.<branch>.<commit>.<time>.tgz
+  ```
+
+  CI uses the same playbook for branch builds and releases; its header explains both.
 
 Install it on the machine that runs Ansible. `--force` replaces an installed
 copy, also one with the same version (branch builds carry the version of their
@@ -74,10 +82,16 @@ collections:
     type: url
 ```
 
-`ansible-galaxy collection install -r requirements.yml` installs it. From a
-private repository, download the tarball first (`gh release download v0.1.0
---repo acme/acme-infra`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab) and
-use `name: ./acme-infra-0.1.0.tar.gz` with `type: file`.
+`ansible-galaxy collection install -r requirements.yml` installs it. To use a
+tarball file instead, such as a branch build or your own build, or a release
+downloaded from a private repository (`gh release download v0.1.0 --repo
+acme/acme-infra`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
+
+```yaml
+collections:
+  - name: ./acme-infra-0.1.0.tar.gz
+    type: file
+```
 
 ## What a managed server needs
 

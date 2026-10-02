@@ -8,6 +8,14 @@
         name: podman
         state: present
 
+    # Red Hat's ubi-init image masks systemd-logind, which every RHEL server runs
+    # and lingering needs.
+    - name: Run systemd-logind, as on any RHEL server
+      ansible.builtin.systemd:
+        name: systemd-logind
+        masked: false
+        state: started
+
     - name: Create the account the service runs as
       ansible.builtin.user:
         name: app

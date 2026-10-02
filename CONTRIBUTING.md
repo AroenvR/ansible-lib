@@ -132,7 +132,7 @@ schedule under Build > Pipeline schedules). GitHub also runs them for pull reque
 | server roles · ansible-core 2.12 / 2.14 | `make images test-servers-<version>` | Podman that can start privileged containers |
 | build-machine roles · ansible-core 2.12 / 2.14 | `make test-build-machine-<version>` | Same, plus access to Red Hat's registry, npm and GitHub |
 | Ubuntu 22.04's own ansible-core and Podman | `make test-native` | Same |
-| branch build (every branch but main) | `make dist-branch` | All jobs above green |
+| branch build (every branch but main) | `make dist BRANCH=<branch>` | All jobs above green |
 | release (main) | `make dist-release` | All jobs above green |
 
 GitHub-hosted runners have Podman, so everything runs there as is. On GitLab
@@ -144,7 +144,9 @@ nothing, on purpose: nothing ships untested.
 
 ## Releases
 
-Every push whose pipeline passes publishes something, never anything untested:
+`build.yml` builds the tarballs, for CI and for you; `make dist` and
+`make dist-release` run it. Every push whose pipeline passes publishes one,
+never anything untested:
 
 - **Any branch but main: a branch build**, for trying out work in progress:
   `acme-infra.<branch>.<commit>.<UTC time>.tgz`, e.g.
@@ -163,4 +165,8 @@ Every push whose pipeline passes publishes something, never anything untested:
   add a `CHANGELOG.md` entry for anything users notice.
 
 Either tarball holds runtime files only (see `build_ignore` in `galaxy.yml`)
-and installs with `ansible-galaxy collection install <file>`.
+and installs with `ansible-galaxy collection install --force <file>`.
+
+To try your work elsewhere before CI has published it, for example with a
+backend project, build it yourself: `ansible-playbook build.yml` (or `make dist`)
+writes the same kind of tarball as a branch build into `dist/`.

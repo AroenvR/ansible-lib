@@ -45,7 +45,7 @@ make lint                                  # ansible-lint (production profile) +
 make test-servers-2.12 ROLES=<role>        # roles that run on servers, in the test containers
 make test-build-machine-2.12 ROLES=<role>  # roles that run where Ansible runs
 make build                                 # everything CI runs: lint, 2.12 and 2.14, native test
-make dist                                  # release tarball in dist/
+make dist                                  # tarball to try out in dist/ (runs build.yml)
 ```
 
 Write the failing test first (`roles/<role>/molecule/<scenario>/verify.yml`),
@@ -64,6 +64,7 @@ explains the test layout and how releases are made.
 | `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook acme.infra.<name>` |
+| `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
 | `dev/` | ansible-core pins per version, test images, native test, CI helper scripts. Never shipped |
 | `.config/molecule/config.yml` | Molecule settings shared by all roles |
 | `.github/workflows/ci.yml`, `.gitlab-ci.yml` | CI; both only call make targets |
@@ -129,6 +130,8 @@ source of truth.
 - Quadlet: systemd specifiers (`%h`) work in `Volume=` and `EnvironmentFile=`.
   Avoid `StateDirectory=` for a user service's data: systemd 252 (RHEL 9) puts it
   in ~/.config, newer versions in ~/.local/state.
+- Red Hat's ubi-init image (the RHEL test server) masks systemd-logind, so
+  `loginctl` fails ("Could not activate remote peer") until a test unmasks it.
 - node_deploy's test runs rootless Podman inside the RHEL 9 test container:
   privileged, `/home` on a volume (no overlay on overlay), and `remote_user: app`
   (the Podman connection runs `podman exec --user`). In the agent's sandbox it
@@ -139,9 +142,9 @@ source of truth.
 
 Last updated 2026-10-02.
 
-- GitHub Actions: run #16 failed only in the build-machine jobs (HTTPS downloads
-  on Python 3.12, fixed since). The renamed jobs, node_setup, node_deploy and the
-  publish jobs have not run in CI yet.
+- GitHub Actions: the latest run failed only in node_deploy's test (systemd-logind
+  masked in the UBI test image, fixed since); everything else passed. node_deploy's
+  test beyond its preparation and the publish jobs have not run in CI yet.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
 - Releases, decided with the maintainer: CI runs on every push to every branch

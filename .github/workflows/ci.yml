@@ -100,7 +100,7 @@ jobs:
           python-version: "3.12"
       - id: build
         run: |
-          make dist-branch BRANCH="$GITHUB_REF_NAME" PYTHON_LINT="$(command -v python3.12)"
+          make dist BRANCH="$GITHUB_REF_NAME" PYTHON_LINT="$(command -v python3.12)"
           echo "file=$(ls dist/acme-infra.*.tgz)" >> "$GITHUB_OUTPUT"
       - id: upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

@@ -19,7 +19,6 @@ UBUNTU_ROLES  := sudoers node_image node_setup
 VENV          := .venv
 VERSION       := $(shell sed -n 's/^version: *//p' galaxy.yml)
 TARBALL       := dist/acme-infra-$(VERSION).tar.gz
-BRANCH        ?= $(shell git rev-parse --abbrev-ref HEAD)
 
 # Ansible loads acme.infra straight from this checkout, which is why it must live
 # at <dir>/ansible_collections/acme/infra.
@@ -39,7 +38,7 @@ define molecule
 	done
 endef
 
-.PHONY: help setup images lint test test-native dist dist-branch dist-release version build clean
+.PHONY: help setup images lint test test-native dist dist-release version build clean
 
 help: ## List the targets
 	@grep -E '^[a-z0-9%.-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-26s %s\n", $$1, $$2}'
@@ -87,17 +86,14 @@ test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections ## Test the build-ma
 test-native: dist image-ubuntu2204 image-ubuntu2204-native ## Test with the ansible-core and Podman packages Ubuntu 22.04 itself ships
 	dev/native-test.sh localhost/acme-test/ubuntu2204-native $(TARBALL) $(filter $(UBUNTU_ROLES),$(ROLES))
 
-dist: $(VENV)/lint ## Build the release tarball (runtime files only) into dist/
-	$(VENV)/lint/bin/ansible-galaxy collection build --output-path dist --force
+# Both run build.yml, which also works without make (see its header). CI passes
+# BRANCH, as its checkout may not be on a branch.
+dist: $(VENV)/lint ## Build a tarball to try out: dist/acme-infra.<branch>.<commit>.<UTC time>.tgz
+	PATH="$(CURDIR)/$(VENV)/lint/bin:$$PATH" ansible-playbook build.yml $(if $(BRANCH),-e branch=$(BRANCH))
 
-# The two release builds CI makes once every test has passed (see CONTRIBUTING.md).
-dist-branch: dist ## Branch build: dist/acme-infra.<branch>.<commit>.<UTC time>.tgz
-	cp $(TARBALL) dist/acme-infra.$(subst /,.,$(BRANCH)).$(shell git rev-parse HEAD).$(shell date -u +%Y%m%d%H%M).tgz
-
-# Sets the version in galaxy.yml first, so only CI should run this.
-dist-release: ## Release build from main: next version (dev/ci/next-version.sh) into dist/
-	sed -i "s/^version: .*/version: $$(sh dev/ci/next-version.sh)/" galaxy.yml
-	$(MAKE) dist
+# Writes the version into galaxy.yml first, so only CI should run this.
+dist-release: $(VENV)/lint ## Build a release, as CI does from main: dist/acme-infra-<next version>.tar.gz
+	PATH="$(CURDIR)/$(VENV)/lint/bin:$$PATH" ansible-playbook build.yml -e release=true
 
 version: ## Print the collection's version (from galaxy.yml)
 	@echo $(VERSION)

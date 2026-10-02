@@ -82,7 +82,7 @@ branch-build:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
   before_script: *copy-to-collection-dir
   script:
-    - make dist-branch BRANCH="$CI_COMMIT_BRANCH" PYTHON_LINT=python3
+    - make dist BRANCH="$CI_COMMIT_BRANCH" PYTHON_LINT=python3
     - cp dist/acme-infra.*.tgz "$CI_PROJECT_DIR/"
   artifacts:
     paths: ["acme-infra.*.tgz"]
