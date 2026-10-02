@@ -90,14 +90,14 @@ debug() {
 # Log a verbose message.
 # Globals:
 #   LOG_PREFIX
-#   VERBOSE
+#   BASH_LIB_LOGGING_VERBOSE
 # Arguments:
 #   $*: Message to log.
 # Outputs:
-#   Writes verbose message to stdout only if VERBOSE is exactly "1".
+#   Writes verbose message to stdout only if BASH_LIB_LOGGING_VERBOSE is exactly "1".
 #######################################
 verbose() {
-  [[ "${VERBOSE:-}" == "1" ]] || return 0
+  [[ "${BASH_LIB_LOGGING_VERBOSE:-}" == "1" ]] || return 0
   output_message VERBOSE STDOUT "$@"
 }
 

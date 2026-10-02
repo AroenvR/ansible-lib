@@ -60,10 +60,10 @@ log "Executing the $LOG_PREFIX script in directory: $SCRIPT_DIR"
 
 ### Verbose-level Logging
 
-Enable verbose logging by setting the `VERBOSE` environment variable (`.env` supported):
+Enable verbose logging by setting the `BASH_LIB_LOGGING_VERBOSE` environment variable (`.env` supported):
 
 ```bash
-VERBOSE=1 /path/to/lib/consumer/foo.sh
+BASH_LIB_LOGGING_VERBOSE=1 /path/to/lib/consumer/foo.sh
 ```
 
 ## Set up as subtree
