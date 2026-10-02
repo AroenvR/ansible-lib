@@ -5,11 +5,11 @@ name: CI
 
 "on":
   push:
-    branches: [main]
-    tags: ["v*"]
+    branches: [claude/acme_infra] # TODO: Set dynamically
+    tags: ["v*"] # TODO: Set dynamically
   pull_request:
   schedule:
-    # Weekly, to catch changes in base images and package repositories.
+    # TODO: Set dynamically (per branch?)
     - cron: "17 4 * * 1"
   workflow_dispatch:
 
