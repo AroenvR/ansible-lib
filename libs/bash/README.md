@@ -79,3 +79,8 @@ Pull subtree changes:
 ```bash
 git subtree pull --prefix=libs/bash git@github.com:AroenvR/bash-lib.git main --squash
 ```
+
+Push subtree changes:
+```bash
+git subtree push --prefix=libs/bash git@github.com:AroenvR/bash-lib.git main
+```
