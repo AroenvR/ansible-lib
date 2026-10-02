@@ -1,7 +1,7 @@
 # Contributing
 
 How to develop, test and release `acme.infra`. Using the collection is covered
-in [README.md](README.md).
+in [README.md](README.md); AI coding agents also read [AGENTS.md](AGENTS.md).
 
 ## Setup (once)
 

@@ -31,13 +31,16 @@ help: ## List the targets
 setup: $(VENV)/lint $(addprefix $(VENV)/,$(TOOLCHAINS)) $(VENV)/collections ## Create all venvs, install test-only collections
 
 # Each venv is created once and rebuilt when its pinned requirements change.
+# --upgrade-deps: the pip bundled with Python 3.9/3.10 installs ansible-core 2.12
+# (published as source only) the legacy way, which leaves its commands with a
+# broken '#!python' line. A current pip builds it properly.
 $(VENV)/lint: dev/requirements-lint.txt
-	$(PYTHON_LINT) -m venv $@
+	$(PYTHON_LINT) -m venv --upgrade-deps $@
 	$@/bin/pip install -r $<
 	touch $@
 
 $(addprefix $(VENV)/,$(TOOLCHAINS)): $(VENV)/%: dev/requirements-%.txt
-	$(PYTHON_COMPAT) -m venv $@
+	$(PYTHON_COMPAT) -m venv --upgrade-deps $@
 	$@/bin/pip install -r $<
 	touch $@
 

@@ -21,6 +21,8 @@ repository: https://git.example.com/platform/acme-infra
 
 # Development-only files never ship to consumers.
 build_ignore:
+  - AGENTS.md
+  - CLAUDE.md
   - .config
   - .github
   - .gitignore
