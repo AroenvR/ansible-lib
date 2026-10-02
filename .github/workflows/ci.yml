@@ -134,5 +134,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(make --silent version)
-          gh release create "v$version" "dist/acme-infra-$version.tar.gz" \
+          gh release create "v$version" "dist/acme-infra-$version.tar.gz" "dist/acme-infra-$version.tar.gz.sha256" \
             --target "$GITHUB_SHA" --title "v$version" --notes "See CHANGELOG.md for what changed."

@@ -7,16 +7,17 @@ with acme.infra. No Ansible knowledge needed: run one command from the project r
 ansible-playbook acme.infra.node_setup
 ```
 
-It writes `deploy/` into the project, to commit to the project's repository:
+It writes an `ansible/` directory into the project, to commit with it. Everything
+after this runs from that directory: `cd ansible`.
 
 | File | What it is |
 |---|---|
-| `README.md` | The guide: how to build the image, configure and deploy it, also from a pipeline |
-| `<name>.container` | The Quadlet file that runs the image as a rootless Podman service on a server |
+| `README.md` | The guide: building the image, configuring and deploying it, also from a pipeline |
+| `ansible.cfg` | Points Ansible at the inventory |
 | `inventory.yml` | The servers to deploy to; this machine by default |
-| `container.env` | The container's settings and secrets, kept out of git by `deploy/.gitignore` |
-
-`<name>` comes from package.json: `@acme/orders-api` becomes `acme-orders-api`.
+| `group_vars/all.yml` | The project's settings (port, directories, account), commented out at their defaults |
+| `image.yml`, `deploy.yml` | The playbooks: `ansible-playbook image.yml`, `ansible-playbook deploy.yml` |
+| `container.env` | The container's settings and secrets, kept out of git by `.gitignore` |
 
 Run it again after updating acme.infra: it replaces `README.md` with the current
 guide and never touches the other files, which belong to the project.
@@ -24,7 +25,8 @@ guide and never touches the other files, which belong to the project.
 ## Requirements
 
 A `package.json` with a `name` and a `version`. Any machine with ansible-core;
-no network access.
+no network access. The service is named after the package: `@acme/orders-api`
+becomes `acme-orders-api`.
 
 ## Options
 

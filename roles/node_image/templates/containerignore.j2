@@ -4,6 +4,7 @@ node_modules
 .env
 .env.*
 *.log
+ansible
 {{ node_image_output_dir | relpath(node_image_source) }}
 {% for pattern in node_image_ignore %}
 {{ pattern }}

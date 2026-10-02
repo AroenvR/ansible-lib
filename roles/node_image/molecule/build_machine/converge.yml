@@ -9,6 +9,7 @@
         name: acme.infra.node_image
       vars:
         node_image_source: "{{ node_image_test_dir }}/{{ node_image_test_app.name }}"
+        node_image_output_dir: "{{ node_image_test_dir }}/{{ node_image_test_app.name }}/ansible/images"
       loop: "{{ node_image_test_apps }}"
       loop_control:
         loop_var: node_image_test_app

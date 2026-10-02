@@ -52,6 +52,8 @@
         - printenv GREETING
         - id -u > /data/written-by-app && cat /data/written-by-app
         - command -v gcc || command -v cc || echo none
+        - test -e ansible && echo leaked || echo absent
+        - touch package.json 2>/dev/null && echo writable || echo read-only
       register: __node_image_test_inside
       changed_when: false
   always:
@@ -70,9 +72,12 @@
       - __node_image_test_inside.results[1].stdout == 'hello from the env file'
       - __node_image_test_inside.results[2].stdout == '1001'
       - __node_image_test_inside.results[3].stdout == 'none'
-      - (__node_image_test_path ~ '/.image/' ~ __node_image_test_package.name ~ '-' ~ __node_image_test_package.version ~ '.tar') is file
+      - __node_image_test_inside.results[4].stdout == 'absent'
+      - __node_image_test_inside.results[5].stdout == 'read-only'
+      - (__node_image_test_path ~ '/ansible/images/' ~ __node_image_test_package.name ~ '-' ~ __node_image_test_package.version ~ '.tar') is file
     success_msg: >-
       PASSED {{ node_image_test_app.name }}: the archive exists; the app answers GET
       {{ __node_image_test_request }} on Node.js {{ __node_image_test_inside.results[0].stdout }},
-      reads the env file, writes the mounted directory as user 1001, and the image has no compiler.
+      reads the env file, writes the mounted directory as user 1001, cannot change its own code,
+      and the image has neither a compiler nor the project's ansible/ directory.
     fail_msg: "FAILED {{ node_image_test_app.name }}: see the first false condition above."

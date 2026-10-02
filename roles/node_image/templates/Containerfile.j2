@@ -15,9 +15,11 @@ ENV npm_config_registry={{ node_image_npm_registry }} \
     npm_config_fund=false
 COPY --chown=1001:0 . .
 # Dependencies are installed in here, never copied from the build machine (node_modules is not in the build context).
-RUN {{ 'npm ci' if __node_image_has_lockfile | bool else 'npm install' }} && npm run build && npm prune --omit=dev && rm -f .npmrc
+RUN {{ 'npm ci' if __node_image_has_lockfile | bool else 'npm install' }} && npm run build && npm prune --omit=dev && rm -f .npmrc \
+ && chmod -R go-w .
 
-# Runtime stage: no compilers, runs as the unprivileged user 1001.
+# Runtime stage: no compilers, runs as the unprivileged user 1001. The app's
+# files belong to root and only root may write them, so the app cannot change its own code.
 FROM {{ __node_image_runtime }}
 {% if node_image_runtime_packages %}
 USER 0
@@ -26,8 +28,11 @@ RUN microdnf install --assumeyes --nodocs {{ node_image_runtime_packages | join(
 {% endif %}
 USER 1001
 WORKDIR /opt/app-root/src
-COPY --from=build --chown=1001:0 /opt/app-root/src .
+COPY --from=build --chown=0:0 /opt/app-root/src .
 ENV NODE_ENV=production \
     PORT={{ node_image_port }}
+LABEL org.opencontainers.image.title="{{ __node_image_package.name }}" \
+      org.opencontainers.image.version="{{ __node_image_package.version }}" \
+      org.opencontainers.image.revision="{{ __node_image_commit.stdout | default('') }}"
 EXPOSE {{ node_image_port }}
 CMD ["npm", "run", "start:prod"]

@@ -24,6 +24,15 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   when missing (the dnf module contacts every enabled repository even for
   installed packages). Each role README states exactly what the server needs.
 - **Podman, never Docker.**
+- **The maintainer's server conventions for containers.** Root manages the
+  accounts, images and Quadlet files. Every service runs rootless as an account
+  of its own (`useradd`, `loginctl enable-linger`). Image archives live in
+  `/opt/containers/images/` and are loaded as that account (`runuser -u <user> --
+  env XDG_RUNTIME_DIR=/run/user/<uid> podman load`). Quadlet files live in
+  `/etc/containers/systemd/users/<UID>/`; the account's systemd is driven with
+  `systemctl --user -M <user>@ ...`. A service's own directory is
+  `/opt/<service>/`, mounted into the container. `node_deploy` implements this;
+  follow it for every container-based role.
 - **Dependencies.** Development tools may be current but are pinned in
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
   enterprise-proven; prefer the OS repositories.
@@ -136,19 +145,24 @@ source of truth.
   fails, after which /run/user/<uid> disappears again. node_deploy's test fixes
   both in prepare.yml and prints the journal of user@.service if it still fails.
 - node_deploy's test runs rootless Podman inside the RHEL 9 test container:
-  privileged, `/home` on a volume (no overlay on overlay), and `remote_user: app`
-  (the Podman connection runs `podman exec --user`). In the agent's sandbox it
-  only works with an Ubuntu 24.04 stand-in for the server and `--cgroups=disabled`
-  (the sandbox has cgroup v1); CI is the real check.
+  privileged, with `/home` on a volume (no overlay on overlay). In the agent's
+  sandbox it only works with an Ubuntu 24.04 stand-in for the server and
+  `--cgroups=disabled` (the sandbox has cgroup v1); CI is the real check.
+- An `until` loop with `failed_when: false` never fails, even when its retries
+  run out: put the real condition in `failed_when`.
+- `--userns=keep-id:uid=1001,gid=0` fails (crun: invalid gid_map); node_deploy maps
+  uid and gid 1001 and runs the app as 1001:1001 (`User=`, `Group=`).
+- Quadlet keys differ between Podman versions (`UserNS=` is not in 4.4); use
+  `PodmanArgs=` for anything newer than 4.4.
 
 ## Status
 
 Last updated 2026-10-02.
 
-- GitHub Actions: the latest runs failed only in node_deploy's test, on gaps of
-  the UBI test image (masked systemd-logind, then the PAM stack of user@.service;
-  both fixed since); everything else passed. node_deploy's test beyond loading
-  the image, and the publish jobs, have not run in CI yet.
+- GitHub Actions: run #19 passed everything, including a branch build. The
+  maintainer installed it and deployed a NestJS project (an earlier node_deploy).
+  node_deploy has since been rewritten to the maintainer's server conventions and
+  the project layout moved to `ansible/`; that has not run in CI yet.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
 - Releases, decided with the maintainer: CI runs on every push to every branch
@@ -156,16 +170,23 @@ Last updated 2026-10-02.
   7-day branch build (only the newest kept); a passing main publishes the next
   patch version as a release with its tag.
 - Node.js backends, decided with the maintainer:
-  - A project runs `node_setup` once and commits `deploy/` (guide, Quadlet file,
-    inventory; container.env stays out of git). Later commands build
-    (`node_image`) and deploy (`node_deploy`); the maintainer's goal is a complete
-    pipeline a project's runner executes. Test runs are `npm run test` for now.
+  - A project runs `node_setup` once from its root and commits `ansible/`
+    (ansible.cfg, inventory.yml, group_vars/all.yml, image.yml, deploy.yml, the
+    guide; container.env and images/ stay out of git). Every later command runs
+    from `ansible/`, and settings are Ansible variables in group_vars. The
+    maintainer's goal is a complete pipeline a project's runner executes. Test
+    runs are `npm run test` for now.
   - Images are built on RHEL 9 or Ubuntu 22.04 (Podman 3.4+) and are always
     RHEL (UBI); which RHEL major is still open (UBI 9 for now).
   - Projects follow the NestJS convention: `build` and `start:prod` scripts;
     `.nvmrc` (default 24) and `package-lock.json` are optional.
   - Supported versions are test data (`roles/node_image/molecule/build_machine/vars/apps.yml`).
-  - Services run rootless on RHEL 9.2+ through Quadlet, ports 3000-3999.
+  - Services run rootless on RHEL 9.2+ through Quadlet, published on
+    127.0.0.1 by default (a containerized Nginx will sit in front later), ports
+    3000-3999. `/opt/<service>/` on the server is the service's own directory,
+    mounted at `/data`; the app may create anything in it.
+  - Next, together with the maintainer: a containerized Claude Code service,
+    which must get an account (and UID) of its own like every service.
 - Open: placeholders (`acme` namespace, `LICENSE`, URLs in `galaxy.yml`,
   CONTRIBUTING.md, README.md); a pinned source for acme.infra in projects'
   pipelines once the release location is final.

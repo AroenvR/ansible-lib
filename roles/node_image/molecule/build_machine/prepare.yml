@@ -5,9 +5,9 @@
   gather_facts: false
   vars_files: [vars/apps.yml]
   tasks:
-    - name: Create a directory per test app
+    - name: Create a directory per test app, with an ansible/ directory as node_setup writes
       ansible.builtin.file:
-        path: "{{ node_image_test_dir }}/{{ item.name }}"
+        path: "{{ node_image_test_dir }}/{{ item.name }}/ansible"
         state: directory
         mode: "0755"
       loop: "{{ node_image_test_apps }}"
@@ -52,6 +52,16 @@
         dest: "{{ node_image_test_dir }}/{{ item.name }}/.npmrc"
         mode: "0644"
       loop: "{{ node_image_test_apps | selectattr('nestjs_ref', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # node_image must never put the project's ansible/ directory in the image.
+    - name: Give each test app an ansible/ directory holding a secret
+      ansible.builtin.copy:
+        content: "SECRET=must-not-be-in-the-image\n"
+        dest: "{{ node_image_test_dir }}/{{ item.name }}/ansible/container.env"
+        mode: "0600"
+      loop: "{{ node_image_test_apps }}"
       loop_control:
         label: "{{ item.name }}"
 

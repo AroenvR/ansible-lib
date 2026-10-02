@@ -60,15 +60,23 @@ project, such as a NestJS backend. Run it from the project root:
 ansible-playbook acme.infra.node_setup
 ```
 
-It writes a `deploy/` directory to commit with the project. Its `README.md` is
-the guide for everything after that: building the production image, configuring
-it, and deploying it as a rootless Podman service (a Quadlet file, also in
-`deploy/`) that starts at boot, from a laptop or from a pipeline. In short:
+It writes an `ansible/` directory to commit with the project, laid out the way
+Ansible users expect: `ansible.cfg`, `inventory.yml`, `group_vars/all.yml` for
+the settings, and the playbooks `image.yml` and `deploy.yml`. Everything after
+the setup runs from that directory, and its `README.md` is the guide: building
+the production image, configuring it, and deploying it as a rootless Podman
+service that starts at boot, from a laptop or from a pipeline. In short:
 
 ```sh
-ansible-playbook acme.infra.node_image                            # build .image/<name>-<version>.tar
-ansible-playbook acme.infra.node_deploy -i deploy/inventory.yml   # install and start it on the servers
+cd ansible
+ansible-playbook image.yml    # build images/<name>-<version>.tar
+ansible-playbook deploy.yml   # install and start it on the servers in inventory.yml
 ```
+
+On the servers the deploy follows fixed conventions: an account per service,
+images in `/opt/containers/images/`, Quadlet files in
+`/etc/containers/systemd/users/<UID>/`, the service's own directory in
+`/opt/<service>/`. See [node_deploy](roles/node_deploy/README.md).
 
 ## Use roles in your own playbooks
 
@@ -108,7 +116,7 @@ role's README says so.
 | Role | Purpose | Runs on | Needs network access |
 |---|---|---|---|
 | [sudoers](roles/sudoers/README.md) | sudo rules as validated drop-in files | Servers | Only if sudo is missing |
-| [node_setup](roles/node_setup/README.md) | Prepares a Node.js project: guide, Quadlet file, inventory | The project's machine | No |
+| [node_setup](roles/node_setup/README.md) | Prepares a Node.js project: its `ansible/` directory with settings, inventory, playbooks and guide | The project's machine | No |
 | [node_image](roles/node_image/README.md) | Production container image of a Node.js project | The build machine | Yes, during the build |
 | [node_deploy](roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | No |
 
@@ -117,14 +125,14 @@ Every role documents its variables; read them offline with
 
 ## Ready-made playbooks
 
-For people who don't write Ansible: run these by name from a project's root, no
-playbook of your own needed.
+For people who don't write Ansible: run these by name, no playbook of your own
+needed. The `image.yml` and `deploy.yml` that node_setup writes import the last two.
 
-| Playbook | What it does |
-|---|---|
-| `ansible-playbook acme.infra.node_setup` | Writes `deploy/` into the Node.js project, see [node_setup](roles/node_setup/README.md) |
-| `ansible-playbook acme.infra.node_image` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
-| `ansible-playbook acme.infra.node_deploy -i deploy/inventory.yml` | Deploys that image to the servers, see [node_deploy](roles/node_deploy/README.md) |
+| Playbook | Run it from | What it does |
+|---|---|---|
+| `ansible-playbook acme.infra.node_setup` | The project's root | Writes `ansible/` into the Node.js project, see [node_setup](roles/node_setup/README.md) |
+| `ansible-playbook acme.infra.node_image` | `ansible/` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
+| `ansible-playbook acme.infra.node_deploy` | `ansible/` | Deploys that image to the servers, see [node_deploy](roles/node_deploy/README.md) |
 
 ## Versioning
 

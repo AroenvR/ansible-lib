@@ -1,0 +1,4 @@
+---
+# Builds the production image of {{ __node_setup_service }} into images/: ansible-playbook image.yml
+- name: Build the image
+  ansible.builtin.import_playbook: acme.infra.node_image

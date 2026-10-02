@@ -3,22 +3,57 @@ argument_specs:
   main:
     short_description: Deploy a Node.js project's image as a rootless Podman service
     description:
-      - Deploys the image that acme.infra.node_image built, using the files that
-        acme.infra.node_setup wrote into the project's deploy/ directory.
-      - On each server it copies the image archive of the version in package.json and loads
-        it, installs the Quadlet file with Image= set to that version, copies
-        deploy/container.env, and starts the service, or restarts it when something changed.
-      - The service runs rootless, as the account Ansible connects with, and starts at boot.
-        For that the role enables lingering for the account, so no login is needed.
-      - Servers need RHEL 9.2 or newer with Podman 4.4 or newer (Quadlet) installed. No
-        root access and no network access are needed.
+      - Deploys the image that acme.infra.node_image built, using the settings in the project's
+        ansible/ directory (see acme.infra.node_setup). Runs from that directory.
+      - Works as root on the server and follows these conventions. Each service runs rootless as an
+        account of its own, which may run services while nobody is logged in (lingering).
+        Image archives are kept in /opt/containers/images/ and loaded into that account's Podman.
+        The Quadlet file and the container's environment file are in
+        /etc/containers/systemd/users/<the account's UID>/, managed by root. The service's own
+        directory (/opt/<service> by default) is mounted at /data and belongs to the account.
+      - Starts the service, or restarts it when the image, the settings or the Quadlet file changed,
+        then waits until it answers HTTP requests. If it does not, the deploy fails and shows its log.
+      - The container runs with a read-only root filesystem (/tmp stays writable), no capabilities and
+        no privilege escalation, and starts again after a reboot.
+      - Servers need RHEL 9.2 or newer with Podman 4.4 or newer (Quadlet) installed. No network access is needed.
     options:
-      node_deploy_project:
+      node_deploy_ansible_dir:
         type: str
         default: "{{ lookup('env', 'PWD') }}"
-        description: The project's root directory on the Ansible machine. Defaults to the current directory.
-      node_deploy_quadlet_dir:
+        description:
+          - The project's ansible/ directory, on the Ansible machine. Defaults to the current directory.
+          - Its parent holds package.json, which names the service; images/ holds the image (from
+            acme.infra.node_image) and container.env the container's environment variables.
+      node_deploy_user:
         type: str
-        default: ~/.config/containers/systemd
-        description: Where the Quadlet file goes on the server. The default is where systemd finds
-          a user's Quadlet files.
+        default: ""
+        description: The account the service runs as. Empty means the service's name, e.g. acme-orders-api for @acme/orders-api.
+      node_deploy_uid:
+        type: str
+        default: ""
+        description: The account's UID when the deploy creates it, e.g. to have the same UID on every server. Empty lets the
+          server pick a free one.
+      node_deploy_dir:
+        type: str
+        default: ""
+        description: The service's own directory on the server, mounted at /data in the container. The app may create
+          anything in it. Empty means /opt/<service>.
+      node_deploy_port:
+        type: int
+        default: 3000
+        description: The service's port on the server.
+      node_deploy_bind_address:
+        type: str
+        default: 127.0.0.1
+        description: The address the port is published on. 127.0.0.1 keeps it for this server, e.g. for a reverse proxy;
+          0.0.0.0 makes it reachable from other machines (if the firewall allows).
+      node_deploy_container_port:
+        type: int
+        default: 3000
+        description: The port the app listens on inside the container, node_image_port of acme.infra.node_image.
+      node_deploy_container_options:
+        type: list
+        elements: str
+        default: []
+        description: Extra lines for the [Container] section of the Quadlet file, e.g. C(PodmanArgs=--memory=512m).
+          See man podman-systemd.unit.

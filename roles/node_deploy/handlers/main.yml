@@ -1,20 +1,25 @@
 ---
-# They run in this order, after the tasks that changed something notify them.
+# They run in this order, after the tasks that changed something notify them,
+# and act as the service's account, as the conventions in tasks/main.yml describe.
 - name: Load the image
   ansible.builtin.command:
-    argv: [podman, load, --input, "{{ ansible_facts.user_dir }}/{{ __node_deploy_service }}/image.tar"]
-  environment: "{{ __node_deploy_session }}"
+    argv:
+      - runuser
+      - --user={{ __node_deploy_user }}
+      - --
+      - env
+      - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_account.uid }}
+      - podman
+      - load
+      - --input=/opt/containers/images/{{ __node_deploy_archive }}
   changed_when: true
 
 - name: Make systemd read the Quadlet file
-  ansible.builtin.systemd:
-    daemon_reload: true
-    scope: user
-  environment: "{{ __node_deploy_session }}"
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", daemon-reload]
+  changed_when: true
 
 - name: Restart the service
-  ansible.builtin.systemd:
-    name: "{{ __node_deploy_service }}.service"
-    scope: user
-    state: restarted
-  environment: "{{ __node_deploy_session }}"
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", restart, "{{ __node_deploy_service }}.service"]
+  changed_when: true

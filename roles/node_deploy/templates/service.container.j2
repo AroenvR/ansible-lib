@@ -1,0 +1,35 @@
+# {{ __node_deploy_name }}, managed by acme.infra.node_deploy: changes here are overwritten.
+# Change the settings in the project's ansible/group_vars/all.yml instead.
+
+[Unit]
+Description={{ __node_deploy_name }}
+
+[Container]
+Image={{ __node_deploy_image }}
+ContainerName={{ __node_deploy_service }}
+# The app runs as the image's user 1001, which is the account {{ __node_deploy_user }} here:
+# what it writes to {{ __node_deploy_dir }} belongs to that account.
+User=1001
+Group=1001
+PodmanArgs=--userns=keep-id:uid=1001,gid=1001
+PublishPort={{ node_deploy_bind_address }}:{{ node_deploy_port }}:{{ node_deploy_container_port }}
+# Settings and secrets, next to this file.
+EnvironmentFile={{ __node_deploy_service }}.env
+Volume={{ __node_deploy_dir }}:/data:Z
+# Hardening: a read-only root filesystem (/tmp stays writable), no capabilities,
+# no privilege escalation.
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+# An init process forwards stop signals, so the app shuts down cleanly.
+RunInit=true
+{% for option in node_deploy_container_options %}
+{{ option }}
+{% endfor %}
+
+[Service]
+Restart=always
+
+[Install]
+# Start at boot.
+WantedBy=default.target

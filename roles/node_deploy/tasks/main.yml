@@ -1,31 +1,52 @@
 ---
+# Runs as root on the server. The conventions it follows are described in
+# meta/argument_specs.yml: an account per service, images in
+# /opt/containers/images/, Quadlet files in /etc/containers/systemd/users/<UID>/.
+- name: Check the project's package.json is there
+  ansible.builtin.assert:
+    that: ((node_deploy_ansible_dir | dirname) ~ '/package.json') is file
+    fail_msg: "No package.json in {{ node_deploy_ansible_dir | dirname }}. Run the deploy from the project's ansible/ directory."
+    quiet: true
+
 # Named after the package, the same way node_setup and node_image do it.
-- name: Work out the service, image and file names from package.json
+- name: Work out the service's names and files from package.json
   vars:
-    __node_deploy_package: "{{ lookup('file', node_deploy_project ~ '/package.json') | from_json }}"
+    __node_deploy_package: "{{ lookup('file', (node_deploy_ansible_dir | dirname) ~ '/package.json') | from_json }}"
     __node_deploy_slug: "{{ __node_deploy_package.name | regex_replace('^@', '') | replace('/', '-') }}"
   ansible.builtin.set_fact:
+    __node_deploy_name: "{{ __node_deploy_package.name }}"
     __node_deploy_service: "{{ __node_deploy_slug }}"
+    __node_deploy_user: "{{ node_deploy_user or __node_deploy_slug }}"
+    __node_deploy_dir: "{{ node_deploy_dir or '/opt/' ~ __node_deploy_slug }}"
     __node_deploy_image: "localhost/{{ __node_deploy_package.name | regex_replace('^@', '') }}:{{ __node_deploy_package.version }}"
-    __node_deploy_archive: "{{ node_deploy_project }}/.image/{{ __node_deploy_slug }}-{{ __node_deploy_package.version }}.tar"
-    __node_deploy_quadlet: "{{ node_deploy_project }}/deploy/{{ __node_deploy_slug }}.container"
-    __node_deploy_env_file: "{{ node_deploy_project }}/deploy/container.env"
+    __node_deploy_archive: "{{ __node_deploy_slug }}-{{ __node_deploy_package.version }}.tar"
 
-- name: Check the image and the deploy files are there
+- name: Check the image and the environment file are there
   ansible.builtin.assert:
     that: __node_deploy_needed.path is file
     fail_msg: "{{ __node_deploy_needed.path }} is missing. {{ __node_deploy_needed.fix }}"
     quiet: true
   loop:
-    - path: "{{ __node_deploy_archive }}"
-      fix: "Build it first: ansible-playbook acme.infra.node_image"
-    - path: "{{ __node_deploy_quadlet }}"
-      fix: "Run ansible-playbook acme.infra.node_setup first."
-    - path: "{{ __node_deploy_env_file }}"
+    - path: "{{ node_deploy_ansible_dir }}/images/{{ __node_deploy_archive }}"
+      fix: "Build it first: ansible-playbook image.yml"
+    - path: "{{ node_deploy_ansible_dir }}/container.env"
       fix: It holds the container's settings and secrets and is not in git. Create it; it may be empty.
   loop_control:
     loop_var: __node_deploy_needed
     label: "{{ __node_deploy_needed.path | basename }}"
+
+- name: Look up which account Ansible acts as on the server
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", user]
+
+- name: Check that Ansible acts as root
+  ansible.builtin.assert:
+    that: ansible_facts.user_uid == 0
+    fail_msg: >-
+      The deploy manages an account, its image and its Quadlet file, which takes root on
+      {{ inventory_hostname }}. Connect as root or with sudo; with sudo asking for a password,
+      add --ask-become-pass.
+    quiet: true
 
 - name: Look up the Podman version on the server
   ansible.builtin.command: podman --version
@@ -40,91 +61,116 @@
       - __node_deploy_podman.stdout.split()[-1] is version('4.4', '>=')
     fail_msg: >-
       The service needs Podman 4.4 or newer for Quadlet (RHEL 9.2 or newer); found:
-      {{ __node_deploy_podman.stdout | default('none', true) }}. An administrator installs it: sudo dnf install podman
+      {{ __node_deploy_podman.stdout | default('none', true) }}. Install it: dnf install podman
     quiet: true
 
-- name: Look up the account the service runs as
-  ansible.builtin.setup:
-    gather_subset: ["!all", "!min", user]
+- name: Create the account the service runs as, {{ __node_deploy_user }}
+  ansible.builtin.user:
+    name: "{{ __node_deploy_user }}"
+    uid: "{{ node_deploy_uid or omit }}"
+  register: __node_deploy_account
 
-# Where rootless Podman and `systemctl --user` find this account's session. SSH
-# logins set it already; setting it also covers other ways of connecting.
-- name: Point Podman and systemd at the account's session
-  ansible.builtin.set_fact:
-    __node_deploy_session:
-      XDG_RUNTIME_DIR: /run/user/{{ ansible_facts.user_uid }}
+- name: Check the service does not run as root
+  ansible.builtin.assert:
+    that: __node_deploy_account.uid != 0
+    fail_msg: "{{ __node_deploy_user }} is root. Choose another account (node_deploy_user)."
+    quiet: true
 
-- name: Install and start the service
-  environment: "{{ __node_deploy_session }}"
+- name: Let the account run services while nobody is logged in, so the service starts at boot
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ __node_deploy_user }}"]
+    creates: /var/lib/systemd/linger/{{ __node_deploy_user }}
+
+- name: Wait for the account's systemd instance, which runs the service
+  ansible.builtin.wait_for:
+    path: /run/user/{{ __node_deploy_account.uid }}/systemd/private
+    timeout: 60
+    msg: >-
+      The systemd instance of {{ __node_deploy_user }} did not start on {{ inventory_hostname }}.
+      See why with: journalctl --unit user@{{ __node_deploy_account.uid }}.service
+
+- name: Create the image store, the account's Quadlet directory and the service's directory
+  ansible.builtin.file:
+    path: "{{ __node_deploy_directory.path }}"
+    state: directory
+    owner: "{{ __node_deploy_directory.owner }}"
+    group: "{{ __node_deploy_directory.owner }}"
+    mode: "{{ __node_deploy_directory.mode }}"
+  loop:
+    - { path: /opt/containers/images, owner: root, mode: "0755" }
+    - { path: "/etc/containers/systemd/users/{{ __node_deploy_account.uid }}", owner: root, mode: "0755" }
+    - { path: "{{ __node_deploy_dir }}", owner: "{{ __node_deploy_user }}", mode: "0750" }
+  loop_control:
+    loop_var: __node_deploy_directory
+    label: "{{ __node_deploy_directory.path }}"
+
+# The handlers (handlers/main.yml) load the image, reload the account's systemd and
+# restart the service, but only for what changed: a rerun without changes changes nothing.
+- name: Copy the image archive to /opt/containers/images, {{ __node_deploy_archive }}
+  ansible.builtin.copy:
+    src: "{{ node_deploy_ansible_dir }}/images/{{ __node_deploy_archive }}"
+    dest: /opt/containers/images/{{ __node_deploy_archive }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify: [Load the image, Restart the service]
+
+- name: Install the container's settings and secrets, readable by root and the account only
+  ansible.builtin.copy:
+    src: "{{ node_deploy_ansible_dir }}/container.env"
+    dest: /etc/containers/systemd/users/{{ __node_deploy_account.uid }}/{{ __node_deploy_service }}.env
+    owner: root
+    group: "{{ __node_deploy_user }}"
+    mode: "0640"
+  diff: false  # never print secrets
+  notify: Restart the service
+
+- name: Install the Quadlet file of the service {{ __node_deploy_service }}
+  ansible.builtin.template:
+    src: service.container.j2
+    dest: /etc/containers/systemd/users/{{ __node_deploy_account.uid }}/{{ __node_deploy_service }}.container
+    owner: root
+    group: root
+    mode: "0644"
+  notify: [Make systemd read the Quadlet file, Restart the service]
+
+- name: Load the image and restart the service now, where needed
+  ansible.builtin.meta: flush_handlers
+
+# The systemd module cannot reach another account's systemd instance, `systemctl -M` can.
+- name: Look up whether the service runs
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", is-active, "{{ __node_deploy_service }}.service"]
+  register: __node_deploy_active
+  changed_when: false
+  failed_when: false
+
+- name: Start the service, {{ __node_deploy_service }}
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", start, "{{ __node_deploy_service }}.service"]
+  when: __node_deploy_active.rc != 0
+  changed_when: true
+
+# Any HTTP answer will do: it shows the app started and listens.
+- name: Wait until the service answers, showing its log if it does not
   block:
-    - name: Let the account run services while nobody is logged in, so the service starts at boot
-      ansible.builtin.command:
-        argv: [loginctl, enable-linger, "{{ ansible_facts.user_id }}"]
-        creates: /var/lib/systemd/linger/{{ ansible_facts.user_id }}
-      register: __node_deploy_linger
-      failed_when: false
+    - name: Wait until the service answers on port {{ node_deploy_port }}
+      ansible.builtin.uri:
+        url: "http://{{ '127.0.0.1' if node_deploy_bind_address in ['0.0.0.0', '::'] else node_deploy_bind_address }}:{{ node_deploy_port }}/"
+      register: __node_deploy_answer
+      until: __node_deploy_answer.status | default(-1) > 0
+      retries: 30
+      delay: 2
+      failed_when: __node_deploy_answer.status | default(-1) <= 0  # any HTTP status will do
+  rescue:
+    - name: Show the service's log
+      ansible.builtin.command: journalctl --no-pager --lines=50 _SYSTEMD_USER_UNIT={{ __node_deploy_service }}.service
+      changed_when: false
+      failed_when: true
 
-    - name: Check the account may run services while nobody is logged in
-      ansible.builtin.assert:
-        that: __node_deploy_linger.rc | default(0) == 0
-        fail_msg: >-
-          {{ ansible_facts.user_id }} cannot enable lingering itself ({{ __node_deploy_linger.stderr | default('') }}).
-          Without polkit only root can: an administrator runs this once on {{ inventory_hostname }}:
-          sudo loginctl enable-linger {{ ansible_facts.user_id }}
-        quiet: true
-
-    # SSH logins start it anyway; without a login, lingering starts it (in seconds).
-    - name: Wait for the account's systemd instance, which runs the service
-      ansible.builtin.wait_for:
-        path: /run/user/{{ ansible_facts.user_uid }}/systemd/private
-        timeout: 60
-        msg: >-
-          The systemd instance of {{ ansible_facts.user_id }} is not running on {{ inventory_hostname }}.
-          An administrator can see why: sudo journalctl --unit user@{{ ansible_facts.user_uid }}.service
-
-    - name: Create the service's directory and the Quadlet directory
-      ansible.builtin.file:
-        path: "{{ __node_deploy_dir }}"
-        state: directory
-        mode: "0700"
-      loop: ["~/{{ __node_deploy_service }}", "{{ node_deploy_quadlet_dir }}"]
-      loop_control:
-        loop_var: __node_deploy_dir
-
-    # The handlers (handlers/main.yml) load the image and restart the service,
-    # but only for what changed: a rerun without changes changes nothing.
-    - name: Copy the image archive {{ __node_deploy_archive | basename }}
-      ansible.builtin.copy:
-        src: "{{ __node_deploy_archive }}"
-        dest: ~/{{ __node_deploy_service }}/image.tar
-        mode: "0600"
-      notify: [Load the image, Restart the service]
-
-    - name: Copy the container's settings and secrets
-      ansible.builtin.copy:
-        src: "{{ __node_deploy_env_file }}"
-        dest: ~/{{ __node_deploy_service }}/container.env
-        mode: "0600"
-      notify: Restart the service
-
-    - name: Install the Quadlet file, set to the image {{ __node_deploy_image }}
-      ansible.builtin.copy:
-        content: "{{ lookup('file', __node_deploy_quadlet) | regex_replace('(?m)^Image=.*$', 'Image=' ~ __node_deploy_image) }}\n"
-        dest: "{{ node_deploy_quadlet_dir }}/{{ __node_deploy_service }}.container"
-        mode: "0644"
-      notify: [Make systemd read the Quadlet file, Restart the service]
-
-    - name: Load the image and restart the service now, where needed
-      ansible.builtin.meta: flush_handlers
-
-    - name: Make sure this service runs, {{ __node_deploy_service }}
-      ansible.builtin.systemd:
-        name: "{{ __node_deploy_service }}.service"
-        scope: user
-        state: started
-
-- name: Show how to check the service
+- name: Show where the service runs
   ansible.builtin.debug:
     msg: >-
-      {{ __node_deploy_image }} runs as the service {{ __node_deploy_service }} of {{ ansible_facts.user_id }}.
-      Check it there: systemctl --user status {{ __node_deploy_service }}
+      {{ __node_deploy_image }} runs as the service {{ __node_deploy_service }} of the account
+      {{ __node_deploy_user }}, on {{ node_deploy_bind_address }}:{{ node_deploy_port }}.
+      Check it: systemctl --user -M {{ __node_deploy_user }}@ status {{ __node_deploy_service }}

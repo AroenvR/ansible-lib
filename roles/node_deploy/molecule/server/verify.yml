@@ -1,30 +1,21 @@
 ---
 - name: Check the deployed service works, and comes back by itself when the server restarts
   hosts: all
-  remote_user: app
   gather_facts: false
   tasks:
-    - name: Query the service, showing its status and log if it does not answer
-      block:
-        - name: Query the service
-          ansible.builtin.uri:
-            url: http://127.0.0.1:3000/
-          register: __node_deploy_test_before
-          until: __node_deploy_test_before is succeeded
-          retries: 30
-          delay: 2
-      rescue:
-        - name: Show the service's status and log
-          ansible.builtin.command:
-            argv:
-              - sh
-              - -c
-              - >-
-                export XDG_RUNTIME_DIR=/run/user/$(id -u);
-                systemctl --user status deploy-test-app --no-pager --lines=0;
-                journalctl --user --unit=deploy-test-app --no-pager --lines=40
-          changed_when: false
-          failed_when: true
+    - name: Query the service
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_before
+
+    - name: Inspect the service's account, directory and files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /opt/deploy-test-app/starts
+        - /etc/containers/systemd/users/3001/deploy-test-app.env
+        - /etc/containers/systemd/users/3001/deploy-test-app.container
+      register: __node_deploy_test_files
 
     - name: Restart the test server, as a reboot would
       ansible.builtin.command:
@@ -32,20 +23,33 @@
       delegate_to: localhost
       changed_when: false
 
-    - name: Query the service again once the server is back
-      ansible.builtin.uri:
-        url: http://127.0.0.1:3000/
-      register: __node_deploy_test_after
-      until: __node_deploy_test_after is succeeded
-      retries: 60
-      delay: 2
+    - name: Query the service again once the server is back, showing its log if it does not answer
+      block:
+        - name: Query the service again once the server is back
+          ansible.builtin.uri:
+            url: http://127.0.0.1:3009/
+          register: __node_deploy_test_after
+          until: __node_deploy_test_after is succeeded
+          retries: 60
+          delay: 2
+      rescue:
+        - name: Show the service's log
+          ansible.builtin.command: journalctl --no-pager --lines=50 _SYSTEMD_USER_UNIT=deploy-test-app.service
+          changed_when: false
+          failed_when: true
 
-    - name: Check the service's settings, its data and its start at boot
+    - name: Check the service's settings, its data, its files and its start at boot
       ansible.builtin.assert:
         that:
           - __node_deploy_test_before.json.greeting == 'hello from container.env'
+          - __node_deploy_test_files.results[0].stat.pw_name == 'deploy-test-app'
+          - __node_deploy_test_files.results[0].stat.uid == 3001
+          - __node_deploy_test_files.results[1].stat.mode == '0640'
+          - __node_deploy_test_files.results[1].stat.gr_name == 'deploy-test-app'
+          - __node_deploy_test_files.results[2].stat.exists
           - __node_deploy_test_after.json.starts > __node_deploy_test_before.json.starts
         success_msg: >-
-          PASSED node_deploy: the service answers with the setting from container.env, started
-          by itself when the server restarted, and kept its data (start count
-          {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).
+          PASSED node_deploy: the service answers on 127.0.0.1:3009 with the setting from container.env,
+          writes /opt/deploy-test-app as its own account (UID 3001), keeps its Quadlet and environment files
+          in /etc/containers/systemd/users/3001/, and started by itself when the server restarted, with its
+          data (start count {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).

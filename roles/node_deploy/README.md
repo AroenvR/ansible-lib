@@ -1,39 +1,72 @@
 # acme.infra.node_deploy
 
 Deploys a Node.js project's image to servers as a rootless Podman service that
-starts at boot. No Ansible knowledge needed: run one command from the project
-root, after [node_setup](../node_setup/README.md) and [node_image](../node_image/README.md):
+starts at boot. No Ansible knowledge needed: after [node_setup](../node_setup/README.md)
+and [node_image](../node_image/README.md), run one command from the project's
+`ansible/` directory:
 
 ```sh
-ansible-playbook acme.infra.node_deploy -i deploy/inventory.yml
+ansible-playbook deploy.yml        # add --ask-become-pass if sudo asks for a password
 ```
 
-On every server in the inventory, as the account Ansible connects with, it:
+## Conventions
 
-1. lets the account run services while nobody is logged in (`loginctl enable-linger`),
-   so the service starts at boot;
-2. copies the image archive of the version in package.json
-   (`.image/<name>-<version>.tar`) and loads it into Podman;
-3. copies `deploy/container.env` to `~/<name>/container.env`;
-4. installs `deploy/<name>.container` as `~/.config/containers/systemd/<name>.container`,
-   with `Image=` set to that version;
-5. starts the service `<name>`, or restarts it when the image, the settings or
-   the Quadlet file changed. Running it again without changes changes nothing.
+The deploy works as root (through sudo) and keeps every service apart:
+
+| What | Where, on the server |
+|---|---|
+| The account the service runs as | `<service>` (from package.json: `@acme/orders-api` becomes `acme-orders-api`), lingering enabled |
+| Image archives | `/opt/containers/images/<service>-<version>.tar`, loaded into the account's Podman |
+| Quadlet file and environment file | `/etc/containers/systemd/users/<the account's UID>/<service>.container` and `.env` (root-owned; the `.env` readable by the account only) |
+| The service's directory | `/opt/<service>/`, mounted at `/data`, owned by the account |
+
+On every server in the inventory it:
+
+1. creates the account and lets it run services while nobody is logged in
+   (`loginctl enable-linger`), so the service starts at boot;
+2. copies the image archive of the version in package.json and loads it as the account;
+3. creates the service's directory, installs `container.env` and the Quadlet file;
+4. reloads the account's systemd and restarts the service when the image, the
+   settings or the Quadlet file changed, or starts it when it is not running;
+5. waits until the service answers HTTP requests. If it does not within a
+   minute, the deploy fails and shows the service's log.
+
+Running it again without changes changes nothing.
+
+The container runs as the image's user 1001, mapped to the account, so files the
+app writes to `/data` belong to the account on the server. Its root filesystem
+is read-only (`/tmp` stays writable), it has no capabilities and cannot gain
+privileges. Every service has its own account, UID and range of subordinate
+UIDs, so two services never share files or processes, even though both run as
+1001 inside their containers.
+
+## Settings
+
+In the project's `ansible/group_vars/all.yml`, all with defaults:
+
+| Variable | Default | What |
+|---|---|---|
+| `node_deploy_port` | `3000` | The service's port on the server |
+| `node_deploy_bind_address` | `127.0.0.1` | `0.0.0.0` makes the port reachable from other machines |
+| `node_deploy_dir` | `/opt/<service>` | The service's directory, mounted at `/data` |
+| `node_deploy_user` | `<service>` | The account |
+| `node_deploy_uid` | (any free UID) | Fix the account's UID, e.g. the same on every server |
+| `node_deploy_container_port` | `3000` | The app's port inside the container (`node_image_port`) |
+| `node_deploy_container_options` | `[]` | More Quadlet `[Container]` lines, e.g. `PodmanArgs=--memory=512m` |
+
+All options: `ansible-doc -t role acme.infra.node_deploy`.
 
 ## What a server needs
 
-Set up once by an administrator:
-
 - RHEL 9.2 or newer with Podman 4.4 or newer, which brings Quadlet: `sudo dnf install podman`.
-- The account the service runs as: an ordinary user, no sudo needed.
-- polkit, which lets that account enable lingering for itself. Without it, an
-  administrator runs `sudo loginctl enable-linger <account>` once.
-- SSH access for that account (not needed when deploying to `localhost`).
-- For other machines to reach the service, its port (`PublishPort=` in the
-  Quadlet file) open in the firewall: `sudo firewall-cmd --permanent --add-port=3000/tcp && sudo firewall-cmd --reload`.
+- SSH access for Ansible as root or as an account that may use sudo
+  (not needed when deploying to `localhost`).
 
 No network access: the image comes from the project, not from a registry.
 
-## Options
+## Check a service
 
-`ansible-doc -t role acme.infra.node_deploy`.
+```sh
+sudo systemctl --user -M <service>@ status <service>
+sudo journalctl _SYSTEMD_USER_UNIT=<service>.service
+```

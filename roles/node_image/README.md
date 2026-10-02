@@ -2,12 +2,13 @@
 
 Builds a production container image of a Node.js project, such as a NestJS
 backend, with Podman. No Ansible knowledge needed: run one command from the
-project root.
+project's `ansible/` directory (see [node_setup](../node_setup/README.md)).
 
 The image is built in two stages on Red Hat UBI 9. Native npm modules compile in
 the build stage, which has gcc, g++, make and Python 3. The final image has no
-compilers, runs as an unprivileged user (1001) and starts the server as soon as
-the container starts.
+compilers, runs as an unprivileged user (1001) that cannot change the app's
+files, and starts the server as soon as the container starts. Inside it, the
+app lives in `/opt/app-root/src`, where Red Hat's Node.js images keep it.
 
 ## What your project needs
 
@@ -23,6 +24,11 @@ the container starts.
 - The server listens on port 3000 (or `process.env.PORT`) on all interfaces, as
   NestJS does by default. An app listening only on `localhost` is unreachable
   from outside the container.
+- Everything the app imports at runtime in `dependencies`. The build installs
+  `devDependencies` too, for `npm run build`, then removes them; a module used
+  at runtime but listed only there (or only installed as another package's
+  dependency) makes the app fail with "Cannot find module". `npm ci --omit=dev
+  && npm run start:prod` shows that on your own machine.
 
 ## What the build machine needs
 
@@ -37,53 +43,53 @@ the container starts.
 
 ## Build
 
-From the project root:
+From the project's `ansible/` directory:
 
 ```sh
-ansible-playbook acme.infra.node_image
+ansible-playbook image.yml    # or: ansible-playbook acme.infra.node_image
 ```
 
-The result lands in `.image/`, which keeps itself out of git: the image as
-`<name>-<version>.tar`, plus the generated `Containerfile` for reference. To
+The result lands in `ansible/images/`, which keeps itself out of git: the image
+as `<name>-<version>.tar`, plus the generated `Containerfile` for reference. The
+image is labelled with the version and the git commit it was built from
+(`org.opencontainers.image.version`, `org.opencontainers.image.revision`). To
 deploy it, see [node_deploy](../node_deploy/README.md). To just try it, with
 environment variables from a file and a host directory mounted at `/data`:
 
 ```sh
-podman load --input .image/orders-api-1.4.0.tar
-podman run --rm --publish 3000:3000 --env-file container.env \
-  --volume /srv/orders/data:/data:Z,U orders-api:1.4.0
+podman load --input images/orders-api-1.4.0.tar
+podman run --rm --publish 127.0.0.1:3000:3000 --env-file container.env \
+  --volume /tmp/orders-data:/data:Z,U orders-api:1.4.0
 ```
 
-Keep `container.env` out of git: it is where settings and secrets go, and they
-never become part of the image. `:Z,U` lets the app's user (1001) write to the
-directory, also under SELinux on RHEL.
+`:Z,U` lets the app's user (1001) write to the directory, also under SELinux on
+RHEL; note that `U` changes the owner of everything in it.
 
 Running it again without changes reuses the cached build and leaves the archive alone.
 
 ## Options
 
-The defaults fit most projects. To change one, put it in a file and pass it in:
+The defaults fit most projects. To change one, set it in the project's
+`ansible/group_vars/all.yml`:
 
 ```yaml
-# image.yml
-node_image_port: 3100
 node_image_build_packages: [libpq-devel]   # a native module needs PostgreSQL headers
 node_image_runtime_packages: [libpq]       # and the library itself at runtime
-```
-
-```sh
-ansible-playbook acme.infra.node_image -e @image.yml
 ```
 
 All options, with their defaults: `ansible-doc -t role acme.infra.node_image`.
 
 ## Good to know
 
-- Never sent to the build: `.git`, `node_modules`, `.env`, `.env.*`, `*.log` and
-  the output directory. Add patterns with `node_image_ignore`. The project's own
-  `.dockerignore` or `.containerignore` is not used.
+- Never sent to the build: `.git`, `node_modules`, `.env`, `.env.*`, `*.log`,
+  the `ansible/` directory (so `container.env` can never end up in an image) and
+  the output directory. Add patterns with `node_image_ignore`. The role passes
+  its own ignore file to Podman (`--ignorefile`); the project's `.dockerignore`
+  or `.containerignore` is not used.
 - The project's `.npmrc` applies to the install (private registries, or settings
-  such as `legacy-peer-deps=true`) but is not in the final image.
-- Base images are refreshed whenever the registry has newer ones (security
-  fixes); with no registry access the build uses the cached ones.
+  such as `legacy-peer-deps=true`) but is not in the final image, which holds
+  only the runtime stage. The build stage stays in the build machine's Podman cache.
+- The base images are referenced by tag, not by digest, and refreshed whenever
+  the registry has newer ones, so every build picks up Red Hat's security fixes.
+  With no registry access the build uses the cached ones.
 - Running the image as a service that starts at boot: [node_deploy](../node_deploy/README.md).

@@ -18,7 +18,7 @@
 - name: Check the project has a package.json
   ansible.builtin.assert:
     that: (node_image_source ~ '/package.json') is file
-    fail_msg: "No package.json in {{ node_image_source }}. Run the build from the project root."
+    fail_msg: "No package.json in {{ node_image_source }}. Run the build from the project's ansible/ directory."
     quiet: true
 
 # .nvmrc and package-lock.json are optional.
@@ -58,6 +58,14 @@
     __node_image_tag: "{{ __node_image_package.name | regex_replace('^@', '') }}:{{ __node_image_package.version }}"
     __node_image_archive: >-
       {{ node_image_output_dir }}/{{ __node_image_package.name | regex_replace('^@', '') | replace('/', '-') }}-{{ __node_image_package.version }}.tar
+
+# Recorded in the image (org.opencontainers.image.revision); empty outside git.
+- name: Look up the project's git commit
+  ansible.builtin.command:
+    argv: [git, -C, "{{ node_image_source }}", rev-parse, HEAD]
+  register: __node_image_commit
+  changed_when: false
+  failed_when: false
 
 - name: Create the output directory
   ansible.builtin.file:

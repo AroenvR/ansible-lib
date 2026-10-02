@@ -4,34 +4,41 @@
   gather_facts: false
   vars_files: [vars/project.yml]
   vars:
-    __node_setup_test_quadlet: "{{ node_setup_test_deploy }}/acme-orders-api.container"
+    __node_setup_test_dir: "{{ node_setup_test_project }}/ansible"
   tasks:
     - name: Inspect the environment file
       ansible.builtin.stat:
-        path: "{{ node_setup_test_deploy }}/container.env"
+        path: "{{ __node_setup_test_dir }}/container.env"
       register: __node_setup_test_env
 
     - name: Check the files are there and named after the package
       ansible.builtin.assert:
         that:
-          - __node_setup_test_quadlet is file
-          - (node_setup_test_deploy ~ '/inventory.yml') is file
-          - (node_setup_test_deploy ~ '/README.md') is file
-          - lookup('file', node_setup_test_deploy ~ '/.gitignore') is search('^container\.env$', multiline=True)
+          - (__node_setup_test_dir ~ '/README.md') is file
+          - lookup('file', __node_setup_test_dir ~ '/ansible.cfg') is search('^inventory = inventory\.yml$', multiline=True)
+          - (lookup('file', __node_setup_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
+          - lookup('file', __node_setup_test_dir ~ '/group_vars/all.yml') is search('node_deploy_dir: /opt/acme-orders-api')
+          - lookup('file', __node_setup_test_dir ~ '/image.yml') is search('import_playbook: acme.infra.node_image')
+          - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: acme.infra.node_deploy')
+          - lookup('file', __node_setup_test_dir ~ '/.gitignore') is search('^container\.env$', multiline=True)
           - __node_setup_test_env.stat.mode == '0600'
-          - lookup('file', __node_setup_test_quadlet) is search('^Image=localhost/acme/orders-api:1\.4\.0$', multiline=True)
-          - lookup('file', node_setup_test_deploy ~ '/README.md') is search('systemctl --user status acme-orders-api')
-          - (lookup('file', node_setup_test_deploy ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
-        success_msg: PASSED node_setup wrote the guide, the Quadlet file, the inventory and a private, git-ignored environment file.
+          - lookup('file', __node_setup_test_dir ~ '/README.md') is search('systemctl --user -M acme-orders-api@ status acme-orders-api')
+        success_msg: PASSED node_setup wrote ansible/ with its settings, playbooks, inventory, guide and a private, git-ignored environment file.
+
+    - name: Check the playbooks it wrote are valid
+      ansible.builtin.command:
+        argv: [ansible-playbook, --syntax-check, "{{ __node_setup_test_dir }}/{{ item }}"]
+      loop: [image.yml, deploy.yml]
+      changed_when: false
 
     - name: Change the project's files and damage the guide, as time would
       ansible.builtin.copy:
         content: "{{ __node_setup_test_change.content }}"
-        dest: "{{ node_setup_test_deploy }}/{{ __node_setup_test_change.file }}"
+        dest: "{{ __node_setup_test_dir }}/{{ __node_setup_test_change.file }}"
         mode: preserve
       loop:
         - { file: container.env, content: "GREETING=kept\n" }
-        - { file: acme-orders-api.container, content: "# changed by the project\n" }
+        - { file: group_vars/all.yml, content: "node_deploy_port: 3009\n" }
         - { file: README.md, content: "outdated guide\n" }
       loop_control:
         loop_var: __node_setup_test_change
@@ -46,7 +53,7 @@
     - name: Check the rerun replaced the guide only
       ansible.builtin.assert:
         that:
-          - lookup('file', node_setup_test_deploy ~ '/container.env') == 'GREETING=kept'
-          - lookup('file', __node_setup_test_quadlet) == '# changed by the project'
-          - lookup('file', node_setup_test_deploy ~ '/README.md') is search('# Building and deploying @acme/orders-api')
+          - lookup('file', __node_setup_test_dir ~ '/container.env') == 'GREETING=kept'
+          - lookup('file', __node_setup_test_dir ~ '/group_vars/all.yml') == 'node_deploy_port: 3009'
+          - lookup('file', __node_setup_test_dir ~ '/README.md') is search('# Building and deploying @acme/orders-api')
         success_msg: PASSED running node_setup again restored the guide and kept the project's own files.

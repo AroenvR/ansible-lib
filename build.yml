@@ -55,8 +55,21 @@
       register: __build_named
       when: not release | bool
 
+    - name: Compute the build's SHA-256 checksum
+      ansible.builtin.stat:
+        path: "{{ __build_named.dest | default(__build_tarball) }}"
+        checksum_algorithm: sha256
+      register: __build_file
+
+    # Lets whoever downloads it check it: sha256sum --check <file>.sha256
+    - name: Write the checksum next to the build
+      ansible.builtin.copy:
+        content: "{{ __build_file.stat.checksum }}  {{ __build_file.stat.path | basename }}\n"
+        dest: "{{ __build_file.stat.path }}.sha256"
+        mode: "0644"
+
     - name: Show what was built
       ansible.builtin.debug:
         msg: >-
-          Built {{ __build_named.dest | default(__build_tarball) }}.
+          Built {{ __build_file.stat.path }} (SHA-256 in {{ __build_file.stat.path | basename }}.sha256).
           Install it with: ansible-galaxy collection install --force <that file>

@@ -1,7 +1,6 @@
 ---
-- name: Deploy the test project to the RHEL 9 test server as the user "app"
+- name: Deploy the test project to the RHEL 9 test server, on port 3009 and with a fixed UID
   hosts: all
-  remote_user: app
   gather_facts: false
   vars_files: [vars/project.yml]
   tasks:
@@ -9,4 +8,6 @@
       ansible.builtin.include_role:
         name: acme.infra.node_deploy
       vars:
-        node_deploy_project: "{{ node_deploy_test_project }}"
+        node_deploy_ansible_dir: "{{ node_deploy_test_project }}/ansible"
+        node_deploy_port: 3009
+        node_deploy_uid: "3001"

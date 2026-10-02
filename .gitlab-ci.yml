@@ -100,10 +100,11 @@ publish:
   script:
     - make dist-release PYTHON_LINT=python3
     - VERSION=$(make --silent version)
-    - >-
-      curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"
-      --upload-file "dist/acme-infra-$VERSION.tar.gz"
-      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/acme-infra-$VERSION.tar.gz"
+    - |
+      for file in "acme-infra-$VERSION.tar.gz" "acme-infra-$VERSION.tar.gz.sha256"; do
+        curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "dist/$file" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/$file"
+      done
     - echo "VERSION=$VERSION" > "$CI_PROJECT_DIR/release.env"
   artifacts:
     reports:
@@ -127,3 +128,6 @@ release:
         - name: acme-infra-$VERSION.tar.gz
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/acme-infra-$VERSION.tar.gz
           link_type: package
+        - name: acme-infra-$VERSION.tar.gz.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/acme-infra-$VERSION.tar.gz.sha256
+          link_type: other
