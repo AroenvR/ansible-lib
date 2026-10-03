@@ -2,16 +2,18 @@
   The Quadlet file of the service: how Podman and systemd run it. deploy.yml renders
   this template for every server into
   /etc/containers/systemd/users/<the account's UID>/<service>.container
-  and restarts the service when the result changes. Tune it to your needs; the keys
-  that RHEL 9's Podman (4.4 and newer) knows are listed in
+  and restarts the service when the result changes. The keys that RHEL 9's Podman
+  (4.4 and newer) knows are listed in
   https://docs.podman.io/en/v4.4/markdown/podman-systemd.unit.5.html
+  acme.infra owns this file: an update replaces it, keeping your version as .bak.
+  Changes that would help every project belong in acme.infra itself.
 
   Filled in by the deploy:
     node_deploy_service  the service's name, from package.json (@acme/orders-api: acme-orders-api)
     node_deploy_image    the image of the version in package.json: localhost/<name>:<version>
     node_deploy_user     the account the service runs as
-    node_deploy_dir      the service's directory on the server
-  and every variable in group_vars/all.yml, such as node_deploy_port.
+    node_deploy_dir      the service's directory on the server, also its working directory
+  and every setting in group_vars/all/, such as node_deploy_port.
 #}
 # {{ node_deploy_service }}, deployed by acme.infra.node_deploy: the next deploy replaces this file.
 
@@ -29,13 +31,17 @@ PodmanArgs=--userns=keep-id:uid=1001,gid=1001
 PublishPort={{ node_deploy_bind_address }}:{{ node_deploy_port }}:{{ node_deploy_container_port }}
 # Settings and secrets (the project's container.env), next to this file.
 EnvironmentFile={{ node_deploy_service }}.env
-# The service's directory, where the app keeps its data.
-Volume={{ node_deploy_dir }}:/data:Z
-# The project's production config files, read-only in config/ next to the app.
-# /opt/app-root/src is a fixed path: the app's directory in Red Hat's Node.js images.
-Volume={{ node_deploy_dir }}/config:/opt/app-root/src/config:ro,Z
-# Hardening: a read-only root filesystem (/tmp stays writable), no capabilities,
-# no privilege escalation.
+# The service's directory is its working directory, at the same path inside the
+# container: relative paths such as config/db.json, prod.db or data/ end up there.
+# The code stays read-only in the image, in /opt/app-root/src.
+Volume={{ node_deploy_dir }}:{{ node_deploy_dir }}:Z
+PodmanArgs=--workdir={{ node_deploy_dir }}
+# The project's production config files, read-only.
+Volume={{ node_deploy_dir }}/config:{{ node_deploy_dir }}/config:ro,Z
+# Temporary files (os.tmpdir()) go to memory, at most node_deploy_tmp_size,
+# and are gone after a restart.
+PodmanArgs=--tmpfs=/tmp:rw,size={{ node_deploy_tmp_size }},mode=1777
+# Hardening: a read-only root filesystem, no capabilities, no privilege escalation.
 ReadOnly=true
 DropCapability=all
 NoNewPrivileges=true
@@ -44,6 +50,9 @@ RunInit=true
 
 [Service]
 Restart=always
+# Wait between restarts, so a crashing service keeps retrying (systemd gives up
+# after 5 starts within 10 seconds).
+RestartSec=10
 
 [Install]
 # Start at boot.

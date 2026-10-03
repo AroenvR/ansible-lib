@@ -7,5 +7,6 @@ node_image_port: 3000
 node_image_build_packages: []
 node_image_runtime_packages: []
 node_image_ignore: []
+node_image_main: dist/main.js
 node_image_registry: registry.access.redhat.com
-node_image_node_dist_url: https://nodejs.org/dist
+node_image_npmrc: "{{ lookup('env', 'HOME') }}/.npmrc"

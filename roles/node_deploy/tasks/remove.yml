@@ -1,8 +1,9 @@
 ---
-# Entry point "remove": takes away everything the deploy created for the service,
-# leaving the server as it was: the service and its account (with the account's
-# home directory, Podman storage and images), its Quadlet and environment files,
-# its image archives and its directory, data included. Running it again changes nothing.
+# Entry point "remove": takes away everything the deploy created for the service:
+# the service and its account (with the account's home directory, Podman storage
+# and images), its Quadlet and environment files, its image archives and its
+# config files. The service's directory, with the app's data, stays unless
+# node_deploy_remove_data is true. Running it again changes nothing.
 - name: Work out the service's names and check Ansible acts as root
   ansible.builtin.import_tasks: service.yml
 
@@ -64,11 +65,13 @@
     use_regex: true
   register: __node_deploy_old_archives
 
-- name: Remove the service's image archives and its directory, data included
+- name: Remove the image archives and the config files, and the whole directory if node_deploy_remove_data is true
   ansible.builtin.file:
     path: "{{ __node_deploy_path }}"
     state: absent
-  loop: "{{ __node_deploy_old_archives.files | map(attribute='path') | list + [__node_deploy_dir] }}"
+  loop: >-
+    {{ __node_deploy_old_archives.files | map(attribute='path') | list
+       + [__node_deploy_dir if node_deploy_remove_data | bool else __node_deploy_dir ~ '/config'] }}
   loop_control:
     loop_var: __node_deploy_path
 

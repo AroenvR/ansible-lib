@@ -23,16 +23,19 @@ for role in sorted(p for p in Path("roles").iterdir() if p.is_dir()):
     if "main" not in specs:
         errors.append(f"{role.name}: meta/argument_specs.yml has no 'main' entry point")
         continue
-    options = specs["main"].get("options", {})
     defaults = load(role / "defaults/main.yml")
+    documented = set()
 
-    for name in sorted(set(defaults) - set(options)):
+    # Every entry point (main, and e.g. remove) documents the options it uses.
+    for entry, spec_of_entry in sorted(specs.items()):
+        for name, spec in sorted((spec_of_entry.get("options") or {}).items()):
+            documented.add(name)
+            if name in defaults and spec.get("default") != defaults[name]:
+                errors.append(f"{role.name}: '{name}' default differs between defaults/main.yml and entry point {entry}")
+            if name not in defaults and not spec.get("required"):
+                errors.append(f"{role.name}: optional '{name}' needs a value in defaults/main.yml")
+    for name in sorted(set(defaults) - documented):
         errors.append(f"{role.name}: '{name}' is in defaults/main.yml but not documented")
-    for name, spec in sorted(options.items()):
-        if name in defaults and spec.get("default") != defaults[name]:
-            errors.append(f"{role.name}: '{name}' default differs between the two files")
-        if name not in defaults and not spec.get("required"):
-            errors.append(f"{role.name}: optional '{name}' needs a value in defaults/main.yml")
 
 print("\n".join(errors) or "Role interfaces and defaults match.")
 sys.exit(1 if errors else 0)

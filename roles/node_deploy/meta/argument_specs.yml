@@ -9,8 +9,11 @@ argument_specs:
         account of its own, which may run services while nobody is logged in (lingering).
         Image archives are kept in /opt/containers/images/ and loaded into that account's Podman.
         The Quadlet file and the container's environment file are in
-        /etc/containers/systemd/users/<the account's UID>/, managed by root. The service's own
-        directory (/opt/<service> by default) is mounted at /data and belongs to the account.
+        /etc/containers/systemd/users/<the account's UID>/, managed by root.
+      - The service's directory (/opt/<service> by default) belongs to the app and is its working directory, at the
+        same path in the container, so relative paths such as data/ or prod.db end up there. The deploy creates it and
+        data/ in it when missing, manages only config/ in it, and hands it to the account when it belongs to another
+        UID (a new account after a removal). The code stays read-only in the image.
       - The Quadlet file comes from the project's ansible/templates/service.container.j2 (written by
         acme.infra.node_setup, for the project to tune) or, without one, from this role.
       - Starts the service, or restarts it when the image, the settings, the config files or the Quadlet file
@@ -39,8 +42,8 @@ argument_specs:
       node_deploy_dir:
         type: str
         default: ""
-        description: The service's own directory on the server, mounted at /data in the container. The app may create
-          anything in it. Empty means /opt/<service>.
+        description: The service's own directory on the server and the app's working directory, at the same path in the
+          container. The app may create anything in it. Empty means /opt/<service>.
       node_deploy_port:
         type: int
         default: 3000
@@ -61,13 +64,19 @@ argument_specs:
           - The project's config files for the server, a pattern relative to the project's root. The deploy copies
             them into config/ in the service's directory, removes files the project no longer has, and restarts the
             service when they change.
-          - The app finds them read-only in config/ next to it (/opt/app-root/src/config), where it runs from.
+          - The app finds them read-only in config/ in its working directory.
+      node_deploy_tmp_size:
+        type: str
+        default: 512m
+        description: Size limit of the app's /tmp (os.tmpdir()), which is in memory and emptied on every restart,
+          e.g. C(2g). For large temporary files on disk, the app makes a directory of its own in its working directory.
   remove:
-    short_description: Remove a service that acme.infra.node_deploy deployed, leaving the server as it was
+    short_description: Remove a service that acme.infra.node_deploy deployed, keeping its data unless asked
     description:
       - Stops the service and removes its account (with the account's home directory, Podman storage and
-        images), its Quadlet and environment files, its image archives in /opt/containers/images/ and its
-        directory, B(data included). Running it again changes nothing.
+        images), its Quadlet and environment files, its image archives in /opt/containers/images/ and its config
+        files. The service's directory, with the app's data, stays unless I(node_deploy_remove_data) is true; a later
+        deploy uses it again. Running it again changes nothing.
       - Runs from the project's ansible/ directory, as root on the server, like the deploy.
     options:
       node_deploy_ansible_dir:
@@ -83,3 +92,8 @@ argument_specs:
         type: str
         default: ""
         description: The service's own directory on the server. Empty means /opt/<service>.
+      node_deploy_remove_data:
+        type: bool
+        default: false
+        description: Also remove the service's directory, B(with the app's data), as in
+          C(ansible-playbook remove.yml -e node_deploy_remove_data=true).

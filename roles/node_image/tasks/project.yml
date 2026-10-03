@@ -50,7 +50,9 @@
       and two installs of the same code can differ. Commit package-lock.json to avoid that.
   when: not __node_image_has_lockfile | bool
 
-- name: Work out Red Hat's Node.js images for this version
+# The build machine's own npm settings (node_image_npmrc) apply under the project's .npmrc.
+- name: Work out Red Hat's Node.js images for this version, and the build machine's npm settings
   ansible.builtin.set_fact:
     __node_image_builder: "{{ node_image_registry }}/ubi9/nodejs-{{ __node_image_node_version.split('.')[0] }}"
     __node_image_runtime: "{{ node_image_registry }}/ubi9/nodejs-{{ __node_image_node_version.split('.')[0] }}-minimal"
+    __node_image_machine_npmrc: "{{ node_image_npmrc if node_image_npmrc | length > 0 and node_image_npmrc is file else '' }}"

@@ -72,6 +72,20 @@
       - env
       - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_account.uid }}
 
+# The service's directory is the app's: the deploy manages only config/ in it.
+# It may be left from an earlier deploy (remove.yml keeps it), owned by an account
+# with another UID: then everything in it is handed to this account, once.
+- name: Look up the service's directory, {{ __node_deploy_dir }}
+  ansible.builtin.stat:
+    path: "{{ __node_deploy_dir }}"
+  register: __node_deploy_dir_stat
+
+- name: Hand the service's directory and everything in it to the account
+  ansible.builtin.command:
+    argv: [chown, --recursive, "{{ __node_deploy_user }}:{{ __node_deploy_user }}", "{{ __node_deploy_dir }}"]
+  when: __node_deploy_dir_stat.stat.exists and __node_deploy_dir_stat.stat.uid != __node_deploy_account.uid
+  changed_when: true
+
 - name: Create the image store, the account's Quadlet directory, the service's directory and its config directory
   ansible.builtin.file:
     path: "{{ __node_deploy_directory.path }}"
@@ -87,6 +101,17 @@
   loop_control:
     loop_var: __node_deploy_directory
     label: "{{ __node_deploy_directory.path }}"
+
+- name: Create the data directory if there is none, in {{ __node_deploy_dir }}
+  ansible.builtin.command:
+    argv:
+      - install
+      - --directory
+      - --owner={{ __node_deploy_user }}
+      - --group={{ __node_deploy_user }}
+      - --mode=0750
+      - "{{ __node_deploy_dir }}/data"
+    creates: "{{ __node_deploy_dir }}/data"
 
 # The handlers (handlers/main.yml) load the image, reload the account's systemd and
 # restart the service, but only for what changed: a rerun without changes changes nothing.
@@ -193,10 +218,20 @@
       delay: 2
       failed_when: __node_deploy_answer.status | default(-1) <= 0  # any HTTP status will do
   rescue:
-    - name: Show the service's log
+    - name: Read the service's log
       ansible.builtin.command: journalctl --no-pager --lines=50 _SYSTEMD_USER_UNIT={{ __node_deploy_service }}.service
+      register: __node_deploy_log
       changed_when: false
-      failed_when: true
+
+    - name: Show the service's log
+      ansible.builtin.debug:
+        var: __node_deploy_log.stdout_lines
+
+    - name: Stop, as the service does not answer
+      ansible.builtin.fail:
+        msg: >-
+          {{ __node_deploy_service }} did not answer on port {{ node_deploy_port }} within a minute; its log is above.
+          All of it: sudo journalctl _SYSTEMD_USER_UNIT={{ __node_deploy_service }}.service
 
 # An update leaves the previous version behind; keep only the deployed one.
 - name: Find the archives of other versions of the service

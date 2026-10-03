@@ -56,3 +56,4 @@
       vars:
         node_image_source: "{{ node_deploy_test_project }}"
         node_image_output_dir: "{{ node_deploy_test_project }}/ansible/images"
+        node_image_npmrc: ""                # the test machine's own npm settings stay out of it

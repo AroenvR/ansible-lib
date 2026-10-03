@@ -6,6 +6,9 @@
 #                (sample/01-cats-app, no lockfile, no .nvmrc) is used
 #   nvmrc        written to .nvmrc; leave out to test the role's default version
 #   node         the Node.js major version the image must run
+#   main         node_image_main, when not dist/main.js
+#   machine_npmrc  true: npm's settings for the sample go into the build machine's
+#                npm settings (node_image_npmrc) instead of the project's .npmrc
 #   request      path to GET (default /cats)
 #   expect       text the response must contain (default [], an empty cat list)
 node_image_test_apps:
@@ -14,6 +17,7 @@ node_image_test_apps:
     request: /
     expect: native addon works
     node: "24"                  # from app/.nvmrc
+    main: server.js
   - name: nestjs-10             # last commit of the sample on NestJS 10
     nestjs_ref: fb20d462f72c2061a735056ca7d45f14e7b77082
     nvmrc: lts/jod
@@ -29,5 +33,6 @@ node_image_test_apps:
     nestjs_ref: master
     nvmrc: lts/*
     node: "24"
+    machine_npmrc: true
 
 node_image_test_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/node-image-test', true) }}/apps"

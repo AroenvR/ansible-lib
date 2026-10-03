@@ -16,10 +16,16 @@
   gather_facts: false
   vars_files: [vars/apps.yml]
   vars:
-    # A NestJS sample: dependencies and devDependencies, and an .npmrc without
-    # which npm refuses to install them.
+    # A NestJS sample: dependencies and devDependencies, which npm installs only
+    # with legacy-peer-deps=true. That comes from the build machine's npm settings
+    # here, as the project's .npmrc is removed first.
     __node_image_test_project: "{{ node_image_test_dir }}/nestjs-12"
   tasks:
+    - name: Remove the project's .npmrc, so npm's settings come from the build machine's
+      ansible.builtin.file:
+        path: "{{ __node_image_test_project }}/.npmrc"
+        state: absent
+
     - name: Give the project a node_modules of its own, as a developer's machine has
       ansible.builtin.file:
         path: "{{ __node_image_test_project }}/node_modules"
@@ -38,6 +44,7 @@
         tasks_from: node_modules
       vars:
         node_image_source: "{{ __node_image_test_project }}"
+        node_image_npmrc: "{{ node_image_test_dir }}/machine.npmrc"
 
     - name: Inspect the new node_modules and the project
       ansible.builtin.stat:
@@ -79,8 +86,8 @@
           - __node_image_test_leftovers.stdout == ''
         success_msg: >-
           PASSED node_image node_modules: the dependencies and devDependencies of nestjs-12 came from a
-          throwaway container (gone now) using the project's .npmrc, belong to the project's owner, and the
-          previous node_modules is in {{ __node_image_test_backups.files[0].path | basename }}.
+          throwaway container (gone now) using the build machine's npm settings, belong to the project's
+          owner, and the previous node_modules is in {{ __node_image_test_backups.files[0].path | basename }}.
 
 - name: Check node_image refuses a package in both dependencies and devDependencies
   hosts: localhost
@@ -113,6 +120,7 @@
           vars:
             node_image_source: "{{ __node_image_test_project }}"
             node_image_output_dir: "{{ __node_image_test_project }}/ansible/images"
+            node_image_npmrc: ""
       rescue:
         - name: Note why it stopped
           ansible.builtin.set_fact:

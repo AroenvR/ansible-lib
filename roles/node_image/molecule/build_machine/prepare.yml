@@ -45,12 +45,13 @@
 
     # NestJS's samples have no lockfile and their dev dependencies disagree on
     # peer versions; NestJS itself installs them with --legacy-peer-deps
-    # (tools/gulp/tasks/samples.ts). A project's .npmrc is how any project says so.
+    # (tools/gulp/tasks/samples.ts). A project's .npmrc is how any project says so,
+    # and the build machine's own npm settings work as well (machine_npmrc).
     - name: Let npm install NestJS's samples the way NestJS does
       ansible.builtin.copy:
         content: "legacy-peer-deps=true\n"
-        dest: "{{ node_image_test_dir }}/{{ item.name }}/.npmrc"
-        mode: "0644"
+        dest: "{{ node_image_test_dir }}/{{ item.name ~ '/.npmrc' if not item.machine_npmrc | default(false) else 'machine.npmrc' }}"
+        mode: "0600"
       loop: "{{ node_image_test_apps | selectattr('nestjs_ref', 'defined') | list }}"
       loop_control:
         label: "{{ item.name }}"

@@ -34,8 +34,10 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   `/etc/containers/systemd/users/<UID>/`. The maintainer drives the account's
   systemd with `systemctl --user -M <user>@ ...`; roles use the same `runuser`
   prefix as for Podman (see Known pitfalls). A service's own directory is
-  `/opt/<service>/`, mounted into the container. `node_deploy` implements this;
-  follow it for every container-based role.
+  `/opt/<service>/`: the app's, its working directory at the same path inside
+  the container, never touched by a deploy except `config/` in it; its data
+  survives a removal unless asked. `node_deploy` implements this; follow it for
+  every container-based role.
 - **Dependencies.** Development tools may be current but are pinned in
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
   enterprise-proven; prefer the OS repositories.
@@ -184,6 +186,20 @@ source of truth.
   one for a setting a project may want to choose (the registry, above all).
 - node-gyp reads its options from `npm_package_config_node_gyp_<option>` (and the
   deprecated `npm_config_<option>`, which npm 11 warns about: "Unknown env config").
+- Ansible stops reading `group_vars/all.yml` once a `group_vars/all/` directory
+  exists (2.12, 2.14); in the directory, files are read in lexical order and the
+  last one wins (`defaults.yml`, then `project.yml`).
+- In a playbook brought in with `import_playbook` (with `vars:`), `playbook_dir`
+  is the imported playbook's directory, not the caller's.
+- `-e name=true` gives the string "true", which role argument validation does not
+  turn into a boolean for the tasks: test such variables with `| bool`.
+- node-gyp prefers its own `dist-url` (e.g. `npm_package_config_node_gyp_dist_url`)
+  over npm's `disturl`, so setting it would override a project's `.npmrc`. npm 10,
+  11 and 12 still pass unknown `.npmrc` settings (`disturl`,
+  `sqlite3_binary_host_mirror`) to install scripts; 11 and 12 warn.
+- Podman 3.4 supports what node_image uses: `podman build --secret` with
+  `RUN --mount=type=secret,uid=...`, `--target`, and removing an image's untagged
+  parents with `podman rmi` (verified in the Ubuntu 22.04 image).
 - Binary output (a tar stream) cannot go through a module's stdout, which is
   text: redirect it to a file in the shell command.
 - Podman 3.4 (Ubuntu 22.04) cuts the output of `podman run --interactive` short
@@ -197,12 +213,13 @@ source of truth.
 
 Last updated 2026-10-03.
 
-- GitHub Actions: run #22 passed everything (config files, `.env.production`,
-  the project's Quadlet template). The maintainer's NestJS project then failed
-  with "Cannot find module 'fs-extra'", which a package in both dependency lists
-  explains; node_image now refuses that. Also new and not yet run in CI:
-  prebuild.yml (node_modules from a throwaway container) and the download sources
-  (`.npmrc` instead of `node_image_npm_registry`, `node_image_node_dist_url`).
+- GitHub Actions: run #24 passed everything (prebuild.yml, download sources).
+  The maintainer's NestJS project then started on the server but failed with
+  SQLITE_CANTOPEN: `"database": "prod.db"` resolved inside the read-only code
+  directory. Hence, agreed with the maintainer and not yet run in CI: the
+  service's directory as the app's working directory, data kept on removal,
+  /tmp size, settings split, update-playbooks.yml with .bak copies, the build
+  machine's ~/.npmrc, two images per project on the build machine.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
 - Releases, decided with the maintainer: CI runs on every push to every branch
@@ -210,30 +227,42 @@ Last updated 2026-10-03.
   7-day branch build (only the newest kept); a passing main publishes the next
   patch version as a release with its tag.
 - Node.js backends, decided with the maintainer:
-  - A project runs `node_setup` once from its root and commits `ansible/`
-    (ansible.cfg, inventory.yml, group_vars/all.yml, image.yml, deploy.yml,
-    site.yml, remove.yml, templates/service.container.j2, the guide;
-    container.env and images/ stay out of git). Only the guide names the project.
-    An update is a new build and deploy (site.yml); remove.yml leaves a clean
-    server, data included.
+  - A project runs `node_setup` once from its root and commits `ansible/`.
+    The project's files (inventory.yml, group_vars/all/project.yml written as a
+    full copy of the defaults, container.env) are never touched again.
+    acme.infra's files (ansible.cfg with log_path, .gitignore, the guide,
+    group_vars/all/defaults.yml, the playbooks, templates/service.container.j2)
+    are brought up to date by every setup or update-playbooks.yml, a changed one
+    kept as `<file>.bak` (one copy, git-ignored): projects ask for template
+    changes upstream instead of patching locally. Only the guide names the project.
+    A new version is a new build and deploy (site.yml); remove.yml keeps the
+    app's data unless `-e node_deploy_remove_data=true`.
   - Config: the app reads `config/<file>.json` relative to where it runs. The
     deploy mirrors the project's `config/production/*.json` (not secret, no
-    development files) into `/opt/<service>/config/`, mounted read-only at
-    `/opt/app-root/src/config`. Secrets go in container.env, which node_setup
-    first copies from `.env.production`. Every later command runs
+    development files) into `/opt/<service>/config/`, read-only for the app.
+    Secrets go in container.env, which node_setup first copies from
+    `.env.production`. Every later command runs
     from `ansible/`, and settings are Ansible variables in group_vars. The
     maintainer's goal is a complete pipeline a project's runner executes. Test
     runs are `npm run test` for now.
   - Images are built on RHEL 9 or Ubuntu 22.04 (Podman 3.4+) and are always
     RHEL (UBI); which RHEL major is still open (UBI 9 for now).
-  - Projects follow the NestJS convention: `build` and `start:prod` scripts;
+  - Projects follow the NestJS convention: a `build` script that makes
+    `dist/main.js`, which the image starts by its absolute path (not
+    `npm run start:prod`, which would switch to the code's directory);
     `.nvmrc` (default 24; the maintainer's projects use `lts/*`) and
     `package-lock.json` are optional.
+  - Download sources: the project holds what is the same everywhere
+    (`node_image_registry`, its `.npmrc`, which wins), each build machine what
+    differs (registries.conf, its user's `~/.npmrc` as `node_image_npmrc`). Never
+    set an npm or node-gyp setting a project's `.npmrc` might set.
+  - The build machine keeps `<name>:<version>` and `<name>:build` per project.
   - Supported versions are test data (`roles/node_image/molecule/build_machine/vars/apps.yml`).
   - Services run rootless on RHEL 9.2+ through Quadlet, published on
     127.0.0.1 by default (a containerized Nginx will sit in front later), ports
-    3000-3999. `/opt/<service>/` on the server is the service's own directory,
-    mounted at `/data`; the app may create anything in it.
+    3000-3999. `/opt/<service>/` on the server is the app's working directory,
+    mounted at the same path; the app may create anything in it (`prod.db`,
+    `data/`). `/tmp` is a tmpfs of `node_deploy_tmp_size` (512m).
   - prebuild.yml (playbook acme.infra.node_prebuild) prepares a project for
     development, each step a task there. More steps will come (an idea of the
     maintainer's: creating a sqlcipher .db file); do not add any unasked.

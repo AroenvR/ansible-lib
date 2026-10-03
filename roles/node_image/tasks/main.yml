@@ -8,8 +8,7 @@
       - __node_image_package.name is defined
       - __node_image_package.version is defined
       - "'build' in __node_image_package.scripts | default({})"
-      - "'start:prod' in __node_image_package.scripts | default({})"
-    fail_msg: package.json needs "name", "version" and the scripts "build" and "start:prod" (the NestJS convention).
+    fail_msg: package.json needs "name", "version" and a "build" script (the NestJS convention).
     quiet: true
 
 # npm counts a package in both lists as a devDependency, so the build would leave
@@ -27,9 +26,10 @@
       Remove it from devDependencies, then update package-lock.json: npm install --package-lock-only
     quiet: true
 
-- name: Work out the image tag and archive path
+- name: Work out the image tags and archive path
   ansible.builtin.set_fact:
     __node_image_tag: "{{ __node_image_package.name | regex_replace('^@', '') }}:{{ __node_image_package.version }}"
+    __node_image_cache_tag: "{{ __node_image_package.name | regex_replace('^@', '') }}:build"
     __node_image_archive: >-
       {{ node_image_output_dir }}/{{ __node_image_package.name | regex_replace('^@', '') | replace('/', '-') }}-{{ __node_image_package.version }}.tar
 
@@ -76,15 +76,23 @@
   register: __node_image_before
   changed_when: false
 
-- name: Build the image {{ __node_image_tag }}
+# The build stage, with compilers and devDependencies, is tagged <name>:build and
+# kept as the cache: a rebuild without changes then gives the same image. The
+# build machine's npm settings are mounted for the install only (podman build --secret).
+- name: Build the build stage, then the image {{ __node_image_tag }}
   ansible.builtin.command:
-    argv:
-      - podman
-      - build
-      - --file={{ node_image_output_dir }}/Containerfile
-      - --ignorefile={{ node_image_output_dir }}/containerignore
-      - --tag={{ __node_image_tag }}
-      - "{{ node_image_source }}"
+    argv: >-
+      {{ ['podman', 'build',
+          '--file=' ~ node_image_output_dir ~ '/Containerfile',
+          '--ignorefile=' ~ node_image_output_dir ~ '/containerignore']
+         + (['--secret=id=npmrc,src=' ~ __node_image_machine_npmrc] if __node_image_machine_npmrc else [])
+         + __node_image_stage.options + [node_image_source] }}
+  loop:
+    - { options: [--target=build, "--tag={{ __node_image_cache_tag }}"] }
+    - { options: ["--tag={{ __node_image_tag }}"] }
+  loop_control:
+    loop_var: __node_image_stage
+    label: "{{ __node_image_stage.options | last }}"
   changed_when: false  # The next task decides whether the image changed.
 
 - name: Look up the image after building {{ __node_image_tag }}
@@ -98,6 +106,30 @@
     argv: [podman, save, --format=oci-archive, "--output={{ __node_image_archive }}", "{{ __node_image_tag }}"]
   when: __node_image_after is changed or __node_image_archive is not file
   changed_when: true
+
+# The project's images are labelled with its name: all but the two just built
+# are older builds and versions. An image still used by a container stays.
+- name: Look up the project's images
+  ansible.builtin.command:
+    argv: [podman, images, --quiet, --no-trunc, "--filter=label=org.opencontainers.image.title={{ __node_image_package.name }}"]
+  register: __node_image_project_images
+  changed_when: false
+
+- name: Look up the build stage just built
+  ansible.builtin.command:
+    argv: [podman, images, --quiet, --no-trunc, "{{ __node_image_cache_tag }}"]
+  register: __node_image_cache
+  changed_when: false
+
+- name: Remove the project's older images from this machine
+  ansible.builtin.command:
+    argv: [podman, rmi, "{{ __node_image_old }}"]
+  loop: "{{ __node_image_project_images.stdout_lines | unique | difference([__node_image_after.stdout, __node_image_cache.stdout]) }}"
+  loop_control:
+    loop_var: __node_image_old
+  register: __node_image_removed
+  changed_when: __node_image_removed.rc == 0
+  failed_when: false
 
 - name: Show where the image is
   ansible.builtin.debug:

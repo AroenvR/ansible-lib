@@ -61,9 +61,11 @@ ansible-playbook acme.infra.node_setup
 ```
 
 It writes an `ansible/` directory to commit with the project, laid out the way
-Ansible users expect: `ansible.cfg`, `inventory.yml`, `group_vars/all.yml` for
-the settings, the playbooks, and `templates/service.container.j2`, the Quadlet
-file to tune. The container's environment comes from the project's
+Ansible users expect: `ansible.cfg`, `inventory.yml`, `group_vars/all/` for the
+settings, the playbooks, and `templates/service.container.j2`, the Quadlet file.
+The project's own files are written once; acme.infra's are brought up to date by
+`update-playbooks.yml`, which keeps a changed one as `<file>.bak`. The container's
+environment comes from the project's
 `.env.production`, its config files from `config/production/`. Everything after
 the setup runs from that directory, and its `README.md` is the guide: building
 the production image, configuring it, and deploying it as a rootless Podman
@@ -75,13 +77,14 @@ ansible-playbook prebuild.yml # node_modules for development, installed in a thr
 ansible-playbook image.yml    # build images/<name>-<version>.tar
 ansible-playbook deploy.yml   # install and start it on the servers in inventory.yml
 ansible-playbook site.yml     # both in one go, also for a new version
-ansible-playbook remove.yml   # remove it from the servers again, data included
+ansible-playbook remove.yml   # remove it from the servers again, keeping its data
+ansible-playbook update-playbooks.yml   # after installing a newer acme.infra
 ```
 
 On the servers the deploy follows fixed conventions: an account per service,
 images in `/opt/containers/images/`, Quadlet files in
-`/etc/containers/systemd/users/<UID>/`, the service's own directory in
-`/opt/<service>/`. See [node_deploy](roles/node_deploy/README.md).
+`/etc/containers/systemd/users/<UID>/`, the service's own directory, its working
+directory, in `/opt/<service>/`. See [node_deploy](roles/node_deploy/README.md).
 
 ## Use roles in your own playbooks
 
@@ -131,15 +134,16 @@ Every role documents its variables; read them offline with
 ## Ready-made playbooks
 
 For people who don't write Ansible: run these by name, no playbook of your own
-needed. The `prebuild.yml`, `image.yml`, `deploy.yml` and `remove.yml` that node_setup writes import the last four.
+needed. The playbooks node_setup writes import them.
 
 | Playbook | Run it from | What it does |
 |---|---|---|
 | `ansible-playbook acme.infra.node_setup` | The project's root | Writes `ansible/` into the Node.js project, see [node_setup](roles/node_setup/README.md) |
+| `ansible-playbook acme.infra.node_update` | `ansible/` | Brings acme.infra's files in `ansible/` up to date, the same as node_setup |
 | `ansible-playbook acme.infra.node_prebuild` | `ansible/` | Prepares the project for development: node_modules from a throwaway container, see [node_image](roles/node_image/README.md#node_modules-for-development) |
 | `ansible-playbook acme.infra.node_image` | `ansible/` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
 | `ansible-playbook acme.infra.node_deploy` | `ansible/` | Deploys that image to the servers, or a newer version over the old one, see [node_deploy](roles/node_deploy/README.md) |
-| `ansible-playbook acme.infra.node_remove` | `ansible/` | Removes the service from the servers, data included, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |
+| `ansible-playbook acme.infra.node_remove` | `ansible/` | Removes the service from the servers, keeping its data unless asked, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |
 
 ## Versioning
 

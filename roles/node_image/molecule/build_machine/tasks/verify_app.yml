@@ -62,6 +62,16 @@
         argv: [podman, rm, --force, node-image-verify]
       changed_when: false
 
+- name: List the images on the build machine of {{ node_image_test_app.name }}
+  ansible.builtin.command:
+    argv:
+      - podman
+      - images
+      - --filter=label=org.opencontainers.image.title={{ __node_image_test_package.name }}
+      - --format={% raw %}{{.Repository}}:{{.Tag}}{% endraw %}
+  register: __node_image_test_images
+  changed_when: false
+
 - name: Check the results of {{ node_image_test_app.name }}
   ansible.builtin.assert:
     that:
@@ -73,9 +83,13 @@
       - __node_image_test_inside.results[4].stdout == 'absent'
       - __node_image_test_inside.results[5].stdout == 'read-only'
       - (__node_image_test_path ~ '/ansible/images/' ~ __node_image_test_package.name ~ '-' ~ __node_image_test_package.version ~ '.tar') is file
+      - __node_image_test_images.stdout_lines | sort
+        == ['localhost/' ~ __node_image_test_package.name ~ ':' ~ __node_image_test_package.version,
+            'localhost/' ~ __node_image_test_package.name ~ ':build'] | sort
     success_msg: >-
       PASSED {{ node_image_test_app.name }}: the archive exists; the app answers GET
       {{ __node_image_test_request }} on Node.js {{ __node_image_test_inside.results[0].stdout }},
       reads the env file, writes the mounted directory as user 1001, cannot change its own code,
-      and the image has neither a compiler nor the project's ansible/ directory.
+      and the image has neither a compiler nor the project's ansible/ directory. The build machine
+      keeps the image and its build stage only.
     fail_msg: "FAILED {{ node_image_test_app.name }}: see the first false condition above."

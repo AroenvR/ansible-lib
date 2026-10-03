@@ -1,0 +1,7 @@
+---
+# Updates this directory to the installed acme.infra; run it after installing a newer one.
+# acme.infra's files are replaced, each changed one kept as <file>.bak first; yours
+# (inventory.yml, group_vars/all/project.yml, container.env) are never touched.
+#   ansible-playbook update-playbooks.yml
+- name: Update this directory to the installed acme.infra
+  ansible.builtin.import_playbook: acme.infra.node_update

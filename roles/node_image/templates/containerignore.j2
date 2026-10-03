@@ -7,6 +7,8 @@ node_modules.*.bak.tgz
 *.log
 ansible
 config
+data
+*.db
 {{ node_image_output_dir | relpath(node_image_source) }}
 {% for pattern in node_image_ignore %}
 {{ pattern }}
