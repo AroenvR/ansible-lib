@@ -6,10 +6,12 @@ Instructions for AI coding agents working on this repository. Humans: see
 
 ## What this is
 
-`acme.infra` is an Ansible collection: a library of small, tested roles for
+`aslib.infra` is an Ansible collection: a library of small, tested roles for
 RHEL 9 and Ubuntu 22.04 servers, plus roles and ready-made playbooks that take a
 Node.js backend from project to running service (node_setup, node_image,
-node_deploy). Consumers install a release tarball that holds only runtime
+node_deploy). Roles are named by area: `podman_` roles work for any image,
+`node_` roles add what Node.js projects need (node_deploy is a thin layer over
+podman_service). Consumers install a release tarball that holds only runtime
 files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 
 ## Non-negotiable constraints
@@ -29,15 +31,15 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 - **The maintainer's server conventions for containers.** Root manages the
   accounts, images and Quadlet files. Every service runs rootless as an account
   of its own (`useradd`, `loginctl enable-linger`). Image archives live in
-  `/opt/containers/images/` and are loaded as that account (`runuser -u <user> --
+  `/opt/containers/images/<service>/` and are loaded as that account (`runuser -u <user> --
   env XDG_RUNTIME_DIR=/run/user/<uid> podman load`). Quadlet files live in
   `/etc/containers/systemd/users/<UID>/`. The maintainer drives the account's
   systemd with `systemctl --user -M <user>@ ...`; roles use the same `runuser`
   prefix as for Podman (see Known pitfalls). A service's own directory is
   `/opt/<service>/`: the app's, its working directory at the same path inside
   the container, never touched by a deploy except `config/` in it; its data
-  survives a removal unless asked. `node_deploy` implements this; follow it for
-  every container-based role.
+  survives a removal unless asked. `podman_service` implements this; build every
+  container-based role on it.
 - **Dependencies.** Development tools may be current but are pinned in
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
   enterprise-proven; prefer the OS repositories.
@@ -49,7 +51,7 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 
 ## Commands
 
-The repository must sit at `<dir>/ansible_collections/acme/infra` (the Makefile
+The repository must sit at `<dir>/ansible_collections/aslib/infra` (the Makefile
 refuses otherwise) and be a git checkout (Molecule finds `.config/molecule/` via
 the git root).
 
@@ -77,7 +79,9 @@ explains the test layout and how releases are made.
 | `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface |
 | `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
-| `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook acme.infra.<name>` |
+| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service` and `podman_overview`, which need a deployed service |
+| `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
+| `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
 | `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
 | `dev/` | ansible-core pins per version, test images, native test, CI helper scripts. Never shipped |
 | `.config/molecule/config.yml` | Molecule settings shared by all roles |
@@ -118,7 +122,7 @@ source of truth.
   tarball instead; README.md documents it.
 - Molecule 6.0.3 searches `~/.ansible/collections` before `ANSIBLE_COLLECTIONS_PATH`,
   so a stale installed copy can shadow the code under test. Hence the
-  `ansible_collections/acme/infra` layout, `prerun: false` and `offline: true` in `.ansible-lint`.
+  `ansible_collections/aslib/infra` layout, `prerun: false` and `offline: true` in `.ansible-lint`.
 - Python 3.9/3.10's bundled pip installs ansible-core 2.12 (source only on PyPI)
   with broken `#!python` launchers; venvs are created with `--upgrade-deps`.
 - Lint runs on a modern ansible-core, so lint passing does not prove 2.12
@@ -156,7 +160,7 @@ source of truth.
   `--cgroups=disabled` (the sandbox has cgroup v1); CI is the real check.
 - An `until` loop with `failed_when: false` never fails, even when its retries
   run out: put the real condition in `failed_when`.
-- `--userns=keep-id:uid=1001,gid=0` fails (crun: invalid gid_map); node_deploy maps
+- `--userns=keep-id:uid=1001,gid=0` fails (crun: invalid gid_map); podman_service maps
   uid and gid 1001 and runs the app as 1001:1001 (`User=`, `Group=`).
 - Quadlet keys differ between Podman versions (`UserNS=` is not in 4.4); use
   `PodmanArgs=` for anything newer than 4.4.
@@ -207,44 +211,70 @@ source of truth.
   out of a container with `podman cp`, run it with `podman start` and `podman wait`.
 - Ansible doubles backslashes inside `{{ }}` (2.12, 2.14), so regular expressions
   in Jinja string literals behave differently than in variables. Put patterns
-  and replacements in variables.
+  and replacements in variables, or avoid backslashes (`[.]` for a dot).
+- Handlers do not run when a later task fails. podman_service therefore loads the
+  image whenever the account lacks it, not only when the archive changed.
+- `podman images --format=json` and `podman image inspect --format=json` give the
+  same image ID (`Id`, 64 hex digits); `--format={{.ID}}` with `--no-trunc` adds
+  `sha256:`.
+- A callback's task results have `result`, `task` and `host` from ansible-core
+  2.19 on, and only `_result`, `_task` and `_host` before (deprecated from 2.23).
+  run_log supports both.
+- Python writes `__pycache__` next to a collection's plugins when Ansible loads them
+  from the checkout; the Makefile exports `PYTHONDONTWRITEBYTECODE=1`, as the
+  maintainer's `.gitignore` does not list it.
+- The command module's `chdir` does not change `PWD`, from which the project's
+  playbooks take their directory: a test that runs ansible-playbook from the
+  project's `ansible/` sets `PWD` (and `ANSIBLE_CONFIG`) in `environment`.
+- `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
+  of the full passwd database removes the key looked up earlier, and the other way round.
 
 ## Status
 
-Last updated 2026-10-03.
+Last updated 2026-10-03, preparing release 0.1.0 from main (the first; no v*
+tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
 
-- GitHub Actions: run #24 passed everything (prebuild.yml, download sources).
-  The maintainer's NestJS project then started on the server but failed with
-  SQLITE_CANTOPEN: `"database": "prod.db"` resolved inside the read-only code
-  directory. Hence, agreed with the maintainer and not yet run in CI: the
-  service's directory as the app's working directory, data kept on removal,
-  /tmp size, settings split, update-playbooks.yml with .bak copies, the build
-  machine's ~/.npmrc, two images per project on the build machine.
-- GitLab CI: not run yet. The `runner-check` job will report whether the runner
-  can start containers.
+- GitHub Actions: run #25 passed everything; the maintainer's NestJS project then
+  deployed and ran on their RHEL server. Since then, not yet run in CI: the
+  namespace `aslib`, `podman_service` and `podman_overview`, the run_log callback
+  and `build-and-deploy.yml` (verified in the agent's sandbox).
+- Not tested yet (README "Status" lists them for users): a deploy over SSH with
+  sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
+  without it; look at it later); GitLab CI (the `runner-check` job will report
+  whether the runner can start containers).
+- To do: a security review of how pipelines get `container.env`, and of the
+  project's `.npmrc`, which stays in the layers of the `<name>:build` image on
+  the build machine.
 - Releases, decided with the maintainer: CI runs on every push to every branch
   (main and accept get their own pipelines later). A passing branch publishes a
   7-day branch build (only the newest kept); a passing main publishes the next
   patch version as a release with its tag.
+- Roles by area, decided with the maintainer: `podman_` roles work for any image
+  (podman_service deploys, podman_overview shows root what runs), `node_` roles
+  add what Node.js projects need. A future language gets `<language>_` roles on
+  top of podman_service. The service's settings are podman_service's
+  (`podman_service_port`, ...); node_deploy stops when a project still sets a
+  `node_deploy_` name from before 0.1.0.
 - Node.js backends, decided with the maintainer:
   - A project runs `node_setup` once from its root and commits `ansible/`.
     The project's files (inventory.yml, group_vars/all/project.yml written as a
     full copy of the defaults, container.env) are never touched again.
-    acme.infra's files (ansible.cfg with log_path, .gitignore, the guide,
-    group_vars/all/defaults.yml, the playbooks, templates/service.container.j2)
-    are brought up to date by every setup or update-playbooks.yml, a changed one
-    kept as `<file>.bak` (one copy, git-ignored): projects ask for template
-    changes upstream instead of patching locally. Only the guide names the project.
-    A new version is a new build and deploy (site.yml); remove.yml keeps the
-    app's data unless `-e node_deploy_remove_data=true`.
+    aslib.infra's files (ansible.cfg with the run_log callback, .gitignore, the
+    guide, group_vars/all/defaults.yml, the playbooks,
+    templates/service.container.j2) are brought up to date by every setup or
+    update-playbooks.yml, a changed one kept as `<file>.bak` (one copy,
+    git-ignored): projects ask for template changes upstream instead of patching
+    locally. Only the guide names the project; it follows a project's life: set
+    up, prebuild, build and deploy, check on it, update aslib.infra, remove.
+    A new version is a new build and deploy (build-and-deploy.yml); remove.yml
+    keeps the app's data unless `-e podman_service_remove_data=true`.
   - Config: the app reads `config/<file>.json` relative to where it runs. The
     deploy mirrors the project's `config/production/*.json` (not secret, no
     development files) into `/opt/<service>/config/`, read-only for the app.
     Secrets go in container.env, which node_setup first copies from
-    `.env.production`. Every later command runs
-    from `ansible/`, and settings are Ansible variables in group_vars. The
-    maintainer's goal is a complete pipeline a project's runner executes. Test
-    runs are `npm run test` for now.
+    `.env.production`. Every later command runs from `ansible/`, and settings
+    are Ansible variables in group_vars. The maintainer's goal is a complete
+    pipeline a project's runner executes. Test runs are `npm run test` for now.
   - Images are built on RHEL 9 or Ubuntu 22.04 (Podman 3.4+) and are always
     RHEL (UBI); which RHEL major is still open (UBI 9 for now).
   - Projects follow the NestJS convention: a `build` script that makes
@@ -262,14 +292,13 @@ Last updated 2026-10-03.
     127.0.0.1 by default (a containerized Nginx will sit in front later), ports
     3000-3999. `/opt/<service>/` on the server is the app's working directory,
     mounted at the same path; the app may create anything in it (`prod.db`,
-    `data/`). `/tmp` is a tmpfs of `node_deploy_tmp_size` (512m).
-  - prebuild.yml (playbook acme.infra.node_prebuild) prepares a project for
+    `data/`). `/tmp` is a tmpfs of `podman_service_tmp_size` (512m).
+  - prebuild.yml (playbook aslib.infra.node_prebuild) prepares a project for
     development, each step a task there. More steps will come (an idea of the
     maintainer's: creating a sqlcipher .db file); do not add any unasked.
   - Next, together with the maintainer: a containerized Claude Code service,
     which must get an account (and UID) of its own like every service.
-- Open: placeholders (`acme` namespace, `LICENSE`, URLs in `galaxy.yml`,
-  CONTRIBUTING.md, README.md); a pinned source for acme.infra in projects'
-  pipelines once the release location is final.
+- Open: the license (`LICENSE` is a placeholder, decided later); a pinned source
+  for aslib.infra in projects' pipelines once the release location is final.
 
 Update this section whenever the status changes.

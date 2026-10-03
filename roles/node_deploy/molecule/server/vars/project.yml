@@ -1,7 +1,8 @@
 ---
 node_deploy_test_project: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/node-deploy-test', true) }}/deploy-test-app"
 
-# The settings every deploy and removal in this test uses.
+# The settings every deploy and removal in this test uses. A project sets the
+# podman_service ones in ansible/group_vars/all/project.yml.
 node_deploy_ansible_dir: "{{ node_deploy_test_project }}/ansible"
-node_deploy_port: 3009
-node_deploy_uid: "3001"
+podman_service_port: 3009  # noqa: var-naming[no-role-prefix]
+podman_service_uid: "3001"  # noqa: var-naming[no-role-prefix]

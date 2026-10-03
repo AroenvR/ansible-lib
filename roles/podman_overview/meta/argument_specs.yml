@@ -1,0 +1,16 @@
+---
+argument_specs:
+  main:
+    short_description: Show the rootless Podman services on a server, for root
+    description:
+      - Lists every service that has a Quadlet file in /etc/containers/systemd/users/<UID>/ (the convention of
+        aslib.infra.podman_service), with its account, state, start time, restarts, image and published ports,
+        and shows the latest log lines of each service that does not run. Changes nothing.
+      - Root sees what each account's own systemctl and podman show only to that account.
+      - Sets the fact I(podman_overview_services), a list with one dictionary per service, for playbooks that
+        check on services.
+    options:
+      podman_overview_log_lines:
+        type: int
+        default: 20
+        description: How many of the latest log lines to show for each service that does not run.

@@ -1,92 +1,12 @@
 ---
-# Entry point "remove": takes away everything the deploy created for the service:
-# the service and its account (with the account's home directory, Podman storage
-# and images), its Quadlet and environment files, its image archives and its
-# config files. The service's directory, with the app's data, stays unless
-# node_deploy_remove_data is true. Running it again changes nothing.
-- name: Work out the service's names and check Ansible acts as root
+# Entry point "remove": removes the project's service with aslib.infra.podman_service,
+# keeping the app's data unless podman_service_remove_data is true.
+- name: Work out the service from package.json
   ansible.builtin.import_tasks: service.yml
 
-- name: Look up the service's account
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ __node_deploy_user }}"
-    fail_key: false
-
-# getent gives the passwd fields after the name: password, UID, GID, ...
-- name: Note whether the account exists, and its UID
-  ansible.builtin.set_fact:
-    __node_deploy_account_uid: "{{ (ansible_facts.getent_passwd.get(__node_deploy_user) or [None, ''])[1] }}"
-
-- name: Remove the service, its Quadlet file and the account's images
-  when: __node_deploy_account_uid | length > 0
-  block:
-    - name: Stop the service, {{ __node_deploy_service }}
-      ansible.builtin.command:
-        argv:
-          - runuser
-          - --user={{ __node_deploy_user }}
-          - --
-          - env
-          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_account_uid }}
-          - systemctl
-          - --user
-          - stop
-          - "{{ __node_deploy_service }}.service"
-        chdir: /
-      changed_when: true
-      failed_when: false  # the account's systemd may not run; the account goes anyway
-
-    - name: Remove the account's Quadlet directory, with the Quadlet and environment files
-      ansible.builtin.file:
-        path: /etc/containers/systemd/users/{{ __node_deploy_account_uid }}
-        state: absent
-
-    - name: Remove the account's containers and images
-      ansible.builtin.command:
-        argv:
-          - runuser
-          - --user={{ __node_deploy_user }}
-          - --
-          - env
-          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_account_uid }}
-          - podman
-          - system
-          - reset
-          - --force
-        chdir: /
-      changed_when: true
-      failed_when: false  # the account's home directory, which holds them, goes anyway
-
-- name: Find the service's image archives
-  ansible.builtin.find:
-    paths: /opt/containers/images
-    patterns: "{{ __node_deploy_archives }}"
-    use_regex: true
-  register: __node_deploy_old_archives
-
-- name: Remove the image archives and the config files, and the whole directory if node_deploy_remove_data is true
-  ansible.builtin.file:
-    path: "{{ __node_deploy_path }}"
-    state: absent
-  loop: >-
-    {{ __node_deploy_old_archives.files | map(attribute='path') | list
-       + [__node_deploy_dir if node_deploy_remove_data | bool else __node_deploy_dir ~ '/config'] }}
-  loop_control:
-    loop_var: __node_deploy_path
-
-- name: Remove the account
-  when: __node_deploy_account_uid | length > 0
-  block:
-    - name: Stop letting the account run services while nobody is logged in
-      ansible.builtin.command:
-        argv: [loginctl, disable-linger, "{{ __node_deploy_user }}"]
-        removes: /var/lib/systemd/linger/{{ __node_deploy_user }}
-
-    # Forced: the account's systemd instance may still be shutting down.
-    - name: Remove the account and its home directory, {{ __node_deploy_user }}
-      ansible.builtin.user:
-        name: "{{ __node_deploy_user }}"
-        state: absent
-        remove: true
-        force: true
+- name: Remove the service
+  ansible.builtin.import_role:
+    name: aslib.infra.podman_service
+    tasks_from: remove
+  vars:
+    podman_service_name: "{{ __node_deploy_service }}"

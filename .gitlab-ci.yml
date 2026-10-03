@@ -1,5 +1,5 @@
 ---
-# Lint, test and publish acme.infra. Every job runs a make target, so a
+# Lint, test and publish aslib.infra. Every job runs a make target, so a
 # pipeline does exactly what `make` does locally (see CONTRIBUTING.md).
 #
 # The test jobs start Podman containers inside the job, which the runner must
@@ -11,9 +11,9 @@ variables:
   # internal registry mirror. Pin them to a tag or digest once the pipeline is green.
   PYTHON_IMAGE: docker.io/library/python:3.12
   PODMAN_IMAGE: quay.io/podman/stable:latest
-  # Ansible loads the collection from <dir>/ansible_collections/acme/infra
+  # Ansible loads the collection from <dir>/ansible_collections/aslib/infra
   # (see CONTRIBUTING.md), so every job works on a copy at this path.
-  COLLECTION_DIR: /tmp/src/ansible_collections/acme/infra
+  COLLECTION_DIR: /tmp/src/ansible_collections/aslib/infra
 
 workflow:
   rules:
@@ -83,9 +83,9 @@ branch-build:
   before_script: *copy-to-collection-dir
   script:
     - make dist BRANCH="$CI_COMMIT_BRANCH" PYTHON_LINT=python3
-    - cp dist/acme-infra.*.tgz "$CI_PROJECT_DIR/"
+    - cp dist/aslib-infra.*.tgz "$CI_PROJECT_DIR/"
   artifacts:
-    paths: ["acme-infra.*.tgz"]
+    paths: ["aslib-infra.*.tgz"]
     expire_in: 7 days
 
 # The default branch (main): the next version, uploaded to the package registry
@@ -101,9 +101,9 @@ publish:
     - make dist-release PYTHON_LINT=python3
     - VERSION=$(make --silent version)
     - |
-      for file in "acme-infra-$VERSION.tar.gz" "acme-infra-$VERSION.tar.gz.sha256"; do
+      for file in "aslib-infra-$VERSION.tar.gz" "aslib-infra-$VERSION.tar.gz.sha256"; do
         curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "dist/$file" \
-          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/$file"
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/aslib-infra/$VERSION/$file"
       done
     - echo "VERSION=$VERSION" > "$CI_PROJECT_DIR/release.env"
   artifacts:
@@ -125,9 +125,9 @@ release:
     description: See CHANGELOG.md for what changed.
     assets:
       links:
-        - name: acme-infra-$VERSION.tar.gz
-          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/acme-infra-$VERSION.tar.gz
+        - name: aslib-infra-$VERSION.tar.gz
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/aslib-infra/$VERSION/aslib-infra-$VERSION.tar.gz
           link_type: package
-        - name: acme-infra-$VERSION.tar.gz.sha256
-          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/acme-infra/$VERSION/acme-infra-$VERSION.tar.gz.sha256
+        - name: aslib-infra-$VERSION.tar.gz.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/aslib-infra/$VERSION/aslib-infra-$VERSION.tar.gz.sha256
           link_type: other

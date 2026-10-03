@@ -1,4 +1,4 @@
-# Developer and CI entry points for the acme.infra collection. Run `make help`.
+# Developer and CI entry points for the aslib.infra collection. Run `make help`.
 # The CI pipelines (.github/, .gitlab-ci.yml) only call these targets, so a local
 # run and a pipeline do exactly the same thing. None of this is needed to *use*
 # the collection; see README.md for that.
@@ -18,12 +18,14 @@ ROLES         ?= $(notdir $(wildcard roles/*))
 UBUNTU_ROLES  := sudoers node_image node_setup
 VENV          := .venv
 VERSION       := $(shell sed -n 's/^version: *//p' galaxy.yml)
-TARBALL       := dist/acme-infra-$(VERSION).tar.gz
+# Python leaves no __pycache__ in the checkout when Ansible loads its plugins.
+export PYTHONDONTWRITEBYTECODE := 1
+TARBALL       := dist/aslib-infra-$(VERSION).tar.gz
 
-# Ansible loads acme.infra straight from this checkout, which is why it must live
-# at <dir>/ansible_collections/acme/infra.
-ifeq ($(filter %/ansible_collections/acme/infra,$(CURDIR)),)
-$(error Clone this repository into <dir>/ansible_collections/acme/infra, see CONTRIBUTING.md)
+# Ansible loads aslib.infra straight from this checkout, which is why it must live
+# at <dir>/ansible_collections/aslib/infra.
+ifeq ($(filter %/ansible_collections/aslib/infra,$(CURDIR)),)
+$(error Clone this repository into <dir>/ansible_collections/aslib/infra, see CONTRIBUTING.md)
 endif
 
 # Runs Molecule scenario $2 with ansible-core $1 for every role that has it. The
@@ -68,12 +70,19 @@ $(VENV)/collections: dev/collections.yml | $(VENV)/ansible-2.14
 images: $(addprefix image-,$(SERVERS)) ## Build the test server containers
 
 image-%: ## Build one test container, e.g. make image-rhel9
-	podman build -t localhost/acme-test/$* dev/images/$*
+	podman build -t localhost/aslib-test/$* dev/images/$*
 
-# ansible-lint resolves acme.infra (used by playbooks/) from this checkout.
+# ansible-lint resolves aslib.infra (used by playbooks/) from this checkout. It
+# skips plugins: ansible-doc loads each one (plugins/<type>/<name>.py) and its
+# documentation instead.
 lint: $(VENV)/lint ## Lint all content and check every role's documented interface
 	ANSIBLE_COLLECTIONS_PATH="$(abspath $(CURDIR)/../../..)" $(VENV)/lint/bin/ansible-lint
 	$(VENV)/lint/bin/python dev/check_role_docs.py
+	@for plugin in plugins/*/*.py; do \
+	  type=$$(basename $$(dirname $$plugin)); name=$$(basename $$plugin .py); \
+	  echo "ansible-doc -t $$type aslib.infra.$$name"; \
+	  ANSIBLE_COLLECTIONS_PATH="$(abspath $(CURDIR)/../../..)" $(VENV)/lint/bin/ansible-doc -t $$type aslib.infra.$$name >/dev/null || exit 1; \
+	done
 
 test: $(foreach v,$(ANSIBLE_VERSIONS),test-servers-$(v) test-build-machine-$(v)) ## Run every Molecule test with every ansible-core version
 
@@ -84,15 +93,15 @@ test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections ## Test the build-ma
 	$(call molecule,$*,build_machine)
 
 test-native: dist image-ubuntu2204 image-ubuntu2204-native ## Test with the ansible-core and Podman packages Ubuntu 22.04 itself ships
-	dev/native-test.sh localhost/acme-test/ubuntu2204-native $(TARBALL) $(filter $(UBUNTU_ROLES),$(ROLES))
+	dev/native-test.sh localhost/aslib-test/ubuntu2204-native $(TARBALL) $(filter $(UBUNTU_ROLES),$(ROLES))
 
 # Both run build.yml, which also works without make (see its header). CI passes
 # BRANCH, as its checkout may not be on a branch.
-dist: $(VENV)/lint ## Build a tarball to try out: dist/acme-infra.<branch>.<commit>.<UTC time>.tgz
+dist: $(VENV)/lint ## Build a tarball to try out: dist/aslib-infra.<branch>.<commit>.<UTC time>.tgz
 	PATH="$(CURDIR)/$(VENV)/lint/bin:$$PATH" ansible-playbook build.yml $(if $(BRANCH),-e branch=$(BRANCH))
 
 # Writes the version into galaxy.yml first, so only CI should run this.
-dist-release: $(VENV)/lint ## Build a release, as CI does from main: dist/acme-infra-<next version>.tar.gz
+dist-release: $(VENV)/lint ## Build a release, as CI does from main: dist/aslib-infra-<next version>.tar.gz
 	PATH="$(CURDIR)/$(VENV)/lint/bin:$$PATH" ansible-playbook build.yml -e release=true
 
 version: ## Print the collection's version (from galaxy.yml)

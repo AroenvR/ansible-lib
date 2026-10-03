@@ -2,8 +2,8 @@
 # Shared Molecule settings, merged into every roles/*/molecule/*/molecule.yml.
 # The test containers mimic default server installs; `make images` builds them.
 
-# Test the checkout itself: Ansible finds acme.infra through the
-# ansible_collections/acme/infra directory layout, so never install a copy.
+# Test the checkout itself: Ansible finds aslib.infra through the
+# ansible_collections/aslib/infra directory layout, so never install a copy.
 prerun: false
 
 # Test-only collections are pre-installed (pinned) by `make setup`, so nothing
@@ -17,12 +17,12 @@ driver:
 
 platforms:
   - name: ubuntu2204
-    image: localhost/acme-test/ubuntu2204:latest
+    image: localhost/aslib-test/ubuntu2204:latest
     pre_build_image: true
     command: /sbin/init
     systemd: always
   - name: rhel9
-    image: localhost/acme-test/rhel9:latest
+    image: localhost/aslib-test/rhel9:latest
     pre_build_image: true
     command: /sbin/init
     systemd: always

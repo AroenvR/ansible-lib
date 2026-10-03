@@ -6,7 +6,7 @@
   tasks:
     - name: Run node_image for each test app
       ansible.builtin.include_role:
-        name: acme.infra.node_image
+        name: aslib.infra.node_image
       vars:
         node_image_source: "{{ node_image_test_dir }}/{{ node_image_test_app.name }}"
         node_image_output_dir: "{{ node_image_test_dir }}/{{ node_image_test_app.name }}/ansible/images"

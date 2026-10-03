@@ -1,131 +1,60 @@
 # Building and deploying {{ __node_setup_name }}
 
-This directory was written by `ansible-playbook acme.infra.node_setup`. Run every
+This directory was written by `ansible-playbook aslib.infra.node_setup`. Run every
 command below **from this directory**, on a machine with ansible-core and the
-acme.infra collection installed (see acme.infra's README). Each run's output is
-added to `ansible.log`.
+aslib.infra collection installed (see aslib.infra's README). Every run writes its
+output to a file of its own in `logs/`, such as `logs/deploy-20261003T081502Z.log`.
 
 | File | What it is | Whose | In git |
 |---|---|---|---|
 | `inventory.yml` | The servers to deploy to | Yours | Yes |
 | `group_vars/all/project.yml` | The project's settings: written with every default, then yours | Yours | Yes |
 | `container.env` | The container's settings and secrets, first copied from `../.env.production` if the project has one | Yours | **No** |
-| `group_vars/all/defaults.yml` | Every setting at acme.infra's default; `project.yml` wins | acme.infra | Yes |
-| `prebuild.yml` | Installs node_modules for development, in a throwaway container | acme.infra | Yes |
-| `image.yml`, `deploy.yml`, `site.yml`, `remove.yml` | Build, deploy, both in one go, remove | acme.infra | Yes |
-| `templates/service.container.j2` | The Quadlet file: how Podman and systemd run the service | acme.infra | Yes |
-| `update-playbooks.yml`, `ansible.cfg`, `.gitignore`, this guide | | acme.infra | Yes |
-| `images/`, `ansible.log`, `*.bak` | Built images, the log, copies an update keeps | | No |
+| `group_vars/all/defaults.yml` | Every setting at aslib.infra's default; `project.yml` wins | aslib.infra | Yes |
+| `prebuild.yml` | Installs node_modules for development, in a throwaway container | aslib.infra | Yes |
+| `image.yml`, `deploy.yml`, `build-and-deploy.yml`, `remove.yml` | Build, deploy, both in one go, remove | aslib.infra | Yes |
+| `templates/service.container.j2` | The Quadlet file: how Podman and systemd run the service | aslib.infra | Yes |
+| `update-playbooks.yml`, `ansible.cfg`, `.gitignore`, this guide | | aslib.infra | Yes |
+| `images/`, `logs/`, `*.bak` | Built images, the log of every run, copies an update keeps | | No |
 
-Your files are never overwritten. acme.infra's are brought up to date by every
-update, which keeps the old version of each changed file as `<file>.bak`: a
-change that would help every project belongs in acme.infra itself. Only this
-guide names the project; the other files take its name and version from
-package.json whenever they run.
+Your files are never overwritten. aslib.infra's are brought up to date by every
+update (step 5), which keeps the old version of each changed file as
+`<file>.bak`: a change that would help every project belongs in aslib.infra
+itself. Only this guide names the project; the other files take its name and
+version from package.json whenever they run.
 
-## 1. Build the image
+The steps, in the order a project goes through them:
 
-```sh
-ansible-playbook image.yml
-```
+1. [Set up](#1-set-up): this directory, and what to fill in
+2. [Prebuild](#2-prebuild-node_modules-for-development): node_modules for development
+3. [Build and deploy](#3-build-and-deploy): the image, the service, new versions
+4. [Check on it](#4-check-on-it): the services on the servers
+5. [Update aslib.infra](#5-update-aslibinfra): this directory, after a newer aslib.infra
+6. [Remove it](#6-remove-it): the service, from the servers
 
-This needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04) and access to the
-download sources below. The image lands in `images/` as
-`{{ __node_setup_service }}-<version>.tar`, with the version from package.json. What the
-project needs: a `build` script that makes `dist/main.js` (`node_image_main`), and
-optionally `.nvmrc`; all options: `ansible-doc -t role acme.infra.node_image`. This
-directory, `config/`, `data/`, `*.db` and `.env` files never go into the image.
-This machine keeps two images of the project, `{{ __node_setup_service }}:<version>`
-and `{{ __node_setup_service }}:build` (the cache); older ones are removed.
+## 1. Set up
 
-Everything the app imports must be in `dependencies`, and not in
-`devDependencies` as well: the image installs `devDependencies` for the build
-only, and npm counts a package in both lists as a devDependency (the build stops
-when it finds one).
-
-## 2. Configure
+`ansible-playbook aslib.infra.node_setup`, run from the project root, wrote this
+directory. Before the first deploy, look at what is yours:
 
 - `container.env`: the environment variables the app gets, one `KEY=value` per
   line, without quotes (Podman would pass them on). If it sets `PORT`, set
-  `node_deploy_container_port` to the same port.
+  `podman_service_container_port` to the same port.
 - `../config/production/*.json`: the app's config files. The deploy copies them
   to the server, where the app finds them read-only in `config/`.
-- `group_vars/all/project.yml`: the port on the server, the service's directory,
-  its account and more.
+- `group_vars/all/project.yml`: the port on the server (`podman_service_port`),
+  the service's directory, its account, the Node.js version and more.
 - `templates/service.container.j2`: the Quadlet file, for what the settings do
   not cover. The deploy fills in the names and the version.
 - `inventory.yml`: the servers. It lists this machine by default.
 
-## 3. Deploy
+What the project needs: a `build` script that makes `dist/main.js`
+(`node_image_main`), and optionally `.nvmrc` and `package-lock.json`. Everything
+the app imports must be in `dependencies`, and not in `devDependencies` as well:
+the image installs `devDependencies` for the build only, and npm counts a package
+in both lists as a devDependency (the build stops when it finds one).
 
-```sh
-ansible-playbook deploy.yml              # add --ask-become-pass if sudo asks for a password
-```
-
-The deploy works as root (through sudo) and, on each server:
-
-1. creates the account `{{ __node_setup_service }}` the service runs as, and lets it run
-   services while nobody is logged in (`loginctl enable-linger`);
-2. copies the image to `/opt/containers/images/` and loads it into that account's Podman;
-3. installs `container.env` and the Quadlet file `{{ __node_setup_service }}.container` in
-   `/etc/containers/systemd/users/<the account's UID>/`;
-4. creates `/opt/{{ __node_setup_service }}/`, the service's directory, and `data/` in it
-   when missing, and copies the config files to its `config/` (removing files the
-   project no longer has);
-5. starts the service, or restarts it when something changed, and waits until it
-   answers on its port (`127.0.0.1:3000` by default). If it does not, it shows
-   the service's log and stops.
-
-`/opt/{{ __node_setup_service }}/` is the app's working directory, at the same path in the
-container, so relative paths end up there: `config/db_config.json`, `prod.db`,
-`data/uploads/`. It belongs to the app; the deploy only manages `config/` in it,
-which the app can read but not change. The code stays read-only in the image.
-`/tmp` (`os.tmpdir()`) is in memory, at most `node_deploy_tmp_size` (512 MB), and
-emptied on every restart; for large temporary files the app uses a directory of
-its own in its working directory. The service starts again after a reboot, and
-after a crash every 10 seconds.
-
-What a server needs: RHEL 9.2 or newer with Podman (`sudo dnf install podman`),
-and SSH access with sudo (or as root) for Ansible. Nothing is downloaded: the
-image comes from this directory.
-
-## 4. Check it
-
-On the server:
-
-```sh
-sudo systemctl --user -M {{ __node_setup_service }}@ status {{ __node_setup_service }}
-sudo journalctl _SYSTEMD_USER_UNIT={{ __node_setup_service }}.service
-curl http://127.0.0.1:3000/
-```
-
-## Deploying a new version
-
-Raise the `version` in package.json, then build and deploy again:
-
-```sh
-ansible-playbook site.yml                # image.yml, then deploy.yml
-```
-
-The deploy loads the new image, restarts the service and waits until it answers.
-It keeps only the version it deployed: other versions' archives in
-`/opt/containers/images/` and the account's unused images are removed. A change
-to `container.env`, the config files, the settings or the Quadlet template alone
-needs only `ansible-playbook deploy.yml`.
-
-## Removing it
-
-```sh
-ansible-playbook remove.yml                                  # keeps the app's data
-ansible-playbook remove.yml -e node_deploy_remove_data=true  # removes it as well
-```
-
-This removes what the deploy created on each server: the service, its account
-(with its home directory and images), the Quadlet and environment files, the
-image archives and the config files. `/opt/{{ __node_setup_service }}/`, with everything
-the app wrote, stays unless you ask; a later deploy hands it to the new account.
-
-## node_modules for development
+## 2. Prebuild: node_modules for development
 
 ```sh
 ansible-playbook prebuild.yml
@@ -145,6 +74,99 @@ cd .. && rm -rf node_modules && tar -xzf node_modules.<UTC time>.bak.tgz
 The backups stay until you delete them; keep them out of git (`*.tgz` in the
 project's `.gitignore`). The result fits Linux machines with the same Node.js
 version as `.nvmrc`.
+
+## 3. Build and deploy
+
+```sh
+ansible-playbook build-and-deploy.yml    # add --ask-become-pass if sudo asks for a password
+```
+
+This runs `image.yml`, then `deploy.yml`. Each also runs on its own: a change to
+`container.env`, the config files, the settings or the Quadlet template alone
+needs only `ansible-playbook deploy.yml`.
+
+**The image** (`image.yml`) needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04)
+and access to the [download sources](#download-sources). It lands in `images/` as
+`{{ __node_setup_service }}-<version>.tar`, with the version from package.json.
+This directory, `config/`, `data/`, `*.db` and `.env` files never go into it.
+This machine keeps two images of the project, `{{ __node_setup_image }}:<version>`
+and `{{ __node_setup_image }}:build` (the cache); older ones are removed. All
+options: `ansible-doc -t role aslib.infra.node_image`.
+
+**The deploy** (`deploy.yml`) works as root (through sudo) and, on each server:
+
+1. creates the account `{{ __node_setup_service }}` the service runs as, and lets it run
+   services while nobody is logged in (`loginctl enable-linger`);
+2. copies the image to `/opt/containers/images/{{ __node_setup_service }}/` and loads it
+   into that account's Podman;
+3. installs `container.env` and the Quadlet file `{{ __node_setup_service }}.container` in
+   `/etc/containers/systemd/users/<the account's UID>/`;
+4. creates `/opt/{{ __node_setup_service }}/`, the service's directory, and `data/` in it
+   when missing, and copies the config files to its `config/` (removing files the
+   project no longer has);
+5. starts the service, or restarts it when something changed, and waits until it
+   answers on its port (`127.0.0.1:3000` by default). If it does not, it shows
+   the service's log and stops.
+
+`/opt/{{ __node_setup_service }}/` is the app's working directory, at the same path in the
+container, so relative paths end up there: `config/db_config.json`, `prod.db`,
+`data/uploads/`. It belongs to the app; the deploy only manages `config/` in it,
+which the app can read but not change. The code stays read-only in the image.
+`/tmp` (`os.tmpdir()`) is in memory, at most `podman_service_tmp_size` (512 MB), and
+emptied on every restart; for large temporary files the app uses a directory of
+its own in its working directory. The service starts again after a reboot, and
+after a crash every 10 seconds.
+
+What a server needs: RHEL 9.2 or newer with Podman (`sudo dnf install podman`),
+and SSH access with sudo (or as root) for Ansible. Nothing is downloaded: the
+image comes from this directory.
+
+**A new version:** raise the `version` in package.json and run
+`ansible-playbook build-and-deploy.yml` again. The deploy loads the new image,
+restarts the service and waits until it answers. It keeps only the version it
+deployed: the archives of other versions and the account's other images are
+removed. To go back, check out the previous version of the project and deploy that.
+
+## 4. Check on it
+
+```sh
+ansible-playbook aslib.infra.podman_overview      # add --ask-become-pass if sudo asks for a password
+```
+
+Shows every service on the servers in `inventory.yml`, this one and others: its
+account, state, image and ports, and the latest log lines of each service that
+does not run. It changes nothing. On a server itself:
+
+```sh
+sudo systemctl --user -M {{ __node_setup_service }}@ status {{ __node_setup_service }}
+sudo journalctl _SYSTEMD_USER_UNIT={{ __node_setup_service }}.service
+curl http://127.0.0.1:3000/
+```
+
+## 5. Update aslib.infra
+
+Install the newer release, then run:
+
+```sh
+ansible-playbook update-playbooks.yml
+```
+
+It brings aslib.infra's files up to date, keeping each changed one as
+`<file>.bak`, and adds files this directory does not have yet. New settings
+appear in `group_vars/all/defaults.yml`; copy one into `project.yml` to change it.
+Review the changes before committing them.
+
+## 6. Remove it
+
+```sh
+ansible-playbook remove.yml                                     # keeps the app's data
+ansible-playbook remove.yml -e podman_service_remove_data=true  # removes it as well
+```
+
+This removes what the deploy created on each server: the service, its account
+(with its home directory and images), the Quadlet and environment files, the
+image archives and the config files. `/opt/{{ __node_setup_service }}/`, with everything
+the app wrote, stays unless you ask; a later deploy hands it to the new account.
 
 ## Download sources
 
@@ -190,21 +212,11 @@ the deploy secrets:
 npm ci && npm run test
 
 # Deploy job, from the ansible/ directory. The runner needs Podman, ansible-core and SSH access.
-ansible-galaxy collection install --force <the acme.infra tarball this project uses>
+ansible-galaxy collection install --force <the aslib.infra tarball this project uses>
 ansible-playbook image.yml
 (umask 077 && printf '%s\n' "$CONTAINER_ENV" > container.env)   # from a secret variable
 ansible-playbook deploy.yml
 ```
 
-## Updating acme.infra
-
-Install the newer release, then run:
-
-```sh
-ansible-playbook update-playbooks.yml
-```
-
-It brings acme.infra's files up to date, keeping each changed one as
-`<file>.bak`, and adds files this directory does not have yet. New settings
-appear in `group_vars/all/defaults.yml`; copy one into `project.yml` to change it.
-Review the changes before committing them.
+`logs/` then holds a log of each run, to keep as the job's artifacts. They never
+show `container.env`'s contents.

@@ -40,7 +40,7 @@
 
     - name: Run the node_modules entry point
       ansible.builtin.include_role:
-        name: acme.infra.node_image
+        name: aslib.infra.node_image
         tasks_from: node_modules
       vars:
         node_image_source: "{{ __node_image_test_project }}"
@@ -116,7 +116,7 @@
       block:
         - name: Run node_image on the project
           ansible.builtin.include_role:
-            name: acme.infra.node_image
+            name: aslib.infra.node_image
           vars:
             node_image_source: "{{ __node_image_test_project }}"
             node_image_output_dir: "{{ __node_image_test_project }}/ansible/images"

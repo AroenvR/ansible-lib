@@ -6,6 +6,6 @@
   tasks:
     - name: Run node_setup
       ansible.builtin.include_role:
-        name: acme.infra.node_setup
+        name: aslib.infra.node_setup
       vars:
         node_setup_project: "{{ node_setup_test_project }}"

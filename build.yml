@@ -1,18 +1,18 @@
 ---
-# Builds the acme.infra tarball from this checkout into dist/. Not part of the
+# Builds the aslib.infra tarball from this checkout into dist/. Not part of the
 # collection itself; run it from the repository root with any ansible-core 2.12+.
 #
 #   ansible-playbook build.yml
 #     A build to try out, named after the branch, the commit and the time:
-#     dist/acme-infra.<branch>.<commit>.<UTC yyyymmddHHMM>.tgz. CI publishes the
+#     dist/aslib-infra.<branch>.<commit>.<UTC yyyymmddHHMM>.tgz. CI publishes the
 #     same as a branch build. Install it where you want to use it:
-#       ansible-galaxy collection install --force dist/acme-infra.<...>.tgz
+#       ansible-galaxy collection install --force dist/aslib-infra.<...>.tgz
 #
 #   ansible-playbook build.yml -e release=true
 #     A release, as CI makes one from main once every test passed: writes the
 #     next version (dev/ci/next-version.sh) into galaxy.yml and builds
-#     dist/acme-infra-<version>.tar.gz.
-- name: Build the acme.infra tarball
+#     dist/aslib-infra-<version>.tar.gz.
+- name: Build the aslib.infra tarball
   hosts: localhost
   connection: local
   gather_facts: false
@@ -20,7 +20,7 @@
     release: false
     # CI passes the branch it builds (-e branch=...), as its checkout may not be on one.
     branch: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
-    __build_tarball: "{{ playbook_dir }}/dist/acme-infra-{{ (lookup('file', playbook_dir ~ '/galaxy.yml') | from_yaml).version }}.tar.gz"
+    __build_tarball: "{{ playbook_dir }}/dist/aslib-infra-{{ (lookup('file', playbook_dir ~ '/galaxy.yml') | from_yaml).version }}.tar.gz"
   tasks:
     - name: Work out the next release version
       ansible.builtin.command: sh dev/ci/next-version.sh
@@ -38,7 +38,7 @@
       when: release | bool
 
     # Only runtime files go in: build_ignore in galaxy.yml leaves out tests and tooling.
-    - name: Build dist/acme-infra-<version>.tar.gz
+    - name: Build dist/aslib-infra-<version>.tar.gz
       ansible.builtin.command: ansible-galaxy collection build --output-path dist --force
       args:
         chdir: "{{ playbook_dir }}"
@@ -47,7 +47,7 @@
     - name: Name the build after the branch, the commit and the time
       ansible.builtin.copy:
         src: "{{ __build_tarball }}"
-        dest: "{{ playbook_dir }}/dist/acme-infra.{{ branch | replace('/', '.') }}.{{ __build_commit }}.{{ __build_time }}.tgz"
+        dest: "{{ playbook_dir }}/dist/aslib-infra.{{ branch | replace('/', '.') }}.{{ __build_commit }}.{{ __build_time }}.tgz"
         mode: "0644"
       vars:
         __build_commit: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse HEAD') }}"

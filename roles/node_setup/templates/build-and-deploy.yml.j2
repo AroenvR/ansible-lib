@@ -1,0 +1,9 @@
+---
+# Builds the image and deploys it, in one go; for a new version, raise the version
+# in package.json first:
+#   ansible-playbook build-and-deploy.yml
+- name: Build the image
+  ansible.builtin.import_playbook: image.yml
+
+- name: Deploy it
+  ansible.builtin.import_playbook: deploy.yml

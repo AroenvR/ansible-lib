@@ -2,5 +2,6 @@
 # from this directory; see README.md.
 [defaults]
 inventory = inventory.yml
-# Every run's output is added to this file (kept out of git).
-log_path = ansible.log
+# Every run writes its output to a file of its own in logs/ (kept out of git), named after
+# the playbook and the time: logs/deploy-20261003T081502Z.log.
+callbacks_enabled = aslib.infra.run_log

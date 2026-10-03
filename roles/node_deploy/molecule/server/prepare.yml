@@ -40,7 +40,7 @@
 
     - name: Run node_setup
       ansible.builtin.include_role:
-        name: acme.infra.node_setup
+        name: aslib.infra.node_setup
       vars:
         node_setup_project: "{{ node_deploy_test_project }}"
 
@@ -52,7 +52,7 @@
 
     - name: Run node_image
       ansible.builtin.include_role:
-        name: acme.infra.node_image
+        name: aslib.infra.node_image
       vars:
         node_image_source: "{{ node_deploy_test_project }}"
         node_image_output_dir: "{{ node_deploy_test_project }}/ansible/images"

@@ -62,6 +62,64 @@
           and started by itself when the server restarted, with its data (start count
           {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).
 
+- name: Check the overview shows the service, and the log of a service that does not run
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  vars:
+    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, systemctl, --user]
+  tasks:
+    - name: Run podman_overview
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_overview
+
+    - name: Note the overview of the running service
+      ansible.builtin.set_fact:
+        __node_deploy_test_running: "{{ podman_overview_services }}"
+
+    - name: Stop the service
+      ansible.builtin.command:
+        argv: "{{ __node_deploy_test_systemctl + ['stop', 'deploy-test-app.service'] }}"
+        chdir: /
+      changed_when: true
+
+    - name: Run podman_overview with the service stopped
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_overview
+
+    - name: Start the service again
+      ansible.builtin.command:
+        argv: "{{ __node_deploy_test_systemctl + ['start', 'deploy-test-app.service'] }}"
+        chdir: /
+      changed_when: true
+
+    - name: Wait until the service answers again
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_back
+      until: __node_deploy_test_back is succeeded
+      retries: 30
+      delay: 2
+
+    - name: Check the overview showed the service, then its state and log once stopped
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_running | length == 1
+          - __node_deploy_test_running[0].name == 'deploy-test-app'
+          - __node_deploy_test_running[0].account == 'deploy-test-app'
+          - __node_deploy_test_running[0].uid == '3001'
+          - __node_deploy_test_running[0].state == 'active'
+          - __node_deploy_test_running[0].substate == 'running'
+          - __node_deploy_test_running[0].image == 'localhost/deploy-test-app:1.0.0'
+          - __node_deploy_test_running[0].ports == ['127.0.0.1:3009:3000']
+          - __node_deploy_test_running[0].log == []
+          - podman_overview_services | length == 1
+          - podman_overview_services[0].state != 'active'
+          - podman_overview_services[0].log is search('deploy-test-app 1.0.0 listens')
+        success_msg: >-
+          PASSED podman_overview: it showed deploy-test-app running as its account (UID 3001), with its image
+          and port, then {{ podman_overview_services[0].state }} once stopped, with the app's log lines.
+
 - name: Build a new version of the test project, as a developer would
   hosts: localhost
   gather_facts: false
@@ -86,7 +144,7 @@
 
     - name: Run node_image
       ansible.builtin.include_role:
-        name: acme.infra.node_image
+        name: aslib.infra.node_image
       vars:
         node_image_source: "{{ node_deploy_test_project }}"
         node_image_output_dir: "{{ node_deploy_test_project }}/ansible/images"
@@ -115,7 +173,7 @@
 
     - name: Run node_deploy with the new version
       ansible.builtin.include_role:
-        name: acme.infra.node_deploy
+        name: aslib.infra.node_deploy
 
     - name: Query the updated service
       ansible.builtin.uri:
@@ -124,8 +182,7 @@
 
     - name: Find the service's image archives
       ansible.builtin.find:
-        paths: /opt/containers/images
-        patterns: deploy-test-app-*.tar
+        paths: /opt/containers/images/deploy-test-app
       register: __node_deploy_test_archives
 
     - name: Find the service's config files
@@ -155,7 +212,7 @@
           - __node_deploy_test_new.json.config == 'config/production, changed'
           - __node_deploy_test_config.files | map(attribute='path') | list == ['/opt/deploy-test-app/config/app.json']
           - __node_deploy_test_new.json.starts > __node_deploy_test_old.json.starts
-          - __node_deploy_test_archives.files | map(attribute='path') | list == ['/opt/containers/images/deploy-test-app-1.0.1.tar']
+          - __node_deploy_test_archives.files | map(attribute='path') | list == ['/opt/containers/images/deploy-test-app/deploy-test-app-1.0.1.tar']
           - __node_deploy_test_images.stdout_lines == ['localhost/deploy-test-app:1.0.1']
         success_msg: >-
           PASSED node_deploy update: version 1.0.1 answers with the data of 1.0.0 (start count
@@ -169,13 +226,17 @@
   tasks:
     - name: Remove the service
       ansible.builtin.include_role:
-        name: acme.infra.node_deploy
+        name: aslib.infra.node_deploy
         tasks_from: remove
 
     - name: Remove it again, which must work on a clean server too
       ansible.builtin.include_role:
-        name: acme.infra.node_deploy
+        name: aslib.infra.node_deploy
         tasks_from: remove
+
+    - name: Run podman_overview after the removal
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_overview
 
     - name: Look up the service's account
       ansible.builtin.getent:
@@ -188,7 +249,7 @@
         path: "{{ item }}"
       loop:
         - /etc/containers/systemd/users/3001
-        - /opt/containers/images/deploy-test-app-1.0.1.tar
+        - /opt/containers/images/deploy-test-app
         - /opt/deploy-test-app/config
         - /home/deploy-test-app
         - /var/lib/systemd/linger/deploy-test-app
@@ -208,14 +269,15 @@
     - name: Check the account, the files and the service are gone, and the data is not
       ansible.builtin.assert:
         that:
+          - podman_overview_services == []
           - ansible_facts.getent_passwd['deploy-test-app'] is none
           - __node_deploy_test_leftovers.results | selectattr('stat.exists') | map(attribute='item') | list == []
           - __node_deploy_test_kept.stat.exists
           - __node_deploy_test_gone.status == -1
         success_msg: >-
           PASSED node_deploy remove: the account, its home directory, Quadlet directory, image archive,
-          config files and lingering are gone, nothing answers on port 3009, the app's data is still
-          there, and a second run works.
+          config files and lingering are gone, nothing answers on port 3009 and podman_overview lists no
+          service, the app's data is still there, and a second run works.
 
 - name: Check a new deploy, as an account with another UID, takes over the data
   hosts: all
@@ -224,9 +286,9 @@
   tasks:
     - name: Run node_deploy with UID 3002
       ansible.builtin.include_role:
-        name: acme.infra.node_deploy
+        name: aslib.infra.node_deploy
       vars:
-        node_deploy_uid: "3002"
+        podman_service_uid: "3002"
 
     - name: Query the service
       ansible.builtin.uri:
@@ -247,17 +309,17 @@
           PASSED node_deploy took over the data of the removed account as UID 3002 (start count
           {{ __node_deploy_test_again.json.starts }}).
 
-- name: Check the removal with node_deploy_remove_data takes the data as well
+- name: Check the removal with podman_service_remove_data takes the data as well
   hosts: all
   gather_facts: false
   vars_files: [vars/project.yml]
   tasks:
     - name: Remove the service and its data
       ansible.builtin.include_role:
-        name: acme.infra.node_deploy
+        name: aslib.infra.node_deploy
         tasks_from: remove
       vars:
-        node_deploy_remove_data: "true"   # as -e node_deploy_remove_data=true passes it
+        podman_service_remove_data: "true"   # as -e podman_service_remove_data=true passes it
 
     - name: Look for the service's directory
       ansible.builtin.stat:
@@ -267,4 +329,26 @@
     - name: Check the service's directory is gone
       ansible.builtin.assert:
         that: not __node_deploy_test_dir.stat.exists
-        success_msg: PASSED node_deploy remove with node_deploy_remove_data=true removed /opt/deploy-test-app too.
+        success_msg: PASSED node_deploy remove with podman_service_remove_data=true removed /opt/deploy-test-app too.
+
+- name: Check the deploy stops when the project still uses a setting's name from before 0.1.0
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Deploy with node_deploy_port, the earlier name of podman_service_port
+      block:
+        - name: Run node_deploy with node_deploy_port
+          ansible.builtin.include_role:
+            name: aslib.infra.node_deploy
+          vars:
+            node_deploy_port: 3009
+
+        - name: Fail, as node_deploy accepted the earlier name
+          ansible.builtin.fail:
+            msg: node_deploy accepted node_deploy_port
+      rescue:
+        - name: Check it stopped and named the new setting
+          ansible.builtin.assert:
+            that: ansible_failed_result.msg is search('rename node_deploy_port to podman_service_port')
+            success_msg: PASSED node_deploy stopped at node_deploy_port and named podman_service_port instead.

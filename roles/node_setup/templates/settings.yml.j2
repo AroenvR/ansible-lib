@@ -1,15 +1,15 @@
 ---
 {% if __node_setup_file.dest is search('defaults.yml$') %}
-# acme.infra's settings for building and deploying the project, every one at its
+# aslib.infra's settings for building and deploying the project, every one at its
 # default. Every update (update-playbooks.yml) rewrites this file: change settings
 # in project.yml, which Ansible reads after it, so its values win.
 {% else %}
 # The project's settings for building and deploying. The setup wrote every one at
 # its default; the file is yours from then on and updates never touch it. Settings
-# of newer acme.infra versions appear, at their defaults, in defaults.yml.
+# of newer aslib.infra versions appear, at their defaults, in defaults.yml.
 {% endif %}
-# All options: ansible-doc -t role acme.infra.node_image (building) and
-# ansible-doc -t role acme.infra.node_deploy (deploying).
+# All options: ansible-doc -t role aslib.infra.node_image (building),
+# aslib.infra.node_deploy and aslib.infra.podman_service (deploying).
 
 # Where prebuild.yml and image.yml download Red Hat's ubi9/nodejs-<version> images.
 # A mirror for one environment belongs on that machine instead: registries.conf.
@@ -24,11 +24,11 @@ node_image_runtime_packages: []        # ...and at runtime, e.g. [libpq]
 node_image_ignore: []                  # more files kept out of the image (.containerignore patterns)
 
 # Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
-node_deploy_port: 3000                 # the service's port on the server
-node_deploy_bind_address: 127.0.0.1    # 0.0.0.0 to reach it from other machines
-node_deploy_container_port: 3000       # the app's port in the container (node_image_port)
 node_deploy_config_files: config/production/*.json   # copied to config/ in the service's directory
-node_deploy_tmp_size: 512m             # the app's /tmp, in memory
-node_deploy_dir: ""                    # the service's directory; empty: /opt/<service>
-node_deploy_user: ""                   # the account the service runs as; empty: <service>
-node_deploy_uid: ""                    # that account's UID, e.g. 3001 on every server; empty: any free one
+podman_service_port: 3000              # the service's port on the server
+podman_service_bind_address: 127.0.0.1 # 0.0.0.0 to reach it from other machines
+podman_service_container_port: 3000    # the app's port in the container (node_image_port)
+podman_service_tmp_size: 512m          # the app's /tmp, in memory
+podman_service_dir: ""                 # the service's directory; empty: /opt/<service>
+podman_service_user: ""                # the account the service runs as; empty: <service>
+podman_service_uid: ""                 # that account's UID, e.g. 3001 on every server; empty: any free one

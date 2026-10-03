@@ -1,11 +1,11 @@
 ---
 # Prepares the Node.js project in the current directory for building and
-# deploying with acme.infra. Run it from the project root:
-#   ansible-playbook acme.infra.node_setup
-# Options: ansible-doc -t role acme.infra.node_setup
+# deploying with aslib.infra. Run it from the project root:
+#   ansible-playbook aslib.infra.node_setup
+# Options: ansible-doc -t role aslib.infra.node_setup
 - name: Prepare the Node.js project for building and deploying
   hosts: localhost
   connection: local
   gather_facts: false
   roles:
-    - role: acme.infra.node_setup
+    - role: aslib.infra.node_setup

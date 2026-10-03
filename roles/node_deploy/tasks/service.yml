@@ -1,36 +1,31 @@
 ---
 # Shared by the deploy (main.yml) and the removal (remove.yml): works out the
-# service's names and checks that Ansible acts as root on the server.
+# service from the project's package.json.
 - name: Check the project's package.json is there
   ansible.builtin.assert:
     that: ((node_deploy_ansible_dir | dirname) ~ '/package.json') is file
     fail_msg: "No package.json in {{ node_deploy_ansible_dir | dirname }}. Run this from the project's ansible/ directory."
     quiet: true
 
+# Before 0.1.0, these settings were node_deploy's. Without this check, a project
+# that still sets one would silently get the default instead.
+- name: Check the project uses the current names of the service's settings
+  vars:
+    __node_deploy_old_settings: "{{ query('varnames', '^node_deploy_(user|uid|dir|port|bind_address|container_port|tmp_size|remove_data)$') }}"
+  ansible.builtin.assert:
+    that: __node_deploy_old_settings | length == 0
+    fail_msg: >-
+      These settings are called podman_service_ now: rename {{ __node_deploy_old_settings | join(', ') }}
+      to {{ __node_deploy_old_settings | map('replace', 'node_deploy_', 'podman_service_') | join(', ') }},
+      e.g. in group_vars/all/project.yml.
+    quiet: true
+
 # Named after the package, the same way node_setup and node_image do it.
-- name: Work out the service's names and files from package.json
+- name: Work out the service's name, image and archive from package.json
   vars:
     __node_deploy_package: "{{ lookup('file', (node_deploy_ansible_dir | dirname) ~ '/package.json') | from_json }}"
     __node_deploy_slug: "{{ __node_deploy_package.name | regex_replace('^@', '') | replace('/', '-') }}"
   ansible.builtin.set_fact:
     __node_deploy_service: "{{ __node_deploy_slug }}"
-    __node_deploy_user: "{{ node_deploy_user or __node_deploy_slug }}"
-    __node_deploy_dir: "{{ node_deploy_dir or '/opt/' ~ __node_deploy_slug }}"
     __node_deploy_image: "localhost/{{ __node_deploy_package.name | regex_replace('^@', '') }}:{{ __node_deploy_package.version }}"
-    __node_deploy_version: "{{ __node_deploy_package.version }}"
-    __node_deploy_archive: "{{ __node_deploy_slug }}-{{ __node_deploy_package.version }}.tar"
-    # Archives of every version of this service, and of no other service.
-    __node_deploy_archives: "^{{ __node_deploy_slug | regex_escape }}-[0-9][^/]*\\.tar$"
-
-- name: Look up which account Ansible acts as on the server
-  ansible.builtin.setup:
-    gather_subset: ["!all", "!min", user]
-
-- name: Check that Ansible acts as root
-  ansible.builtin.assert:
-    that: ansible_facts.user_uid == 0
-    fail_msg: >-
-      This manages the service's account, image and Quadlet file, which takes root on
-      {{ inventory_hostname }}. Connect as root or with sudo; with sudo asking for a password,
-      add --ask-become-pass.
-    quiet: true
+    __node_deploy_archive: "{{ node_deploy_ansible_dir }}/images/{{ __node_deploy_slug }}-{{ __node_deploy_package.version }}.tar"

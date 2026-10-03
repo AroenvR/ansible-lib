@@ -6,4 +6,4 @@
   tasks:
     - name: Run node_deploy
       ansible.builtin.include_role:
-        name: acme.infra.node_deploy
+        name: aslib.infra.node_deploy

@@ -1,4 +1,4 @@
-# acme.infra.node_image
+# aslib.infra.node_image
 
 Builds a production container image of a Node.js project, such as a NestJS
 backend, with Podman. No Ansible knowledge needed: run one command from the
@@ -72,7 +72,7 @@ prebuilt binaries compile from source, which needs only the Node.js headers.
 From the project's `ansible/` directory:
 
 ```sh
-ansible-playbook image.yml    # or: ansible-playbook acme.infra.node_image
+ansible-playbook image.yml    # or: ansible-playbook aslib.infra.node_image
 ```
 
 The result lands in `ansible/images/`, which keeps itself out of git: the image
@@ -100,7 +100,7 @@ Running it again without changes reuses the cached build and leaves the archive 
 ## node_modules for development
 
 ```sh
-ansible-playbook prebuild.yml    # or: ansible-playbook acme.infra.node_prebuild
+ansible-playbook prebuild.yml    # or: ansible-playbook aslib.infra.node_prebuild
 ```
 
 Installing dependencies runs code from every package (install scripts). This
@@ -130,7 +130,7 @@ node_image_build_packages: [libpq-devel]   # a native module needs PostgreSQL he
 node_image_runtime_packages: [libpq]       # and the library itself at runtime
 ```
 
-All options, with their defaults: `ansible-doc -t role acme.infra.node_image`.
+All options, with their defaults: `ansible-doc -t role aslib.infra.node_image`.
 
 ## Good to know
 

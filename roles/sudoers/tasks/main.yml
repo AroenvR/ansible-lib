@@ -1,14 +1,16 @@
 ---
+# Loops use their own loop variable, so the role can be called from a loop.
 - name: Check that rule names are usable as sudoers.d file names
   ansible.builtin.assert:
-    that: item.name is match('^[A-Za-z0-9_-]+$')
+    that: __sudoers_rule.name is match('^[A-Za-z0-9_-]+$')
     fail_msg: >-
-      Rule name '{{ item.name }}' may only contain letters, digits, '-' and '_';
+      Rule name '{{ __sudoers_rule.name }}' may only contain letters, digits, '-' and '_';
       sudo silently ignores sudoers.d files with other characters.
     quiet: true
   loop: "{{ sudoers_rules }}"
   loop_control:
-    label: "{{ item.name }}"
+    loop_var: __sudoers_rule
+    label: "{{ __sudoers_rule.name }}"
 
 # Install only when missing: the dnf module contacts every enabled repository
 # even for packages that are already installed, which fails on offline hosts.
@@ -24,21 +26,23 @@
 - name: Write sudo rules, validated by visudo before they go live
   ansible.builtin.template:
     src: rule.j2
-    dest: "/etc/sudoers.d/{{ item.name }}"
+    dest: "/etc/sudoers.d/{{ __sudoers_rule.name }}"
     owner: root
     group: root
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
   loop: "{{ sudoers_rules }}"
   loop_control:
-    label: "{{ item.name }}"
-  when: item.state | default('present') == 'present'
+    loop_var: __sudoers_rule
+    label: "{{ __sudoers_rule.name }}"
+  when: __sudoers_rule.state | default('present') == 'present'
 
 - name: Remove sudo rules marked absent
   ansible.builtin.file:
-    path: "/etc/sudoers.d/{{ item.name }}"
+    path: "/etc/sudoers.d/{{ __sudoers_rule.name }}"
     state: absent
   loop: "{{ sudoers_rules }}"
   loop_control:
-    label: "{{ item.name }}"
-  when: item.state | default('present') == 'absent'
+    loop_var: __sudoers_rule
+    label: "{{ __sudoers_rule.name }}"
+  when: __sudoers_rule.state | default('present') == 'absent'

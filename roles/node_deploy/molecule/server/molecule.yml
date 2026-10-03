@@ -7,7 +7,7 @@ scenario:
   name: server
 platforms:
   - name: rhel9
-    image: localhost/acme-test/rhel9:latest
+    image: localhost/aslib-test/rhel9:latest
     pre_build_image: true
     command: /sbin/init
     systemd: always

@@ -1,6 +1,6 @@
 # Contributing
 
-How to develop, test and release `acme.infra`. Using the collection is covered
+How to develop, test and release `aslib.infra`. Using the collection is covered
 in [README.md](README.md); AI coding agents also read [AGENTS.md](AGENTS.md).
 
 ## Setup (once)
@@ -9,18 +9,20 @@ Your machine needs `git`, `make`, Podman, Python 3.9 or 3.10 (the default
 `python3` on RHEL 9 and Ubuntu 22.04) and Python 3.10+ for linting.
 
 ```sh
-git clone https://git.example.com/platform/acme-infra.git ~/src/ansible_collections/acme/infra
-cd ~/src/ansible_collections/acme/infra
+git clone https://github.com/AroenvR/ansible-lib.git ~/src/ansible_collections/aslib/infra
+cd ~/src/ansible_collections/aslib/infra
 make setup images   # on RHEL 9: dnf install python3.12 first; on Ubuntu 22.04: make setup PYTHON_LINT=python3
 ```
 
-The clone path must end in `ansible_collections/acme/infra`. Ansible then loads
+The clone path must end in `ansible_collections/aslib/infra`. Ansible then loads
 the collection straight from your checkout, so tests never run against a stale
 installed copy. `make help` lists all targets.
 
 ## How the tests are organized
 
-Every role has one Molecule scenario, named after where the role runs:
+Every role has one Molecule scenario, named after where the role runs.
+podman_service and podman_overview are tested through node_deploy's, which
+deploys a service with them:
 
 | Scenario | For roles that run on | Runs in | Make target |
 |---|---|---|---|
@@ -36,9 +38,10 @@ and every check ends with a `PASSED <role>: ...` line saying what it proved.
 
 Two more checks complete the picture:
 
-- `make lint`: current ansible-lint (production profile) plus a check that every
-  role documents its interface. Lint runs on a modern ansible-core, so it does
-  **not** prove a role works on 2.12; the Molecule tests do.
+- `make lint`: current ansible-lint (production profile), a check that every
+  role documents its interface, and ansible-doc loading every plugin and its
+  documentation. Lint runs on a modern ansible-core, so it does **not** prove a
+  role works on 2.12; the Molecule tests do.
 - `make test-native`: the roles that support Ubuntu 22.04 (`UBUNTU_ROLES` in the
   Makefile), run with Ubuntu's own `ansible-core` (2.12.0) and Podman (3.4)
   packages, after installing the release tarball the way a consumer does. The
@@ -96,8 +99,8 @@ molecule destroy -s server    # clean up when done
 - Install packages only when they are missing (see `roles/sudoers/tasks/main.yml`).
   The dnf module contacts every enabled repository even when the package is
   already installed, which fails on offline hosts.
-- Each role README has a "Server requirements" section saying exactly what the
-  server needs and when.
+- Each role README has a "What a server needs" (or "What the build machine
+  needs") section saying exactly what it needs and when.
 
 ### Role design
 
@@ -108,7 +111,7 @@ molecule destroy -s server    # clean up when done
 | Constructor parameters | Variables in `defaults/main.yml`, documented and validated in `meta/argument_specs.yml` |
 | Public methods | Extra entry points: `tasks/<name>.yml` plus an `argument_specs` entry, called with `include_role` and `tasks_from` |
 | Private members (by convention) | Task files without an `argument_specs` entry, and variables prefixed `__<role>_` |
-| Composition | Playbooks combine roles. No inheritance and no `meta/main.yml` dependencies. |
+| Composition | Playbooks combine roles, and a role may build on another with `import_role` (node_deploy on podman_service). No `meta/main.yml` dependencies. |
 
 - Prefix every public variable with the role name, e.g. `sudoers_rules`.
 - Document every public variable in `meta/argument_specs.yml`, with the same
@@ -117,7 +120,19 @@ molecule destroy -s server    # clean up when done
 - Defaults must not read files or run lookups that can fail: role argument
   validation evaluates every default before the first task runs. Read files in tasks.
 - When a role is meant for people who don't write Ansible, also ship a playbook in
-  `playbooks/`, so it runs as `ansible-playbook acme.infra.<name>`.
+  `playbooks/`, so it runs as `ansible-playbook aslib.infra.<name>`.
+- Name roles by area: `podman_` for any container image, `node_` for what
+  Node.js projects add on top.
+
+### Plugins
+
+- Plugins (`plugins/<type>/`) run on the Ansible machine, with the Python of the
+  oldest supported ansible-core (3.8 for 2.12): no newer syntax.
+- Document them in `DOCUMENTATION`; `make lint` loads it with ansible-doc.
+- Callbacks support both result APIs: `result`, `task` and `host` (ansible-core
+  2.19 and newer) and `_result`, `_task` and `_host` (older); see
+  `plugins/callback/run_log.py`.
+- Test them through a role's scenario: run_log is tested in node_setup's.
 
 ## CI
 
@@ -149,8 +164,8 @@ nothing, on purpose: nothing ships untested.
 never anything untested:
 
 - **Any branch but main: a branch build**, for trying out work in progress:
-  `acme-infra.<branch>.<commit>.<UTC time>.tgz`, e.g.
-  `acme-infra.claude.node_backend_utils.535120ce57bfa574c73e03ea2f06adccd0656298.202610021438.tgz`
+  `aslib-infra.<branch>.<commit>.<UTC time>.tgz`, e.g.
+  `aslib-infra.claude.node_backend_utils.535120ce57bfa574c73e03ea2f06adccd0656298.202610021438.tgz`
   (`/` in the branch name becomes `.`). It is the same tarball as a release,
   with the version from `galaxy.yml` inside. On GitHub it is an artifact of the
   workflow run (Actions > the run > Artifacts), kept 7 days, and a newer build
@@ -158,7 +173,7 @@ never anything untested:
   artifact, kept 7 days.
 - **main: a release.** CI gives it the next patch version after the latest
   `vX.Y.Z` tag (`dev/ci/next-version.sh`), creates that tag and publishes
-  `acme-infra-X.Y.Z.tar.gz`: as a GitHub release, or in GitLab's package
+  `aslib-infra-X.Y.Z.tar.gz`: as a GitHub release, or in GitLab's package
   registry with a GitLab release linking to it. To release a new minor or major
   version, raise `version` in `galaxy.yml`: CI uses it when it is higher than
   the next patch version. A breaking interface change means a new major version;

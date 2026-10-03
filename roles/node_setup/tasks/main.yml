@@ -6,13 +6,14 @@
     quiet: true
 
 # Named after the package, the same way node_image and node_deploy do it:
-# "@acme/orders-api" becomes the service acme-orders-api.
+# "@acme/orders-api" becomes the service acme-orders-api and the image acme/orders-api.
 - name: Work out the service name from package.json
   vars:
     __node_setup_package: "{{ lookup('file', node_setup_project ~ '/package.json') | from_json }}"
   ansible.builtin.set_fact:
     __node_setup_name: "{{ __node_setup_package.name }}"
     __node_setup_service: "{{ __node_setup_package.name | regex_replace('^@', '') | replace('/', '-') }}"
+    __node_setup_image: "{{ __node_setup_package.name | regex_replace('^@', '') }}"
     __node_setup_dir: "{{ node_setup_project }}/ansible"
 
 - name: Create the ansible directory
@@ -61,12 +62,13 @@
     dest: "{{ __node_setup_dir }}/container.env"
     mode: "0600"
     force: false
+  diff: false  # never print secrets
 
-# acme.infra's files: every run brings them up to date. A file that changes is
+# aslib.infra's files: every run brings them up to date. A file that changes is
 # kept as <file>.bak first (a single copy, git-ignored), so a local change is not
-# lost; changes that would help every project belong in acme.infra itself.
+# lost; changes that would help every project belong in aslib.infra itself.
 # None of them names the project, except the guide, README.md.
-- name: See which of acme.infra's files change
+- name: See which of aslib.infra's files change
   ansible.builtin.template:
     src: "{{ __node_setup_file.src }}"
     dest: "{{ __node_setup_dir }}/{{ __node_setup_file.dest }}"
@@ -78,10 +80,10 @@
   check_mode: true
   register: __node_setup_ours_check
 
-# A copy of node_deploy's own template, which the deploy renders.
+# A copy of podman_service's own template, which the deploy renders.
 - name: See whether the Quadlet template changes
   ansible.builtin.copy:
-    src: "{{ role_path }}/../node_deploy/templates/service.container.j2"
+    src: "{{ role_path }}/../podman_service/templates/service.container.j2"
     dest: "{{ __node_setup_dir }}/templates/service.container.j2"
     mode: "0644"
   check_mode: true
@@ -100,7 +102,7 @@
   loop_control:
     loop_var: __node_setup_changed
 
-- name: Write acme.infra's files
+- name: Write aslib.infra's files
   ansible.builtin.template:
     src: "{{ __node_setup_file.src }}"
     dest: "{{ __node_setup_dir }}/{{ __node_setup_file.dest }}"
@@ -112,7 +114,7 @@
 
 - name: Write the Quadlet template
   ansible.builtin.copy:
-    src: "{{ role_path }}/../node_deploy/templates/service.container.j2"
+    src: "{{ role_path }}/../podman_service/templates/service.container.j2"
     dest: "{{ __node_setup_dir }}/templates/service.container.j2"
     mode: "0644"
 

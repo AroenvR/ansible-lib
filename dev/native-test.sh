@@ -16,8 +16,8 @@ trap 'podman stop "$container" >/dev/null' EXIT
 podman exec "$container" systemctl is-system-running --wait >/dev/null || true
 
 podman exec "$container" sh -c "
-  mkdir -p /work/collections/ansible_collections/acme/infra &&
-  tar -xzf /src/$tarball -C /work/collections/ansible_collections/acme/infra"
+  mkdir -p /work/collections/ansible_collections/aslib/infra &&
+  tar -xzf /src/$tarball -C /work/collections/ansible_collections/aslib/infra"
 
 playbook() {
   podman exec --env ANSIBLE_COLLECTIONS_PATH=/work/collections \

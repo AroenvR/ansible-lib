@@ -1,16 +1,16 @@
 ---
 argument_specs:
   main:
-    short_description: Prepare a Node.js project for building and deploying with acme.infra
+    short_description: Prepare a Node.js project for building and deploying with aslib.infra
     description:
       - Writes an ansible/ directory into the project, for the project's git repository.
         Every later step (building the image, deploying it) runs from that directory.
       - The project's files, written once and never touched again - inventory.yml, the settings
         group_vars/all/project.yml (every setting at its default) and container.env (the container's
         settings and secrets, kept out of git; copied from the project's .env.production if there is one).
-      - acme.infra's files, brought up to date by every run - ansible.cfg, .gitignore, the guide README.md,
+      - aslib.infra's files, brought up to date by every run - ansible.cfg (which logs every run to logs/), .gitignore, the guide README.md,
         group_vars/all/defaults.yml (every setting at its default), the playbooks prebuild.yml, image.yml,
-        deploy.yml, site.yml, remove.yml and update-playbooks.yml, and the Quadlet template
+        deploy.yml, build-and-deploy.yml, remove.yml and update-playbooks.yml, and the Quadlet template
         templates/service.container.j2. A file that changes is kept as <file>.bak first (one copy).
       - Moves the group_vars/all.yml of an older setup to group_vars/all/project.yml.
       - Runs on any machine with ansible-core. Needs no network access.

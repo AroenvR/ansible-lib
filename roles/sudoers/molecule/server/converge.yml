@@ -4,7 +4,7 @@
   tasks:
     - name: Run sudoers
       ansible.builtin.include_role:
-        name: acme.infra.sudoers
+        name: aslib.infra.sudoers
       vars:
         sudoers_rules:
           - name: deploy_restart_app

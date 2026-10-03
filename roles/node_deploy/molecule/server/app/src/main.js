@@ -4,6 +4,7 @@
 // next to config/. GET / answers with its version, the GREETING from container.env,
 // a value from the config file, the TUNED variable the test adds to the project's
 // Quadlet template, the start count, its working directory and the size of /tmp.
+// It logs a line once it listens, which the overview test finds in its log.
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
@@ -31,4 +32,4 @@ http
       }),
     );
   })
-  .listen(process.env.PORT || 3000);
+  .listen(process.env.PORT || 3000, () => console.log(`deploy-test-app ${version} listens, start ${starts}`));

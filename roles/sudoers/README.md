@@ -1,16 +1,16 @@
-# acme.infra.sudoers
+# aslib.infra.sudoers
 
 Manage sudo rules as drop-in files in `/etc/sudoers.d/`. Every file is checked
 with `visudo` before it goes live; `/etc/sudoers` itself is never edited.
 
-## Server requirements
+## What a server needs
 
 - Nothing beyond the [baseline](../../README.md#what-a-managed-server-needs).
 - Package repository access **only** when `sudo` is not installed yet.
 
 ## Interface
 
-`ansible-doc -t role acme.infra.sudoers` shows every variable (source:
+`ansible-doc -t role aslib.infra.sudoers` shows every variable (source:
 [meta/argument_specs.yml](meta/argument_specs.yml)).
 
 ## Example
@@ -20,7 +20,7 @@ with `visudo` before it goes live; `/etc/sudoers` itself is never edited.
   hosts: app_servers
   become: true
   roles:
-    - role: acme.infra.sudoers
+    - role: aslib.infra.sudoers
       vars:
         sudoers_rules:
           - name: deploy_restart_app

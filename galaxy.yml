@@ -1,6 +1,6 @@
 ---
 # Collection metadata: identity, version and what ends up in the release tarball.
-namespace: acme
+namespace: aslib
 name: infra
 # Releases are made by CI from main: each gets the next patch version after the
 # latest v* tag, or this version when it is higher. Raise it here to release a
@@ -9,7 +9,7 @@ version: 0.1.0
 readme: README.md
 description: Tested building blocks for RHEL 9 and Ubuntu 22.04 servers.
 authors:
-  - Platform Team <platform@example.com>
+  - AroenvR (https://github.com/AroenvR)
 license_file: LICENSE
 tags:
   - linux
@@ -20,9 +20,10 @@ tags:
 # makes every consumer (including offline ones) ship that collection too.
 dependencies: {}
 
-repository: https://git.example.com/platform/acme-infra
+repository: https://github.com/AroenvR/ansible-lib
 
-# Development-only files never ship to consumers.
+# Development-only files never ship to consumers, nor what .gitignore keeps out
+# of git (ansible-galaxy does not read it), such as private files in tmp/.
 build_ignore:
   - AGENTS.md
   - build.yml
@@ -38,3 +39,8 @@ build_ignore:
   - dev
   - dist
   - roles/*/molecule
+  - tmp
+  - "*.tgz"
+  - "*.zip"
+  - "*.gpg"
+  - "*.bak"

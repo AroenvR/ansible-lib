@@ -1,0 +1,12 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml.
+podman_service_config_files: []
+podman_service_quadlet_template: ""
+podman_service_user: ""
+podman_service_uid: ""
+podman_service_dir: ""
+podman_service_port: 3000
+podman_service_bind_address: 127.0.0.1
+podman_service_container_port: 3000
+podman_service_tmp_size: 512m
+podman_service_remove_data: false

@@ -15,7 +15,7 @@ argument_specs:
         so native npm modules compile; it installs dependencies (C(npm ci) with package-lock.json, otherwise
         C(npm install)), runs C(npm run build) and removes dev dependencies. The runtime stage
         (ubi9/nodejs-<major>-minimal) has no compilers and runs as user 1001, which cannot change the app's files.
-      - Runs from the project's ansible/ directory (see acme.infra.node_setup); the project is its parent directory.
+      - Runs from the project's ansible/ directory (see aslib.infra.node_setup); the project is its parent directory.
         The ansible/ directory never goes into the image.
       - Writes the generated Containerfile and the image archive (C(podman save), OCI format) to I(node_image_output_dir).
         The image carries the labels org.opencontainers.image.title and .version (from package.json) and

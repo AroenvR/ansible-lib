@@ -1,0 +1,126 @@
+---
+# Only looks things up: changes nothing on the server.
+- name: Look up which account Ansible acts as on the server
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", user]
+
+- name: Check that Ansible acts as root
+  ansible.builtin.assert:
+    that: ansible_facts.user_uid == 0
+    fail_msg: >-
+      The overview reads every account's services, which takes root on {{ inventory_hostname }}.
+      Connect as root or with sudo; with sudo asking for a password, add --ask-become-pass.
+    quiet: true
+
+# podman_service's convention: /etc/containers/systemd/users/<UID>/<service>.container
+- name: Find the services' Quadlet files
+  ansible.builtin.find:
+    paths: /etc/containers/systemd/users
+    patterns: "*.container"
+    recurse: true
+    depth: 2
+  register: __podman_overview_quadlets
+
+- name: Look up the accounts
+  ansible.builtin.getent:
+    database: passwd
+
+# getent gives the passwd fields after the name: password, UID, GID, ...
+- name: Note the Quadlet files and the account of each UID
+  ansible.builtin.set_fact:
+    __podman_overview_found: "{{ __podman_overview_quadlets.files | map(attribute='path') | sort }}"
+    __podman_overview_accounts: >-
+      {{ dict(ansible_facts.getent_passwd.values() | map(attribute='1') | zip(ansible_facts.getent_passwd.keys())) }}
+    podman_overview_services: []
+    __podman_overview_report: []
+
+# As its account, which owns the service; an account that no longer exists gives
+# no state at all.
+- name: Look up the state of each service
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - --user={{ __podman_overview_accounts[__podman_overview_quadlet | dirname | basename] | default('') }}
+      - --
+      - env
+      - XDG_RUNTIME_DIR=/run/user/{{ __podman_overview_quadlet | dirname | basename }}
+      - systemctl
+      - --user
+      - show
+      - --property=ActiveState,SubState,StateChangeTimestamp,NRestarts
+      - "{{ __podman_overview_quadlet | basename | regex_replace('[.]container$', '') }}.service"
+    chdir: /
+  loop: "{{ __podman_overview_found }}"
+  loop_control:
+    loop_var: __podman_overview_quadlet
+  register: __podman_overview_states
+  changed_when: false
+  failed_when: false
+
+- name: Read the latest log lines of each service that does not run
+  ansible.builtin.command:
+    argv:
+      - journalctl
+      - --no-pager
+      - --lines={{ podman_overview_log_lines }}
+      - _SYSTEMD_USER_UNIT={{ __podman_overview_quadlet | basename | regex_replace('[.]container$', '') }}.service
+  loop: "{{ __podman_overview_found }}"
+  loop_control:
+    loop_var: __podman_overview_quadlet
+    index_var: __podman_overview_i
+  when:
+    - podman_overview_log_lines | int > 0
+    - __podman_overview_states.results[__podman_overview_i].stdout is not search('^ActiveState=active$', multiline=True)
+  register: __podman_overview_logs
+  changed_when: false
+
+- name: Read the image and the ports of each service
+  ansible.builtin.slurp:
+    src: "{{ __podman_overview_quadlet }}"
+  loop: "{{ __podman_overview_found }}"
+  loop_control:
+    loop_var: __podman_overview_quadlet
+  register: __podman_overview_files
+
+# systemctl show prints Property=value lines.
+- name: Put the overview together
+  ansible.builtin.set_fact:
+    podman_overview_services: "{{ podman_overview_services + [__podman_overview_service] }}"
+    __podman_overview_report: >-
+      {{ __podman_overview_report
+         + ['%s | %s | %s | ports %s | account %s (UID %s)' | format(
+              __podman_overview_service.name, __podman_overview_status, __podman_overview_service.image,
+              __podman_overview_service.ports | join(', ') or '-', __podman_overview_service.account or 'missing',
+              __podman_overview_service.uid)]
+         + __podman_overview_service.log | map('regex_replace', '^', '    ') | list }}
+  vars:
+    __podman_overview_lines: "{{ __podman_overview_states.results[__podman_overview_i].stdout_lines }}"
+    __podman_overview_state: >-
+      {{ dict(__podman_overview_lines | map('regex_replace', '=.*', '')
+              | zip(__podman_overview_lines | map('regex_replace', '^[^=]*=', ''))) }}
+    __podman_overview_file: "{{ __podman_overview_files.results[__podman_overview_i].content | b64decode }}"
+    __podman_overview_uid: "{{ __podman_overview_quadlet | dirname | basename }}"
+    __podman_overview_status: >-
+      {{ 'state unknown: no account, or its systemd does not run' if __podman_overview_service.state == 'unknown'
+         else '%s (%s) since %s, %s restarts' | format(__podman_overview_service.state, __podman_overview_service.substate,
+                                                       __podman_overview_service.since, __podman_overview_service.restarts) }}
+    __podman_overview_service:
+      name: "{{ __podman_overview_quadlet | basename | regex_replace('[.]container$', '') }}"
+      account: "{{ __podman_overview_accounts[__podman_overview_uid] | default('') }}"
+      uid: "{{ __podman_overview_uid }}"
+      state: "{{ __podman_overview_state.ActiveState | default('unknown') }}"
+      substate: "{{ __podman_overview_state.SubState | default('-') }}"
+      since: "{{ __podman_overview_state.StateChangeTimestamp | default('') }}"
+      restarts: "{{ __podman_overview_state.NRestarts | default('?') }}"
+      image: "{{ __podman_overview_file | regex_findall('^Image=(.*)$', multiline=True) | first | default('?') }}"
+      ports: "{{ __podman_overview_file | regex_findall('^PublishPort=(.*)$', multiline=True) }}"
+      log: "{{ __podman_overview_logs.results[__podman_overview_i].stdout_lines | default([]) }}"
+  loop: "{{ __podman_overview_found }}"
+  loop_control:
+    loop_var: __podman_overview_quadlet
+    index_var: __podman_overview_i
+    label: "{{ __podman_overview_quadlet }}"
+
+- name: Show the services, with the latest log lines of those that do not run
+  ansible.builtin.debug:
+    msg: "{{ __podman_overview_report or ['No services in /etc/containers/systemd/users/.'] }}"
