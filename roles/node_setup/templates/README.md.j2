@@ -11,7 +11,8 @@ and the acme.infra collection installed (see acme.infra's README).
 |---|---|---|
 | `ansible.cfg` | Points Ansible at `inventory.yml` | Yes |
 | `inventory.yml` | The servers to deploy to | Yes |
-| `group_vars/all.yml` | The settings: port, directories, account, and more | Yes |
+| `group_vars/all.yml` | The settings: download sources, port, directories, account, and more | Yes |
+| `prebuild.yml` | Installs node_modules for development, in a throwaway container | Yes |
 | `image.yml`, `deploy.yml`, `site.yml`, `remove.yml` | The playbooks: build, deploy, both in one go, remove | Yes |
 | `templates/service.container.j2` | The Quadlet file: how Podman and systemd run the service | Yes |
 | `container.env` | The container's settings and secrets, first copied from `../.env.production` if the project has one | **No** |
@@ -26,16 +27,18 @@ its name and version from package.json whenever they run.
 ansible-playbook image.yml
 ```
 
-This needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04) and network access to
-the container and npm registries. The image lands in `images/` as
+This needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04) and access to the
+download sources below. The image lands in `images/` as
 `{{ __node_setup_service }}-<version>.tar`, with the version from package.json. What the project
 needs (the `build` and `start:prod` scripts, an optional `.nvmrc`) and the
 build options: `ansible-doc -t role acme.infra.node_image`. This directory,
 `config/` and `.env` files never go into the image.
 
-Before building, check that everything the app imports is in `dependencies`:
-the image installs `devDependencies` for the build only. `npm ci --omit=dev &&
-npm run start:prod` shows a missing one ("Cannot find module") on your machine.
+Before building, check that everything the app imports is in `dependencies`,
+and not in `devDependencies` as well: the image installs `devDependencies` for
+the build only, and npm counts a package in both lists as a devDependency (the
+build stops when it finds one). `npm ci --omit=dev && npm run start:prod` shows
+a missing one ("Cannot find module") on your machine.
 
 ## 2. Configure
 
@@ -111,6 +114,43 @@ This removes everything the deploy created on each server: the service, its
 account (with its home directory and images), the Quadlet and environment files,
 the image archives and `/opt/{{ __node_setup_service }}/`, **the app's data included**. Copy that
 directory first if you need it. A deploy afterwards starts from scratch.
+
+## node_modules for development
+
+```sh
+ansible-playbook prebuild.yml
+```
+
+Installing dependencies runs code from every package (install scripts), so
+this runs npm in a throwaway container of the image build's builder image
+instead of on this machine. The container gets `package.json`,
+`package-lock.json` and `.npmrc`, nothing else, and is removed afterwards. Only
+once the install has succeeded, the current `node_modules` is saved as
+`node_modules.<UTC time>.bak.tgz` and replaced. To go back:
+
+```sh
+cd .. && rm -rf node_modules && tar -xzf node_modules.<UTC time>.bak.tgz
+```
+
+The backups stay until you delete them; keep them out of git (`*.tgz` or
+`node_modules.*.bak.tgz` in the project's `.gitignore`). The result fits Linux
+machines with the same Node.js version as `.nvmrc`.
+
+## Download sources
+
+What `prebuild.yml` and `image.yml` download, and where to point each one in an
+offline environment. `deploy.yml` downloads nothing.
+
+| What | From | Change it with |
+|---|---|---|
+| Red Hat's Node.js images | `registry.access.redhat.com` | `node_image_registry` in `group_vars/all.yml` |
+| npm packages | npm's registry | `registry=` in the project's `.npmrc`, which npm uses for all its settings |
+| Node.js headers, to compile native modules | `https://nodejs.org/dist` | `node_image_node_dist_url` in `group_vars/all.yml` |
+| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | Red Hat's UBI repositories | Base images of your own, set up with your repositories |
+
+Some packages download prebuilt binaries in their install scripts (`sqlite3`
+from GitHub, for example); without access they compile from source, which
+needs only the Node.js headers.
 
 ## In a pipeline
 

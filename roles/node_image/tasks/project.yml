@@ -1,0 +1,56 @@
+---
+# Shared by the image build (main.yml) and the node_modules entry point: checks
+# Podman and the project, and works out the Node.js version and Red Hat's images for it.
+- name: Look up the Podman version on this machine
+  ansible.builtin.command: podman --version
+  register: __node_image_podman
+  changed_when: false
+  failed_when: false
+
+- name: Check that Podman 3.4 or newer is installed
+  ansible.builtin.assert:
+    that:
+      - __node_image_podman.rc == 0
+      - __node_image_podman.stdout.split()[-1] is version('3.4', '>=')
+    fail_msg: >-
+      This needs Podman 3.4 or newer on this machine (found: {{ __node_image_podman.stdout | default('none', true) }}).
+      On RHEL 9: dnf install podman. On Ubuntu 22.04: apt install podman.
+    quiet: true
+
+- name: Check the project has a package.json
+  ansible.builtin.assert:
+    that: (node_image_source ~ '/package.json') is file
+    fail_msg: "No package.json in {{ node_image_source }}. Run this from the project's ansible/ directory."
+    quiet: true
+
+# .nvmrc and package-lock.json are optional. .nvmrc holds a version (24, v24.3.0)
+# or an LTS line (lts/*, lts/krypton), see vars/main.yml.
+- name: Read package.json, and .nvmrc if there is one
+  vars:
+    __node_image_nvmrc: >-
+      {{ (lookup('file', node_image_source ~ '/.nvmrc') if (node_image_source ~ '/.nvmrc') is file else node_image_node_version)
+      | string | trim | lower }}
+  ansible.builtin.set_fact:
+    __node_image_package: "{{ lookup('file', node_image_source ~ '/package.json') | from_json }}"
+    __node_image_has_lockfile: "{{ (node_image_source ~ '/package-lock.json') is file }}"
+    __node_image_node_version: "{{ __node_image_lts_lines.get(__node_image_nvmrc, __node_image_nvmrc) | regex_replace('^v', '') }}"
+
+- name: Check the Node.js version
+  ansible.builtin.assert:
+    that: __node_image_node_version is match('^[0-9]+(\.|$)')
+    fail_msg: >-
+      .nvmrc needs a Node.js version such as 24 or v24.3.0, or one of
+      {{ __node_image_lts_lines.keys() | join(', ') }} (found '{{ __node_image_node_version }}').
+    quiet: true
+
+- name: Warn that installs without package-lock.json are not reproducible
+  ansible.builtin.debug:
+    msg: >-
+      No package-lock.json, so dependencies are resolved anew every time (npm install)
+      and two installs of the same code can differ. Commit package-lock.json to avoid that.
+  when: not __node_image_has_lockfile | bool
+
+- name: Work out Red Hat's Node.js images for this version
+  ansible.builtin.set_fact:
+    __node_image_builder: "{{ node_image_registry }}/ubi9/nodejs-{{ __node_image_node_version.split('.')[0] }}"
+    __node_image_runtime: "{{ node_image_registry }}/ubi9/nodejs-{{ __node_image_node_version.split('.')[0] }}-minimal"

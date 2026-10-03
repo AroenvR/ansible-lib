@@ -32,6 +32,7 @@ EnvironmentFile={{ node_deploy_service }}.env
 # The service's directory, where the app keeps its data.
 Volume={{ node_deploy_dir }}:/data:Z
 # The project's production config files, read-only in config/ next to the app.
+# /opt/app-root/src is a fixed path: the app's directory in Red Hat's Node.js images.
 Volume={{ node_deploy_dir }}/config:/opt/app-root/src/config:ro,Z
 # Hardening: a read-only root filesystem (/tmp stays writable), no capabilities,
 # no privilege escalation.

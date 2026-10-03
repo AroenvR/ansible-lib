@@ -33,7 +33,7 @@
     dest: "{{ __node_setup_dir }}/{{ __node_setup_file }}"
     mode: "0644"
     force: false
-  loop: [ansible.cfg, inventory.yml, group_vars/all.yml, site.yml, image.yml, deploy.yml, remove.yml, .gitignore]
+  loop: [ansible.cfg, inventory.yml, group_vars/all.yml, prebuild.yml, image.yml, deploy.yml, site.yml, remove.yml, .gitignore]
   loop_control:
     loop_var: __node_setup_file
 

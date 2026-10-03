@@ -71,6 +71,7 @@ service that starts at boot, from a laptop or from a pipeline. In short:
 
 ```sh
 cd ansible
+ansible-playbook prebuild.yml # node_modules for development, installed in a throwaway container
 ansible-playbook image.yml    # build images/<name>-<version>.tar
 ansible-playbook deploy.yml   # install and start it on the servers in inventory.yml
 ansible-playbook site.yml     # both in one go, also for a new version
@@ -121,7 +122,7 @@ role's README says so.
 |---|---|---|---|
 | [sudoers](roles/sudoers/README.md) | sudo rules as validated drop-in files | Servers | Only if sudo is missing |
 | [node_setup](roles/node_setup/README.md) | Prepares a Node.js project: its `ansible/` directory with settings, inventory, playbooks and guide | The project's machine | No |
-| [node_image](roles/node_image/README.md) | Production container image of a Node.js project | The build machine | Yes, during the build |
+| [node_image](roles/node_image/README.md) | Production container image of a Node.js project, and its node_modules for development, built in containers | The build machine | Yes, from sources you choose |
 | [node_deploy](roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | No |
 
 Every role documents its variables; read them offline with
@@ -130,11 +131,12 @@ Every role documents its variables; read them offline with
 ## Ready-made playbooks
 
 For people who don't write Ansible: run these by name, no playbook of your own
-needed. The `image.yml`, `deploy.yml` and `remove.yml` that node_setup writes import the last three.
+needed. The `prebuild.yml`, `image.yml`, `deploy.yml` and `remove.yml` that node_setup writes import the last four.
 
 | Playbook | Run it from | What it does |
 |---|---|---|
 | `ansible-playbook acme.infra.node_setup` | The project's root | Writes `ansible/` into the Node.js project, see [node_setup](roles/node_setup/README.md) |
+| `ansible-playbook acme.infra.node_prebuild` | `ansible/` | Prepares the project for development: node_modules from a throwaway container, see [node_image](roles/node_image/README.md#node_modules-for-development) |
 | `ansible-playbook acme.infra.node_image` | `ansible/` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
 | `ansible-playbook acme.infra.node_deploy` | `ansible/` | Deploys that image to the servers, or a newer version over the old one, see [node_deploy](roles/node_deploy/README.md) |
 | `ansible-playbook acme.infra.node_remove` | `ansible/` | Removes the service from the servers, data included, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |

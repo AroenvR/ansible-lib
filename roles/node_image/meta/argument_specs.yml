@@ -4,7 +4,8 @@ argument_specs:
     short_description: Build a production container image of a Node.js project with Podman.
     description:
       - Runs on the machine where Ansible runs (the build machine) and needs Podman 3.4 or newer there.
-      - Needs package.json with C(name), C(version) and the scripts C(build) and C(start:prod) (the NestJS convention).
+      - Needs package.json with C(name), C(version) and the scripts C(build) and C(start:prod) (the NestJS convention),
+        and no package in both C(dependencies) and C(devDependencies) (npm would leave it out of the image).
         The image is tagged C(name):C(version) and starts with C(npm run start:prod).
       - Takes the Node.js major version from .nvmrc, or I(node_image_node_version) when there is none.
         .nvmrc may hold a version (C(24), C(v24.3.0)) or an LTS line (C(lts/*), C(lts/jod), C(lts/krypton));
@@ -18,8 +19,11 @@ argument_specs:
       - Writes the generated Containerfile and the image archive (C(podman save), OCI format) to I(node_image_output_dir).
         The image carries the labels org.opencontainers.image.version (from package.json) and
         org.opencontainers.image.revision (the project's git commit, if it is a git checkout).
-      - Needs network access during the build to I(node_image_registry), I(node_image_npm_registry) and,
-        for native modules, nodejs.org (node-gyp downloads the Node.js headers).
+      - Downloads, each from a source you can point at a mirror. The base images from I(node_image_registry).
+        npm packages from the registry in the project's .npmrc (npm's default without one); npm takes all its
+        settings from there. The Node.js headers for native modules from I(node_image_node_dist_url).
+        The RPMs in I(node_image_build_packages) and I(node_image_runtime_packages), if any, from the UBI
+        repositories the base images are set up with.
     options:
       node_image_source:
         type: str
@@ -58,8 +62,40 @@ argument_specs:
       node_image_registry:
         type: str
         default: registry.access.redhat.com
-        description: Registry holding the ubi9/nodejs-<major> images. Point it at an internal mirror if needed.
-      node_image_npm_registry:
+        description: Registry, with an optional path, holding Red Hat's ubi9/nodejs-<major> and ubi9/nodejs-<major>-minimal
+          images, e.g. a mirror such as C(mirror.example.com/redhat).
+      node_image_node_dist_url:
         type: str
-        default: https://registry.npmjs.org/
-        description: npm registry used during the build. Point it at an internal proxy if needed.
+        default: https://nodejs.org/dist
+        description: Where node-gyp downloads the Node.js headers to compile native modules, laid out like
+          nodejs.org/dist (C(v24.3.0/node-v24.3.0-headers.tar.gz)). Point it at a mirror if needed.
+  node_modules:
+    short_description: Install a Node.js project's dependencies into node_modules in a throwaway container
+    description:
+      - Installs the dependencies, devDependencies included, without running npm or the packages' install scripts on
+        this machine. They run in a container of the builder image the image build uses (ubi9/nodejs-<major>, the
+        major version from .nvmrc), which gets package.json, package-lock.json and .npmrc and nothing else of this
+        machine, has no capabilities, and is removed afterwards. C(npm ci) with package-lock.json, otherwise
+        C(npm install); npm takes its registry and other settings from the project's .npmrc.
+      - Only once the install has succeeded, the current node_modules is saved as
+        node_modules.<UTC yyyymmddHHMMSS>.bak.tgz in the project and replaced by the new one.
+      - The result is for this machine if it runs Linux with glibc 2.34 or newer (RHEL 9, Ubuntu 22.04) and the
+        same Node.js major version, as native modules are compiled in the container.
+      - Runs from the project's ansible/ directory, like the image build, and needs Podman 3.4 or newer.
+    options:
+      node_image_source:
+        type: str
+        default: "{{ lookup('env', 'PWD') | dirname }}"
+        description: Project directory with package.json. Defaults to the parent of the current directory.
+      node_image_node_version:
+        type: str
+        default: "24"
+        description: Node.js major version used when the project has no .nvmrc, or one saying C(lts/*).
+      node_image_registry:
+        type: str
+        default: registry.access.redhat.com
+        description: Registry, with an optional path, holding Red Hat's ubi9/nodejs-<major> images.
+      node_image_node_dist_url:
+        type: str
+        default: https://nodejs.org/dist
+        description: Where node-gyp downloads the Node.js headers to compile native modules.

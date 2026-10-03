@@ -8,13 +8,19 @@ The image is built in two stages on Red Hat UBI 9. Native npm modules compile in
 the build stage, which has gcc, g++, make and Python 3. The final image has no
 compilers, runs as an unprivileged user (1001) that cannot change the app's
 files, and starts the server as soon as the container starts. Inside it, the
-app lives in `/opt/app-root/src`, where Red Hat's Node.js images keep it.
+app lives in `/opt/app-root/src`: a fixed path, where Red Hat's Node.js images
+keep the app (their `APP_ROOT` is `/opt/app-root`, `HOME` `/opt/app-root/src`).
+
+The same builder image also installs node_modules for development, see
+[below](#node_modules-for-development).
 
 ## What your project needs
 
 - `package.json` with a `name`, a `version` and the scripts `build` and
   `start:prod`, as every NestJS project has. The image is tagged
   `<name>:<version>` (a leading `@` is dropped) and starts with `npm run start:prod`.
+  No package may be in both `dependencies` and `devDependencies`: npm counts
+  it as a devDependency and leaves it out of the image, so the build stops.
 - Optional, recommended: `package-lock.json`. With it dependencies are installed
   with `npm ci`, exactly as locked; without it `npm install` resolves them anew
   on every build, so two builds of the same code can differ.
@@ -37,10 +43,22 @@ app lives in `/opt/app-root/src`, where Red Hat's Node.js images keep it.
   (`dnf install podman ansible-core`) and Ubuntu 22.04
   (`apt install podman ansible-core`) both work. Then install the collection as
   described in the [collection README](../../README.md#get-it).
-- Network access during the build to `registry.access.redhat.com` (base images),
-  the npm registry, `nodejs.org` (node-gyp downloads the Node.js headers for
-  native modules) and anything your dependencies download in their install
-  scripts. The first two can point at internal mirrors, see Options.
+- Access to the download sources below, or to mirrors of them.
+
+## Download sources
+
+Everything the build downloads, and where to point it in an offline environment:
+
+| What | From | Change it with |
+|---|---|---|
+| Red Hat's `ubi9/nodejs-<major>` and `-minimal` images | `registry.access.redhat.com` | `node_image_registry`, e.g. `mirror.example.com/redhat` |
+| npm packages | npm's registry | the project's `.npmrc` (`registry=...`); npm takes all its settings from there |
+| Node.js headers, for native modules | `https://nodejs.org/dist` | `node_image_node_dist_url` |
+| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | Red Hat's UBI repositories | base images of your own, set up with your repositories |
+
+Some packages download prebuilt binaries in their install scripts (`sqlite3`
+from GitHub, for example); without access they compile from source instead,
+which needs only the Node.js headers.
 
 ## Build
 
@@ -69,6 +87,29 @@ podman run --rm --publish 127.0.0.1:3000:3000 --env-file container.env \
 RHEL; note that `U` changes the owner of everything in it.
 
 Running it again without changes reuses the cached build and leaves the archive alone.
+
+## node_modules for development
+
+```sh
+ansible-playbook prebuild.yml    # or: ansible-playbook acme.infra.node_prebuild
+```
+
+Installing dependencies runs code from every package (install scripts). This
+runs npm (`npm ci`, or `npm install` without a lockfile, devDependencies
+included) in a throwaway container of the builder image instead of on your
+machine. The container gets copies of `package.json`, `package-lock.json` and
+`.npmrc` and nothing else: no mounts, no capabilities. `node_modules` is copied
+out of it, and it is removed. Only then is the current
+`node_modules` saved as `node_modules.<UTC yyyymmddHHMMSS>.bak.tgz` and
+replaced, so a failed install changes nothing. To go back to a backup:
+
+```sh
+rm -rf node_modules && tar -xzf node_modules.20261003141502.bak.tgz
+```
+
+Native modules are compiled in the container, for Linux with glibc 2.34 or
+newer and the Node.js version of `.nvmrc`. The backups are never sent to the
+image build; keep them out of git as well.
 
 ## Options
 

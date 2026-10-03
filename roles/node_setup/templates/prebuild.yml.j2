@@ -1,0 +1,7 @@
+---
+# Prepares the project on this machine for development: installs its dependencies
+# into node_modules in a throwaway container, so the packages' install scripts
+# never run here. The previous node_modules is kept as node_modules.<time>.bak.tgz.
+#   ansible-playbook prebuild.yml
+- name: Prepare the project
+  ansible.builtin.import_playbook: acme.infra.node_prebuild

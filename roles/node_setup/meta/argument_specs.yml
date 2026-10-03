@@ -6,7 +6,7 @@ argument_specs:
       - Writes an ansible/ directory into the project, for the project's git repository.
         Every later step (building the image, deploying it) runs from that directory.
       - It holds ansible.cfg, an inventory of the servers, the project's settings
-        (group_vars/all.yml), the playbooks image.yml, deploy.yml, site.yml and remove.yml,
+        (group_vars/all.yml), the playbooks prebuild.yml, image.yml, deploy.yml, site.yml and remove.yml,
         the Quadlet template templates/service.container.j2, an environment file for the
         container's settings and secrets (container.env, kept out of git; copied from the
         project's .env.production if there is one) and a guide, README.md.

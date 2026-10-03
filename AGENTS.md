@@ -20,7 +20,9 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 - **Only `ansible.builtin`.** Any other collection is a dependency for every
   consumer; ask the maintainer first.
 - **Offline servers.** Never assume internet access. Every repository, key or
-  download URL is a role variable with an upstream default. Install packages only
+  download URL is a role variable with an upstream default (npm's settings come
+  from the project's `.npmrc`), listed in the guide's "Download sources" table
+  (node_setup's README.md.j2) and node_image's README. Install packages only
   when missing (the dnf module contacts every enabled repository even for
   installed packages). Each role README states exactly what the server needs.
 - **Podman, never Docker.**
@@ -98,7 +100,8 @@ source of truth.
   root is the repository root), excluding `.git/`, `.venv/`, `dist/` and tool
   caches. The maintainer overwrites their checkout with it, so every file in the
   zip replaces theirs. With each zip, list the changed files and any files to
-  delete (overwriting never deletes), and give a commit message for it.
+  delete (overwriting never deletes), and give a commit message for it: plain
+  text, without attribution trailers (no Co-Authored-By, no session links).
 - **Verify from a clean state** before delivering: fresh venvs, empty pip and
   Molecule caches, a git checkout. A cached pip wheel once hid a CI failure.
 - **Communication.** Be concise and end replies with a `TL;DR:` section. The
@@ -173,18 +176,33 @@ source of truth.
 - Rootless Podman can relabel (`:Z`) only files the account owns, so everything
   mounted into a service's container belongs to its account, the config files too.
   No test environment has SELinux enforcing; only a real RHEL server shows mistakes here.
+- npm counts a package listed in both `dependencies` and `devDependencies` as a
+  devDependency: `npm prune --omit=dev` removes it without a word (npm 10.9 and
+  11.21), and the app fails with "Cannot find module". node_image refuses such a
+  package.json. A stale lockfile alone does not cause this: prune recomputes the flags.
+- `npm_config_*` environment variables override the project's `.npmrc`; never set
+  one for a setting a project may want to choose (the registry, above all).
+- node-gyp reads its options from `npm_package_config_node_gyp_<option>` (and the
+  deprecated `npm_config_<option>`, which npm 11 warns about: "Unknown env config").
+- Binary output (a tar stream) cannot go through a module's stdout, which is
+  text: redirect it to a file in the shell command.
+- Podman 3.4 (Ubuntu 22.04) cuts the output of `podman run --interactive` short
+  (30 MB came out as 172 kB, with exit code 0) and can hang. Move files in and
+  out of a container with `podman cp`, run it with `podman start` and `podman wait`.
 - Ansible doubles backslashes inside `{{ }}` (2.12, 2.14), so regular expressions
   in Jinja string literals behave differently than in variables. Put patterns
   and replacements in variables.
 
 ## Status
 
-Last updated 2026-10-02.
+Last updated 2026-10-03.
 
-- GitHub Actions: run #21 passed everything (runuser instead of `-M`, updates,
-  removal). The maintainer then built and deployed a NestJS project, which failed
-  for lack of its config: hence config files, `.env.production` and the
-  project's Quadlet template, not yet run in CI.
+- GitHub Actions: run #22 passed everything (config files, `.env.production`,
+  the project's Quadlet template). The maintainer's NestJS project then failed
+  with "Cannot find module 'fs-extra'", which a package in both dependency lists
+  explains; node_image now refuses that. Also new and not yet run in CI:
+  prebuild.yml (node_modules from a throwaway container) and the download sources
+  (`.npmrc` instead of `node_image_npm_registry`, `node_image_node_dist_url`).
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
 - Releases, decided with the maintainer: CI runs on every push to every branch
@@ -216,6 +234,9 @@ Last updated 2026-10-02.
     127.0.0.1 by default (a containerized Nginx will sit in front later), ports
     3000-3999. `/opt/<service>/` on the server is the service's own directory,
     mounted at `/data`; the app may create anything in it.
+  - prebuild.yml (playbook acme.infra.node_prebuild) prepares a project for
+    development, each step a task there. More steps will come (an idea of the
+    maintainer's: creating a sqlcipher .db file); do not add any unasked.
   - Next, together with the maintainer: a containerized Claude Code service,
     which must get an account (and UID) of its own like every service.
 - Open: placeholders (`acme` namespace, `LICENSE`, URLs in `galaxy.yml`,

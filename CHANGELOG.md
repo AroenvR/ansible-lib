@@ -9,11 +9,17 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Added role `node_image` and playbook `acme.infra.node_image`: build a
   production container image of a Node.js (e.g. NestJS) project on Red Hat UBI 9.
   `.nvmrc` may hold a version or an LTS line (`lts/*`, `lts/jod`, ...).
-  `config/` stays out of the image: the deploy provides it.
+  `config/` stays out of the image: the deploy provides it. npm takes its
+  registry and other settings from the project's `.npmrc`; the base images and
+  the Node.js headers come from `node_image_registry` and `node_image_node_dist_url`.
+  The build stops when a package is in both `dependencies` and `devDependencies`.
   Tested with NestJS 10, 11, 12 and NestJS's default branch.
+- Added playbook `acme.infra.node_prebuild` and the `node_modules` entry point of
+  `node_image`: install a project's node_modules in a throwaway container,
+  keeping the previous one as `node_modules.<time>.bak.tgz`.
 - Added role `node_setup` and playbook `acme.infra.node_setup`: prepare a
   Node.js project with an `ansible/` directory (ansible.cfg, inventory, settings
-  in group_vars, the playbooks image.yml, deploy.yml, site.yml and remove.yml, the
+  in group_vars, the playbooks prebuild.yml, image.yml, deploy.yml, site.yml and remove.yml, the
   Quadlet template templates/service.container.j2, a git-ignored environment file,
   copied from .env.production if there is one, and a guide). Building and deploying
   run from there. Only the guide names the project.

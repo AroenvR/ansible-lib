@@ -18,6 +18,7 @@
           - lookup('file', __node_setup_test_dir ~ '/ansible.cfg') is search('^inventory = inventory\.yml$', multiline=True)
           - (lookup('file', __node_setup_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
           - lookup('file', __node_setup_test_dir ~ '/group_vars/all.yml') is search('node_deploy_config_files: config/production')
+          - lookup('file', __node_setup_test_dir ~ '/prebuild.yml') is search('import_playbook: acme.infra.node_prebuild')
           - lookup('file', __node_setup_test_dir ~ '/image.yml') is search('import_playbook: acme.infra.node_image')
           - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: acme.infra.node_deploy')
           - lookup('file', __node_setup_test_dir ~ '/site.yml') is search('import_playbook: image.yml')
@@ -43,7 +44,7 @@
     - name: Check the playbooks it wrote are valid
       ansible.builtin.command:
         argv: [ansible-playbook, --syntax-check, "{{ __node_setup_test_dir }}/{{ item }}"]
-      loop: [image.yml, deploy.yml, site.yml, remove.yml]
+      loop: [prebuild.yml, image.yml, deploy.yml, site.yml, remove.yml]
       changed_when: false
 
     - name: Change the project's files and damage the guide, as time would
