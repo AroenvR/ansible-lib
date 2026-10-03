@@ -12,6 +12,16 @@
 
     - name: Write its package.json, with a scoped name
       ansible.builtin.copy:
-        content: '{ "name": "@acme/orders-api", "version": "1.4.0" }'
+        content: '{ "name": "@acme/invoice-service", "version": "1.4.0" }'
         dest: "{{ node_setup_test_project }}/package.json"
         mode: "0644"
+
+    - name: Write its .env.production, in dotenv's format
+      ansible.builtin.copy:
+        content: |
+          # Production settings
+          DATABASE_CONFIG="config/db_config.json"
+          GREETING='hello, world'
+          PLAIN=as it is
+        dest: "{{ node_setup_test_project }}/.env.production"
+        mode: "0600"

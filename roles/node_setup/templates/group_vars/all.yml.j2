@@ -1,17 +1,17 @@
 ---
-# Settings for building and deploying {{ __node_setup_service }}. Uncomment a line to change
+# Settings for building and deploying the project. Uncomment a line to change
 # it. All options and their defaults: ansible-doc -t role acme.infra.node_image
 # (building) and ansible-doc -t role acme.infra.node_deploy (deploying).
+# The service is named after package.json: "@acme/orders-api" becomes acme-orders-api.
 
 # Building: ansible-playbook image.yml
 # node_image_build_packages: [libpq-devel]   # RPMs a native module needs to compile
 # node_image_runtime_packages: [libpq]       # ...and at runtime
 
-# Deploying: ansible-playbook deploy.yml
+# Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
 # node_deploy_port: 3000                 # the service's port on the server
 # node_deploy_bind_address: 127.0.0.1    # 0.0.0.0 to reach it from other machines
-# node_deploy_dir: /opt/{{ __node_setup_service }}        # the service's own directory, mounted at /data
-# node_deploy_user: {{ __node_setup_service }}            # the account the service runs as
+# node_deploy_config_files: config/production/*.json   # copied to config/ next to the app
+# node_deploy_dir: /opt/<service>        # the service's own directory, mounted at /data
+# node_deploy_user: <service>            # the account the service runs as
 # node_deploy_uid: 3001                  # fix that account's UID, e.g. the same on every server
-# node_deploy_container_options:         # more Quadlet [Container] lines
-#   - PodmanArgs=--memory=512m

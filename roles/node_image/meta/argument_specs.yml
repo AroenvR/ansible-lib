@@ -53,8 +53,8 @@ argument_specs:
         type: list
         elements: str
         default: []
-        description: Extra patterns kept out of the image, in .containerignore syntax. .git, node_modules, .env files
-          and the ansible/ directory are always excluded.
+        description: Extra patterns kept out of the image, in .containerignore syntax. .git, node_modules, .env files,
+          the ansible/ directory and config/ (which acme.infra.node_deploy provides on the server) are always excluded.
       node_image_registry:
         type: str
         default: registry.access.redhat.com

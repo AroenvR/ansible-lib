@@ -44,11 +44,11 @@
       vars:
         node_setup_project: "{{ node_deploy_test_project }}"
 
-    - name: Put a setting in the container's environment file
-      ansible.builtin.copy:
-        content: "GREETING=hello from container.env\n"
-        dest: "{{ node_deploy_test_project }}/ansible/container.env"
-        mode: "0600"
+    - name: Tune the project's Quadlet template, as a developer would
+      ansible.builtin.lineinfile:
+        path: "{{ node_deploy_test_project }}/ansible/templates/service.container.j2"
+        insertafter: '^\[Container\]$'
+        line: Environment=TUNED=yes
 
     - name: Run node_image
       ansible.builtin.include_role:

@@ -43,7 +43,9 @@
       ansible.builtin.assert:
         that:
           - __node_deploy_test_before.json.version == '1.0.0'
-          - __node_deploy_test_before.json.greeting == 'hello from container.env'
+          - __node_deploy_test_before.json.greeting == 'hello from .env.production'
+          - __node_deploy_test_before.json.config == 'config/production'
+          - __node_deploy_test_before.json.tuned == 'yes'
           - __node_deploy_test_files.results[0].stat.pw_name == 'deploy-test-app'
           - __node_deploy_test_files.results[0].stat.uid == 3001
           - __node_deploy_test_files.results[1].stat.mode == '0640'
@@ -51,7 +53,8 @@
           - __node_deploy_test_files.results[2].stat.exists
           - __node_deploy_test_after.json.starts > __node_deploy_test_before.json.starts
         success_msg: >-
-          PASSED node_deploy: the service answers on 127.0.0.1:3009 with the setting from container.env,
+          PASSED node_deploy: the service answers on 127.0.0.1:3009 with the setting from .env.production,
+          its production config and the line added to the project's Quadlet template,
           writes /opt/deploy-test-app as its own account (UID 3001), keeps its Quadlet and environment files
           in /etc/containers/systemd/users/3001/, and started by itself when the server restarted, with its
           data (start count {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).
@@ -66,6 +69,17 @@
         path: "{{ node_deploy_test_project }}/package.json"
         regexp: '"version": "1\.0\.0"'
         replace: '"version": "1.0.1"'
+
+    - name: Change a config file
+      ansible.builtin.copy:
+        content: '{ "source": "config/production, changed" }'
+        dest: "{{ node_deploy_test_project }}/config/production/app.json"
+        mode: "0644"
+
+    - name: Remove a config file
+      ansible.builtin.file:
+        path: "{{ node_deploy_test_project }}/config/production/old.json"
+        state: absent
 
     - name: Run node_image
       ansible.builtin.include_role:
@@ -99,6 +113,11 @@
         patterns: deploy-test-app-*.tar
       register: __node_deploy_test_archives
 
+    - name: Find the service's config files
+      ansible.builtin.find:
+        paths: /opt/deploy-test-app/config
+      register: __node_deploy_test_config
+
     - name: List the account's images
       ansible.builtin.command:
         argv:
@@ -114,16 +133,19 @@
       register: __node_deploy_test_images
       changed_when: false
 
-    - name: Check the new version runs with the old data, and only the new version is left
+    - name: Check the new version runs with the old data and the new config, and only the new version is left
       ansible.builtin.assert:
         that:
           - __node_deploy_test_new.json.version == '1.0.1'
+          - __node_deploy_test_new.json.config == 'config/production, changed'
+          - __node_deploy_test_config.files | map(attribute='path') | list == ['/opt/deploy-test-app/config/app.json']
           - __node_deploy_test_new.json.starts > __node_deploy_test_old.json.starts
           - __node_deploy_test_archives.files | map(attribute='path') | list == ['/opt/containers/images/deploy-test-app-1.0.1.tar']
           - __node_deploy_test_images.stdout_lines == ['localhost/deploy-test-app:1.0.1']
         success_msg: >-
           PASSED node_deploy update: version 1.0.1 answers with the data of 1.0.0 (start count
-          {{ __node_deploy_test_new.json.starts }}); the archive and image of 1.0.0 are gone.
+          {{ __node_deploy_test_new.json.starts }}) and the changed config file; the removed config file,
+          the archive and the image of 1.0.0 are gone.
 
 - name: Check the removal leaves the server as it was before the deploy
   hosts: all

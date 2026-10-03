@@ -72,7 +72,7 @@
       - env
       - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_account.uid }}
 
-- name: Create the image store, the account's Quadlet directory and the service's directory
+- name: Create the image store, the account's Quadlet directory, the service's directory and its config directory
   ansible.builtin.file:
     path: "{{ __node_deploy_directory.path }}"
     state: directory
@@ -83,6 +83,7 @@
     - { path: /opt/containers/images, owner: root, mode: "0755" }
     - { path: "/etc/containers/systemd/users/{{ __node_deploy_account.uid }}", owner: root, mode: "0755" }
     - { path: "{{ __node_deploy_dir }}", owner: "{{ __node_deploy_user }}", mode: "0750" }
+    - { path: "{{ __node_deploy_dir }}/config", owner: "{{ __node_deploy_user }}", mode: "0755" }
   loop_control:
     loop_var: __node_deploy_directory
     label: "{{ __node_deploy_directory.path }}"
@@ -108,13 +109,57 @@
   diff: false  # never print secrets
   notify: Restart the service
 
+# The config directory mirrors the project's config files (node_deploy_config_files),
+# mounted read-only next to the app. The files belong to the account, as Podman can
+# only relabel its own files for SELinux.
+- name: Find the project's config files, {{ node_deploy_config_files }}
+  ansible.builtin.set_fact:
+    __node_deploy_config_files: "{{ query('fileglob', (node_deploy_ansible_dir | dirname) ~ '/' ~ node_deploy_config_files) }}"
+
+- name: Copy the project's config files
+  ansible.builtin.copy:
+    src: "{{ __node_deploy_config_file }}"
+    dest: "{{ __node_deploy_dir }}/config/"
+    owner: "{{ __node_deploy_user }}"
+    group: "{{ __node_deploy_user }}"
+    mode: "0644"
+  loop: "{{ __node_deploy_config_files }}"
+  loop_control:
+    loop_var: __node_deploy_config_file
+    label: "{{ __node_deploy_config_file | basename }}"
+  notify: Restart the service
+
+- name: Find config files the project no longer has
+  ansible.builtin.find:
+    paths: "{{ __node_deploy_dir }}/config"
+    excludes: "{{ __node_deploy_config_files | map('basename') | list }}"
+  register: __node_deploy_stale_config
+
+- name: Remove config files the project no longer has
+  ansible.builtin.file:
+    path: "{{ __node_deploy_stale.path }}"
+    state: absent
+  loop: "{{ __node_deploy_stale_config.files }}"
+  loop_control:
+    loop_var: __node_deploy_stale
+    label: "{{ __node_deploy_stale.path | basename }}"
+  notify: Restart the service
+
+# The project's own template (ansible/templates/service.container.j2, from node_setup)
+# if it has one, else the role's. Both see the names in use under public names.
 - name: Install the Quadlet file of the service {{ __node_deploy_service }}
   ansible.builtin.template:
-    src: service.container.j2
+    src: "{{ __node_deploy_template if __node_deploy_template is file else 'service.container.j2' }}"
     dest: /etc/containers/systemd/users/{{ __node_deploy_account.uid }}/{{ __node_deploy_service }}.container
     owner: root
     group: root
     mode: "0644"
+  vars:
+    __node_deploy_template: "{{ node_deploy_ansible_dir }}/templates/service.container.j2"
+    node_deploy_service: "{{ __node_deploy_service }}"
+    node_deploy_image: "{{ __node_deploy_image }}"
+    node_deploy_user: "{{ __node_deploy_user }}"
+    node_deploy_dir: "{{ __node_deploy_dir }}"
   notify: [Make systemd read the Quadlet file, Restart the service]
 
 - name: Load the image and restart the service now, where needed

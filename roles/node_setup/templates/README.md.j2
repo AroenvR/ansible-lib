@@ -13,8 +13,12 @@ and the acme.infra collection installed (see acme.infra's README).
 | `inventory.yml` | The servers to deploy to | Yes |
 | `group_vars/all.yml` | The settings: port, directories, account, and more | Yes |
 | `image.yml`, `deploy.yml`, `site.yml`, `remove.yml` | The playbooks: build, deploy, both in one go, remove | Yes |
-| `container.env` | The container's settings and secrets | **No** |
+| `templates/service.container.j2` | The Quadlet file: how Podman and systemd run the service | Yes |
+| `container.env` | The container's settings and secrets, first copied from `../.env.production` if the project has one | **No** |
 | `images/` | The built images | No |
+
+Only this guide names the project; the other files fit any project and take
+its name and version from package.json whenever they run.
 
 ## 1. Build the image
 
@@ -26,8 +30,8 @@ This needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04) and network access to
 the container and npm registries. The image lands in `images/` as
 `{{ __node_setup_service }}-<version>.tar`, with the version from package.json. What the project
 needs (the `build` and `start:prod` scripts, an optional `.nvmrc`) and the
-build options: `ansible-doc -t role acme.infra.node_image`. This directory
-never goes into the image.
+build options: `ansible-doc -t role acme.infra.node_image`. This directory,
+`config/` and `.env` files never go into the image.
 
 Before building, check that everything the app imports is in `dependencies`:
 the image installs `devDependencies` for the build only. `npm ci --omit=dev &&
@@ -35,9 +39,17 @@ npm run start:prod` shows a missing one ("Cannot find module") on your machine.
 
 ## 2. Configure
 
-- `container.env`: the environment variables the app gets, one `KEY=value` per line.
+- `container.env`: the environment variables the app gets, one `KEY=value` per
+  line, without quotes (Podman would pass them on). If the project has a
+  `.env.production`, the setup copied it here without the quotes. If it sets
+  `PORT`, set `node_deploy_container_port` in `group_vars/all.yml` to the same port.
+- `../config/production/*.json`: the app's config files. The deploy copies them
+  to the server, where the app finds them read-only in `config/`, next to it.
 - `group_vars/all.yml`: the port on the server, the service's directory, its
   account and more. All are commented out at their defaults.
+- `templates/service.container.j2`: the Quadlet file, for anything else, e.g. a
+  memory limit (`PodmanArgs=--memory=512m`). The deploy fills in the names and
+  the version.
 - `inventory.yml`: the servers. It lists this machine by default.
 
 ## 3. Deploy
@@ -52,7 +64,8 @@ The deploy works as root (through sudo) and, on each server:
    services while nobody is logged in (`loginctl enable-linger`);
 2. copies the image to `/opt/containers/images/` and loads it into that account's Podman;
 3. creates `/opt/{{ __node_setup_service }}/`, the service's directory, mounted at `/data`
-   in the container and owned by the account;
+   in the container and owned by the account, and copies the config files to its
+   `config/` directory (removing files the project no longer has);
 4. installs `container.env` and the Quadlet file `{{ __node_setup_service }}.container` in
    `/etc/containers/systemd/users/<the account's UID>/`;
 5. starts the service, or restarts it when something changed, and waits until it
@@ -85,7 +98,8 @@ ansible-playbook site.yml                # image.yml, then deploy.yml
 The deploy loads the new image, restarts the service and waits until it answers.
 It keeps only the version it deployed: other versions' archives in
 `/opt/containers/images/` and the account's unused images are removed. A change
-to `container.env` or `group_vars/all.yml` alone needs only `ansible-playbook deploy.yml`.
+to `container.env`, the config files, `group_vars/all.yml` or the Quadlet
+template alone needs only `ansible-playbook deploy.yml`.
 
 ## Removing it
 
@@ -117,5 +131,6 @@ ansible-playbook deploy.yml
 ## Updating acme.infra
 
 Install the newer release, then run `ansible-playbook acme.infra.node_setup`
-again from the project root to get its guide. To compare one of your files with
-the newest defaults, move it away and run the setup: it writes a fresh copy.
+again from the project root to get its guide, and any file this directory does
+not have yet. To compare one of your files with the newest defaults, move it
+away and run the setup: it writes a fresh copy.

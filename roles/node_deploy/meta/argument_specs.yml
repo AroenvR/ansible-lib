@@ -11,8 +11,11 @@ argument_specs:
         The Quadlet file and the container's environment file are in
         /etc/containers/systemd/users/<the account's UID>/, managed by root. The service's own
         directory (/opt/<service> by default) is mounted at /data and belongs to the account.
-      - Starts the service, or restarts it when the image, the settings or the Quadlet file changed,
-        then waits until it answers HTTP requests. If it does not, the deploy fails and shows its log.
+      - The Quadlet file comes from the project's ansible/templates/service.container.j2 (written by
+        acme.infra.node_setup, for the project to tune) or, without one, from this role.
+      - Starts the service, or restarts it when the image, the settings, the config files or the Quadlet file
+        changed, then waits until it answers HTTP requests. If it does not, the deploy fails and shows its log.
+        A deploy of a new version removes the archives and images of the previous ones.
       - The container runs with a read-only root filesystem (/tmp stays writable), no capabilities and
         no privilege escalation, and starts again after a reboot.
       - Servers need RHEL 9.2 or newer with Podman 4.4 or newer (Quadlet) installed. No network access is needed.
@@ -51,12 +54,14 @@ argument_specs:
         type: int
         default: 3000
         description: The port the app listens on inside the container, node_image_port of acme.infra.node_image.
-      node_deploy_container_options:
-        type: list
-        elements: str
-        default: []
-        description: Extra lines for the [Container] section of the Quadlet file, e.g. C(PodmanArgs=--memory=512m).
-          See man podman-systemd.unit.
+      node_deploy_config_files:
+        type: str
+        default: config/production/*.json
+        description:
+          - The project's config files for the server, a pattern relative to the project's root. The deploy copies
+            them into config/ in the service's directory, removes files the project no longer has, and restarts the
+            service when they change.
+          - The app finds them read-only in config/ next to it (/opt/app-root/src/config), where it runs from.
   remove:
     short_description: Remove a service that acme.infra.node_deploy deployed, leaving the server as it was
     description:

@@ -7,4 +7,4 @@ node_deploy_dir: ""
 node_deploy_port: 3000
 node_deploy_bind_address: 127.0.0.1
 node_deploy_container_port: 3000
-node_deploy_container_options: []
+node_deploy_config_files: config/production/*.json

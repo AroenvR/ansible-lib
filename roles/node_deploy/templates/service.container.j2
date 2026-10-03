@@ -1,21 +1,38 @@
-# {{ __node_deploy_name }}, managed by acme.infra.node_deploy: changes here are overwritten.
-# Change the settings in the project's ansible/group_vars/all.yml instead.
+{#
+  The Quadlet file of the service: how Podman and systemd run it. deploy.yml renders
+  this template for every server into
+  /etc/containers/systemd/users/<the account's UID>/<service>.container
+  and restarts the service when the result changes. Tune it to your needs; the keys
+  that RHEL 9's Podman (4.4 and newer) knows are listed in
+  https://docs.podman.io/en/v4.4/markdown/podman-systemd.unit.5.html
+
+  Filled in by the deploy:
+    node_deploy_service  the service's name, from package.json (@acme/orders-api: acme-orders-api)
+    node_deploy_image    the image of the version in package.json: localhost/<name>:<version>
+    node_deploy_user     the account the service runs as
+    node_deploy_dir      the service's directory on the server
+  and every variable in group_vars/all.yml, such as node_deploy_port.
+#}
+# {{ node_deploy_service }}, deployed by acme.infra.node_deploy: the next deploy replaces this file.
 
 [Unit]
-Description={{ __node_deploy_name }}
+Description={{ node_deploy_service }}
 
 [Container]
-Image={{ __node_deploy_image }}
-ContainerName={{ __node_deploy_service }}
-# The app runs as the image's user 1001, which is the account {{ __node_deploy_user }} here:
-# what it writes to {{ __node_deploy_dir }} belongs to that account.
+Image={{ node_deploy_image }}
+ContainerName={{ node_deploy_service }}
+# The app runs as the image's user 1001, which is the account {{ node_deploy_user }} here:
+# what it writes to {{ node_deploy_dir }} belongs to that account.
 User=1001
 Group=1001
 PodmanArgs=--userns=keep-id:uid=1001,gid=1001
 PublishPort={{ node_deploy_bind_address }}:{{ node_deploy_port }}:{{ node_deploy_container_port }}
-# Settings and secrets, next to this file.
-EnvironmentFile={{ __node_deploy_service }}.env
-Volume={{ __node_deploy_dir }}:/data:Z
+# Settings and secrets (the project's container.env), next to this file.
+EnvironmentFile={{ node_deploy_service }}.env
+# The service's directory, where the app keeps its data.
+Volume={{ node_deploy_dir }}:/data:Z
+# The project's production config files, read-only in config/ next to the app.
+Volume={{ node_deploy_dir }}/config:/opt/app-root/src/config:ro,Z
 # Hardening: a read-only root filesystem (/tmp stays writable), no capabilities,
 # no privilege escalation.
 ReadOnly=true
@@ -23,9 +40,6 @@ DropCapability=all
 NoNewPrivileges=true
 # An init process forwards stop signals, so the app shuts down cleanly.
 RunInit=true
-{% for option in node_deploy_container_options %}
-{{ option }}
-{% endfor %}
 
 [Service]
 Restart=always

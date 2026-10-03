@@ -13,7 +13,6 @@
     __node_deploy_package: "{{ lookup('file', (node_deploy_ansible_dir | dirname) ~ '/package.json') | from_json }}"
     __node_deploy_slug: "{{ __node_deploy_package.name | regex_replace('^@', '') | replace('/', '-') }}"
   ansible.builtin.set_fact:
-    __node_deploy_name: "{{ __node_deploy_package.name }}"
     __node_deploy_service: "{{ __node_deploy_slug }}"
     __node_deploy_user: "{{ node_deploy_user or __node_deploy_slug }}"
     __node_deploy_dir: "{{ node_deploy_dir or '/opt/' ~ __node_deploy_slug }}"

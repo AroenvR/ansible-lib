@@ -62,7 +62,9 @@ ansible-playbook acme.infra.node_setup
 
 It writes an `ansible/` directory to commit with the project, laid out the way
 Ansible users expect: `ansible.cfg`, `inventory.yml`, `group_vars/all.yml` for
-the settings, and the playbooks `image.yml` and `deploy.yml`. Everything after
+the settings, the playbooks, and `templates/service.container.j2`, the Quadlet
+file to tune. The container's environment comes from the project's
+`.env.production`, its config files from `config/production/`. Everything after
 the setup runs from that directory, and its `README.md` is the guide: building
 the production image, configuring it, and deploying it as a rootless Podman
 service that starts at boot, from a laptop or from a pipeline. In short:

@@ -17,21 +17,48 @@
 
 - name: Create the ansible directory
   ansible.builtin.file:
-    path: "{{ __node_setup_dir }}/group_vars"
+    path: "{{ __node_setup_dir }}/{{ __node_setup_subdir }}"
     state: directory
     mode: "0755"
+  loop: [group_vars, templates]
+  loop_control:
+    loop_var: __node_setup_subdir
 
-# These belong to the project once written, so they are only written when
-# missing: running the setup again never overwrites the project's changes.
+# The files below belong to the project once written, so they are only written
+# when missing: running the setup again never overwrites the project's changes.
+# None of them names the project, so they also fit any other project.
 - name: Write the project's Ansible files, where missing
   ansible.builtin.template:
     src: "{{ __node_setup_file }}.j2"
     dest: "{{ __node_setup_dir }}/{{ __node_setup_file }}"
-    mode: "{{ '0600' if __node_setup_file == 'container.env' else '0644' }}"
+    mode: "0644"
     force: false
-  loop: [ansible.cfg, inventory.yml, group_vars/all.yml, site.yml, image.yml, deploy.yml, remove.yml, container.env, .gitignore]
+  loop: [ansible.cfg, inventory.yml, group_vars/all.yml, site.yml, image.yml, deploy.yml, remove.yml, .gitignore]
   loop_control:
     loop_var: __node_setup_file
+
+# A copy of node_deploy's own template, for the project to tune. The deploy renders it.
+- name: Write the Quadlet template, where missing
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../node_deploy/templates/service.container.j2"
+    dest: "{{ __node_setup_dir }}/templates/service.container.j2"
+    mode: "0644"
+    force: false
+
+# Podman reads the file as it is, while dotenv (and so the app in development) drops
+# the quotes around a value: the copy drops them too, or the app would get them.
+- name: Write the container's environment file, from .env.production if there is one, where missing
+  vars:
+    __node_setup_dotenv: "{{ node_setup_project }}/.env.production"
+    __node_setup_quoted: '^(\w+)=(["''])(.*)\2$'  # KEY="value" or KEY='value'
+    __node_setup_unquoted: '\1=\3'                # KEY=value
+  ansible.builtin.copy:
+    content: |
+      {{ (lookup('file', __node_setup_dotenv) | regex_replace(__node_setup_quoted, __node_setup_unquoted, multiline=true)
+          if __node_setup_dotenv is file else lookup('template', 'container.env.j2')) | trim }}
+    dest: "{{ __node_setup_dir }}/container.env"
+    mode: "0600"
+    force: false
 
 # The guide documents acme.infra, so every run replaces it with the current one.
 - name: Write the guide, README.md

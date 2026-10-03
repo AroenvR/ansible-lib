@@ -11,21 +11,34 @@
         path: "{{ __node_setup_test_dir }}/container.env"
       register: __node_setup_test_env
 
-    - name: Check the files are there and named after the package
+    - name: Check the files are there, with their contents
       ansible.builtin.assert:
         that:
           - (__node_setup_test_dir ~ '/README.md') is file
           - lookup('file', __node_setup_test_dir ~ '/ansible.cfg') is search('^inventory = inventory\.yml$', multiline=True)
           - (lookup('file', __node_setup_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
-          - lookup('file', __node_setup_test_dir ~ '/group_vars/all.yml') is search('node_deploy_dir: /opt/acme-orders-api')
+          - lookup('file', __node_setup_test_dir ~ '/group_vars/all.yml') is search('node_deploy_config_files: config/production')
           - lookup('file', __node_setup_test_dir ~ '/image.yml') is search('import_playbook: acme.infra.node_image')
           - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: acme.infra.node_deploy')
           - lookup('file', __node_setup_test_dir ~ '/site.yml') is search('import_playbook: image.yml')
           - lookup('file', __node_setup_test_dir ~ '/remove.yml') is search('import_playbook: acme.infra.node_remove')
           - lookup('file', __node_setup_test_dir ~ '/.gitignore') is search('^container\.env$', multiline=True)
+          - lookup('file', __node_setup_test_dir ~ '/templates/service.container.j2')
+            == lookup('file', playbook_dir ~ '/../../../node_deploy/templates/service.container.j2')
+          - lookup('file', __node_setup_test_dir ~ '/container.env')
+            == "# Production settings\nDATABASE_CONFIG=config/db_config.json\nGREETING=hello, world\nPLAIN=as it is"
           - __node_setup_test_env.stat.mode == '0600'
-          - lookup('file', __node_setup_test_dir ~ '/README.md') is search('systemctl --user -M acme-orders-api@ status acme-orders-api')
-        success_msg: PASSED node_setup wrote ansible/ with its settings, playbooks, inventory, guide and a private, git-ignored environment file.
+          - lookup('file', __node_setup_test_dir ~ '/README.md') is search('systemctl --user -M acme-invoice-service@ status acme-invoice-service')
+        success_msg: >-
+          PASSED node_setup wrote ansible/ with its settings, playbooks, inventory, Quadlet template, guide
+          and a private, git-ignored environment file copied from .env.production without the quotes.
+
+    - name: Look for the project's name in the files that belong to the project
+      ansible.builtin.command:
+        argv: [grep, --recursive, --files-with-matches, --exclude=README.md, invoice-service, "{{ __node_setup_test_dir }}"]
+      register: __node_setup_test_named
+      changed_when: false
+      failed_when: __node_setup_test_named.rc != 1  # 1: no file names it
 
     - name: Check the playbooks it wrote are valid
       ansible.builtin.command:
@@ -57,5 +70,5 @@
         that:
           - lookup('file', __node_setup_test_dir ~ '/container.env') == 'GREETING=kept'
           - lookup('file', __node_setup_test_dir ~ '/group_vars/all.yml') == 'node_deploy_port: 3009'
-          - lookup('file', __node_setup_test_dir ~ '/README.md') is search('# Building and deploying @acme/orders-api')
+          - lookup('file', __node_setup_test_dir ~ '/README.md') is search('# Building and deploying @acme/invoice-service')
         success_msg: PASSED running node_setup again restored the guide and kept the project's own files.

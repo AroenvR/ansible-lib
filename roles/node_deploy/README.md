@@ -19,15 +19,18 @@ The deploy works as root (through sudo) and keeps every service apart:
 | Image archives | `/opt/containers/images/<service>-<version>.tar`, loaded into the account's Podman |
 | Quadlet file and environment file | `/etc/containers/systemd/users/<the account's UID>/<service>.container` and `.env` (root-owned; the `.env` readable by the account only) |
 | The service's directory | `/opt/<service>/`, mounted at `/data`, owned by the account |
+| The service's config files | `/opt/<service>/config/`, the project's `config/production/*.json`, mounted read-only at `config/` next to the app |
 
 On every server in the inventory it:
 
 1. creates the account and lets it run services while nobody is logged in
    (`loginctl enable-linger`), so the service starts at boot;
 2. copies the image archive of the version in package.json and loads it as the account;
-3. creates the service's directory, installs `container.env` and the Quadlet file;
+3. creates the service's directory, copies the config files into it (and removes
+   those the project no longer has), installs `container.env` and the Quadlet file;
 4. reloads the account's systemd and restarts the service when the image, the
-   settings or the Quadlet file changed, or starts it when it is not running;
+   settings, the config files or the Quadlet file changed, or starts it when it
+   is not running;
 5. waits until the service answers HTTP requests. If it does not within a
    minute, the deploy fails and shows the service's log;
 6. removes the archives of other versions and the images the account no longer
@@ -59,9 +62,19 @@ In the project's `ansible/group_vars/all.yml`, all with defaults:
 | `node_deploy_user` | `<service>` | The account |
 | `node_deploy_uid` | (any free UID) | Fix the account's UID, e.g. the same on every server |
 | `node_deploy_container_port` | `3000` | The app's port inside the container (`node_image_port`) |
-| `node_deploy_container_options` | `[]` | More Quadlet `[Container]` lines, e.g. `PodmanArgs=--memory=512m` |
+| `node_deploy_config_files` | `config/production/*.json` | The config files to copy, relative to the project's root |
 
 All options: `ansible-doc -t role acme.infra.node_deploy`.
+
+## The Quadlet file
+
+The project's `ansible/templates/service.container.j2` (from
+[node_setup](../node_setup/README.md)) is the template of the Quadlet file:
+change it for anything the settings do not cover, such as a memory limit or a
+network. The deploy fills in `node_deploy_service`, `node_deploy_image` (with
+the version from package.json), `node_deploy_user`, `node_deploy_dir` and the
+settings above, and restarts the service when the result changes. Without that
+file, the deploy uses its own copy, [templates/service.container.j2](templates/service.container.j2).
 
 ## What a server needs
 

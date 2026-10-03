@@ -98,7 +98,7 @@ source of truth.
   root is the repository root), excluding `.git/`, `.venv/`, `dist/` and tool
   caches. The maintainer overwrites their checkout with it, so every file in the
   zip replaces theirs. With each zip, list the changed files and any files to
-  delete (overwriting never deletes).
+  delete (overwriting never deletes), and give a commit message for it.
 - **Verify from a clean state** before delivering: fresh venvs, empty pip and
   Molecule caches, a git checkout. A cached pip wheel once hid a CI failure.
 - **Communication.** Be concise and end replies with a `TL;DR:` section. The
@@ -166,16 +166,25 @@ source of truth.
   own storage: it holds the test and stand-in images. Test them in a container.
 - `.nvmrc` LTS aliases (`lts/*`, `lts/<codename>`) map to majors in
   `roles/node_image/vars/main.yml`; add a line when a new LTS gets its codename.
+- Podman's `--env-file` (and Quadlet's `EnvironmentFile=`) keeps quotes and
+  `#` as part of a value, unlike dotenv; multiline and quote support was reverted
+  in Podman 4.7.1 (containers/podman#19565). node_setup drops the quotes when it
+  copies `.env.production`.
+- Rootless Podman can relabel (`:Z`) only files the account owns, so everything
+  mounted into a service's container belongs to its account, the config files too.
+  No test environment has SELinux enforcing; only a real RHEL server shows mistakes here.
+- Ansible doubles backslashes inside `{{ }}` (2.12, 2.14), so regular expressions
+  in Jinja string literals behave differently than in variables. Put patterns
+  and replacements in variables.
 
 ## Status
 
 Last updated 2026-10-02.
 
-- GitHub Actions: run #19 passed everything, including a branch build. The
-  rewrite to the maintainer's server conventions and the `ansible/` layout then
-  failed in CI (`systemctl --user -M`) and on the maintainer's machine
-  (`runuser` cwd, `.nvmrc` with `lts/*`); fixed, together with updates and
-  removal (site.yml, remove.yml), but not yet run in CI.
+- GitHub Actions: run #21 passed everything (runuser instead of `-M`, updates,
+  removal). The maintainer then built and deployed a NestJS project, which failed
+  for lack of its config: hence config files, `.env.production` and the
+  project's Quadlet template, not yet run in CI.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
 - Releases, decided with the maintainer: CI runs on every push to every branch
@@ -185,9 +194,15 @@ Last updated 2026-10-02.
 - Node.js backends, decided with the maintainer:
   - A project runs `node_setup` once from its root and commits `ansible/`
     (ansible.cfg, inventory.yml, group_vars/all.yml, image.yml, deploy.yml,
-    site.yml, remove.yml, the guide; container.env and images/ stay out of git).
+    site.yml, remove.yml, templates/service.container.j2, the guide;
+    container.env and images/ stay out of git). Only the guide names the project.
     An update is a new build and deploy (site.yml); remove.yml leaves a clean
-    server, data included. Every later command runs
+    server, data included.
+  - Config: the app reads `config/<file>.json` relative to where it runs. The
+    deploy mirrors the project's `config/production/*.json` (not secret, no
+    development files) into `/opt/<service>/config/`, mounted read-only at
+    `/opt/app-root/src/config`. Secrets go in container.env, which node_setup
+    first copies from `.env.production`. Every later command runs
     from `ansible/`, and settings are Ansible variables in group_vars. The
     maintainer's goal is a complete pipeline a project's runner executes. Test
     runs are `npm run test` for now.

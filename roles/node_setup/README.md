@@ -17,10 +17,13 @@ after this runs from that directory: `cd ansible`.
 | `inventory.yml` | The servers to deploy to; this machine by default |
 | `group_vars/all.yml` | The project's settings (port, directories, account), commented out at their defaults |
 | `image.yml`, `deploy.yml`, `site.yml`, `remove.yml` | The playbooks: build the image, deploy it, both in one go (also for updates), remove the service |
-| `container.env` | The container's settings and secrets, kept out of git by `.gitignore` |
+| `templates/service.container.j2` | The Quadlet file of the service, for the project to tune; the deploy renders it |
+| `container.env` | The container's settings and secrets, kept out of git by `.gitignore`. Copied from the project's `.env.production` if it has one (without quotes around values, which Podman would keep) |
 
 Run it again after updating acme.infra: it replaces `README.md` with the current
-guide and never touches the other files, which belong to the project.
+guide, adds files that are missing and never touches the others, which belong
+to the project. Only the guide names the project: the other files take its name
+and version from package.json whenever they run, so they fit any project.
 
 ## Requirements
 

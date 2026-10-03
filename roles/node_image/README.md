@@ -55,11 +55,13 @@ as `<name>-<version>.tar`, plus the generated `Containerfile` for reference. The
 image is labelled with the version and the git commit it was built from
 (`org.opencontainers.image.version`, `org.opencontainers.image.revision`). To
 deploy it, see [node_deploy](../node_deploy/README.md). To just try it, with
-environment variables from a file and a host directory mounted at `/data`:
+environment variables from a file, the production config and a host directory
+mounted at `/data`:
 
 ```sh
 podman load --input images/orders-api-1.4.0.tar
 podman run --rm --publish 127.0.0.1:3000:3000 --env-file container.env \
+  --volume ../config/production:/opt/app-root/src/config:ro,Z \
   --volume /tmp/orders-data:/data:Z,U orders-api:1.4.0
 ```
 
@@ -83,8 +85,9 @@ All options, with their defaults: `ansible-doc -t role acme.infra.node_image`.
 ## Good to know
 
 - Never sent to the build: `.git`, `node_modules`, `.env`, `.env.*`, `*.log`,
-  the `ansible/` directory (so `container.env` can never end up in an image) and
-  the output directory. Add patterns with `node_image_ignore`. The role passes
+  the `ansible/` directory (so `container.env` can never end up in an image),
+  `config/` (the deploy provides the production config, see
+  [node_deploy](../node_deploy/README.md)) and the output directory. Add patterns with `node_image_ignore`. The role passes
   its own ignore file to Podman (`--ignorefile`); the project's `.dockerignore`
   or `.containerignore` is not used.
 - The project's `.npmrc` applies to the install (private registries, or settings
