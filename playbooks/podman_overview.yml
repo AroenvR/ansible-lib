@@ -1,13 +1,14 @@
 ---
-# Shows the rootless Podman services on every server in the inventory: their
-# accounts, states, images and ports, and the latest log lines of those that do
-# not run. Changes nothing. Run it from any directory with an inventory, such as
-# a project's ansible/ directory:
+# Shows the rootless Podman services: their accounts, states, images and ports,
+# and the latest log lines of those that do not run. Changes nothing. On a server
+# itself, without an inventory, it shows that server; from a directory with an
+# inventory, such as a project's ansible/ directory, every server in it:
 #   ansible-playbook aslib.infra.podman_overview
 #   ansible-playbook aslib.infra.podman_overview --limit <server>
-# It works as root on the servers, through sudo. Options: ansible-doc -t role aslib.infra.podman_overview
+# It works as root, through sudo. Options: ansible-doc -t role aslib.infra.podman_overview
 - name: Show the rootless Podman services
-  hosts: all
+  # Without an inventory Ansible only knows this machine, which "all" leaves out.
+  hosts: "{{ 'all' if groups['all'] else 'localhost' }}"
   become: true
   gather_facts: false
   roles:

@@ -7,13 +7,14 @@ and ports, and the latest log lines of each service that does not run. It
 changes nothing.
 
 ```sh
-ansible-playbook aslib.infra.podman_overview                  # every server in the inventory
+ansible-playbook aslib.infra.podman_overview                  # this server, or every server in the inventory
 ansible-playbook aslib.infra.podman_overview --limit web1     # one of them
 ```
 
-Run it from a directory with an inventory, such as a project's `ansible/`
-directory; add `--ask-become-pass` if sudo asks for a password. The output, per
-server:
+On a server itself it needs no inventory: it then shows that server. From a
+directory with an inventory, such as a project's `ansible/` directory, it shows
+every server in it. Add `--ask-become-pass` if sudo asks for a password. The
+output, per server:
 
 ```text
 ok: [web1] => {

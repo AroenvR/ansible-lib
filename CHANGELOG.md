@@ -50,7 +50,8 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   `container.env`, `config/production/*.json` and Quadlet template.
 - Added role `podman_overview` and playbook `aslib.infra.podman_overview`: show
   root every rootless Podman service on the servers (account, state, image,
-  ports) and the latest log lines of those that do not run; read-only. Sets
+  ports) and the latest log lines of those that do not run; read-only. Without
+  an inventory, on a server itself, the playbook shows that server. Sets
   `podman_overview_services` for playbooks that check on services.
 - Added callback plugin `aslib.infra.run_log`: each playbook run in a log file
   of its own, `logs/<playbook>-<UTC time>.log`, readable by its owner only.

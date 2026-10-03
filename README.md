@@ -94,8 +94,9 @@ servers.
 
 Every service runs rootless as an account of its own, so root's `systemctl` and
 `podman` do not list it. [podman_overview](roles/podman_overview/README.md) shows
-root every such service on the servers in the inventory, with its account,
-state, image and ports, and the log of each one that does not run:
+root every such service, with its account, state, image and ports, and the log
+of each one that does not run. On a server itself, without an inventory, it shows
+that server; from a directory with an inventory, every server in it:
 
 ```sh
 ansible-playbook aslib.infra.podman_overview
@@ -161,7 +162,7 @@ needed. The playbooks node_setup writes import them.
 | `ansible-playbook aslib.infra.node_image` | `ansible/` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
 | `ansible-playbook aslib.infra.node_deploy` | `ansible/` | Deploys that image to the servers, or a newer version over the old one, see [node_deploy](roles/node_deploy/README.md) |
 | `ansible-playbook aslib.infra.node_remove` | `ansible/` | Removes the service from the servers, keeping its data unless asked, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |
-| `ansible-playbook aslib.infra.podman_overview` | Any directory with an inventory, such as `ansible/` | Shows the rootless Podman services on the servers, see [podman_overview](roles/podman_overview/README.md) |
+| `ansible-playbook aslib.infra.podman_overview` | A server itself, or any directory with an inventory, such as `ansible/` | Shows the rootless Podman services on that server, or on the inventory's servers, see [podman_overview](roles/podman_overview/README.md) |
 
 ## Plugins
 

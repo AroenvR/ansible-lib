@@ -135,7 +135,8 @@ ansible-playbook aslib.infra.podman_overview      # add --ask-become-pass if sud
 
 Shows every service on the servers in `inventory.yml`, this one and others: its
 account, state, image and ports, and the latest log lines of each service that
-does not run. It changes nothing. On a server itself:
+does not run. It changes nothing. On a server itself, the same command from any
+directory shows that server, or by hand:
 
 ```sh
 sudo systemctl --user -M {{ __node_setup_service }}@ status {{ __node_setup_service }}
