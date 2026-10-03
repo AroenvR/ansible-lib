@@ -1,25 +1,35 @@
 ---
 # They run in this order, after the tasks that changed something notify them,
-# and act as the service's account, as the conventions in tasks/main.yml describe.
+# as the service's account (see "Prepare running commands as the account").
 - name: Load the image
   ansible.builtin.command:
-    argv:
-      - runuser
-      - --user={{ __node_deploy_user }}
-      - --
-      - env
-      - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_account.uid }}
-      - podman
-      - load
-      - --input=/opt/containers/images/{{ __node_deploy_archive }}
+    argv: "{{ __node_deploy_as_account + ['podman', 'load', '--input=/opt/containers/images/' ~ __node_deploy_archive] }}"
+    chdir: /
   changed_when: true
+  notify: Remove the images the service no longer uses
 
 - name: Make systemd read the Quadlet file
-  ansible.builtin.command:  # noqa: command-instead-of-module
-    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", daemon-reload]
+  ansible.builtin.command:
+    argv: "{{ __node_deploy_as_account + ['systemctl', '--user', 'daemon-reload'] }}"
+    chdir: /
   changed_when: true
 
 - name: Restart the service
-  ansible.builtin.command:  # noqa: command-instead-of-module
-    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", restart, "{{ __node_deploy_service }}.service"]
+  ansible.builtin.command:
+    argv: "{{ __node_deploy_as_account + ['systemctl', '--user', 'restart', __node_deploy_service ~ '.service'] }}"
+    chdir: /
+  changed_when: true
+
+# The account holds this one service. Its unused images are earlier builds (no
+# longer tagged) and earlier versions; the deployed version stays, even when its
+# container is down: node_image labels every image with its version.
+- name: Remove the images the service no longer uses
+  ansible.builtin.command:
+    argv: "{{ __node_deploy_as_account + ['podman', 'image', 'prune', '--force'] + __node_deploy_prune }}"
+    chdir: /
+  loop:
+    - []
+    - [--all, "--filter=label!=org.opencontainers.image.version={{ __node_deploy_version }}"]
+  loop_control:
+    loop_var: __node_deploy_prune
   changed_when: true

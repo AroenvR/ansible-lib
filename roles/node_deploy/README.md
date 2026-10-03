@@ -29,9 +29,16 @@ On every server in the inventory it:
 4. reloads the account's systemd and restarts the service when the image, the
    settings or the Quadlet file changed, or starts it when it is not running;
 5. waits until the service answers HTTP requests. If it does not within a
-   minute, the deploy fails and shows the service's log.
+   minute, the deploy fails and shows the service's log;
+6. removes the archives of other versions and the images the account no longer
+   uses, so only the deployed version stays.
 
 Running it again without changes changes nothing.
+
+The account's Podman and systemd are driven with `runuser -u <service> -- env
+XDG_RUNTIME_DIR=/run/user/<UID> ...` rather than `systemctl --user -M <service>@`:
+`-M` needs a D-Bus session bus for the account, which minimal systems such as
+Red Hat's UBI images lack.
 
 The container runs as the image's user 1001, mapped to the account, so files the
 app writes to `/data` belong to the account on the server. Its root filesystem
@@ -63,6 +70,26 @@ All options: `ansible-doc -t role acme.infra.node_deploy`.
   (not needed when deploying to `localhost`).
 
 No network access: the image comes from the project, not from a registry.
+
+## Deploy a new version
+
+Build the new version and run the deploy again, from the project's `ansible/`
+directory: `ansible-playbook site.yml` does both. The deploy replaces the image,
+restarts the service and removes the previous version.
+To go back, check out the previous version of the project and deploy that.
+
+## Remove a service
+
+```sh
+ansible-playbook remove.yml        # or: ansible-playbook acme.infra.node_remove
+```
+
+Takes away everything the deploy created, leaving the server as it was: the
+service, its account (home directory, Podman storage and images included), the
+Quadlet and environment files, the image archives and the service's directory,
+**data included**. Running it again changes nothing. The shared directories
+(`/opt/containers/images/`, `/etc/containers/systemd/users/`) stay, as other
+services use them.
 
 ## Check a service
 

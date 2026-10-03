@@ -29,8 +29,9 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   of its own (`useradd`, `loginctl enable-linger`). Image archives live in
   `/opt/containers/images/` and are loaded as that account (`runuser -u <user> --
   env XDG_RUNTIME_DIR=/run/user/<uid> podman load`). Quadlet files live in
-  `/etc/containers/systemd/users/<UID>/`; the account's systemd is driven with
-  `systemctl --user -M <user>@ ...`. A service's own directory is
+  `/etc/containers/systemd/users/<UID>/`. The maintainer drives the account's
+  systemd with `systemctl --user -M <user>@ ...`; roles use the same `runuser`
+  prefix as for Podman (see Known pitfalls). A service's own directory is
   `/opt/<service>/`, mounted into the container. `node_deploy` implements this;
   follow it for every container-based role.
 - **Dependencies.** Development tools may be current but are pinned in
@@ -154,15 +155,27 @@ source of truth.
   uid and gid 1001 and runs the app as 1001:1001 (`User=`, `Group=`).
 - Quadlet keys differ between Podman versions (`UserNS=` is not in 4.4); use
   `PodmanArgs=` for anything newer than 4.4.
+- `systemctl --user -M <user>@` needs a D-Bus session bus for the account, which
+  the UBI test server lacks ("Transport endpoint is not connected"). `runuser
+  --user=<user> -- env XDG_RUNTIME_DIR=/run/user/<uid> systemctl --user ...` talks
+  to the account's systemd directly and works everywhere.
+- `runuser` keeps the caller's working directory, which the account usually
+  cannot enter (Ansible's is under /root): Podman then fails with "cannot chdir".
+  Run such commands with `chdir: /`.
+- Never try `podman image prune` or `podman system reset` on the sandbox host's
+  own storage: it holds the test and stand-in images. Test them in a container.
+- `.nvmrc` LTS aliases (`lts/*`, `lts/<codename>`) map to majors in
+  `roles/node_image/vars/main.yml`; add a line when a new LTS gets its codename.
 
 ## Status
 
 Last updated 2026-10-02.
 
 - GitHub Actions: run #19 passed everything, including a branch build. The
-  maintainer installed it and deployed a NestJS project (an earlier node_deploy).
-  node_deploy has since been rewritten to the maintainer's server conventions and
-  the project layout moved to `ansible/`; that has not run in CI yet.
+  rewrite to the maintainer's server conventions and the `ansible/` layout then
+  failed in CI (`systemctl --user -M`) and on the maintainer's machine
+  (`runuser` cwd, `.nvmrc` with `lts/*`); fixed, together with updates and
+  removal (site.yml, remove.yml), but not yet run in CI.
 - GitLab CI: not run yet. The `runner-check` job will report whether the runner
   can start containers.
 - Releases, decided with the maintainer: CI runs on every push to every branch
@@ -171,15 +184,18 @@ Last updated 2026-10-02.
   patch version as a release with its tag.
 - Node.js backends, decided with the maintainer:
   - A project runs `node_setup` once from its root and commits `ansible/`
-    (ansible.cfg, inventory.yml, group_vars/all.yml, image.yml, deploy.yml, the
-    guide; container.env and images/ stay out of git). Every later command runs
+    (ansible.cfg, inventory.yml, group_vars/all.yml, image.yml, deploy.yml,
+    site.yml, remove.yml, the guide; container.env and images/ stay out of git).
+    An update is a new build and deploy (site.yml); remove.yml leaves a clean
+    server, data included. Every later command runs
     from `ansible/`, and settings are Ansible variables in group_vars. The
     maintainer's goal is a complete pipeline a project's runner executes. Test
     runs are `npm run test` for now.
   - Images are built on RHEL 9 or Ubuntu 22.04 (Podman 3.4+) and are always
     RHEL (UBI); which RHEL major is still open (UBI 9 for now).
   - Projects follow the NestJS convention: `build` and `start:prod` scripts;
-    `.nvmrc` (default 24) and `package-lock.json` are optional.
+    `.nvmrc` (default 24; the maintainer's projects use `lts/*`) and
+    `package-lock.json` are optional.
   - Supported versions are test data (`roles/node_image/molecule/build_machine/vars/apps.yml`).
   - Services run rootless on RHEL 9.2+ through Quadlet, published on
     127.0.0.1 by default (a containerized Nginx will sit in front later), ports

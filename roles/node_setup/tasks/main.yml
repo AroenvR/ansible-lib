@@ -29,7 +29,7 @@
     dest: "{{ __node_setup_dir }}/{{ __node_setup_file }}"
     mode: "{{ '0600' if __node_setup_file == 'container.env' else '0644' }}"
     force: false
-  loop: [ansible.cfg, inventory.yml, group_vars/all.yml, image.yml, deploy.yml, container.env, .gitignore]
+  loop: [ansible.cfg, inventory.yml, group_vars/all.yml, site.yml, image.yml, deploy.yml, remove.yml, container.env, .gitignore]
   loop_control:
     loop_var: __node_setup_file
 

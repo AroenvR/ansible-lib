@@ -16,7 +16,7 @@ after this runs from that directory: `cd ansible`.
 | `ansible.cfg` | Points Ansible at the inventory |
 | `inventory.yml` | The servers to deploy to; this machine by default |
 | `group_vars/all.yml` | The project's settings (port, directories, account), commented out at their defaults |
-| `image.yml`, `deploy.yml` | The playbooks: `ansible-playbook image.yml`, `ansible-playbook deploy.yml` |
+| `image.yml`, `deploy.yml`, `site.yml`, `remove.yml` | The playbooks: build the image, deploy it, both in one go (also for updates), remove the service |
 | `container.env` | The container's settings and secrets, kept out of git by `.gitignore` |
 
 Run it again after updating acme.infra: it replaces `README.md` with the current

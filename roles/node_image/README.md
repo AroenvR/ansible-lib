@@ -18,9 +18,10 @@ app lives in `/opt/app-root/src`, where Red Hat's Node.js images keep it.
 - Optional, recommended: `package-lock.json`. With it dependencies are installed
   with `npm ci`, exactly as locked; without it `npm install` resolves them anew
   on every build, so two builds of the same code can differ.
-- Optional: `.nvmrc` with the Node.js version, e.g. `22` or `v24.3.0`. Without it
-  the build uses Node.js 24. Only the major version counts: Red Hat's image
-  brings its own latest patch release.
+- Optional: `.nvmrc` with the Node.js version, e.g. `22`, `v24.3.0`, `lts/*` or
+  `lts/krypton`. Without it, and for `lts/*`, the build uses Node.js 24, the
+  newest LTS release Red Hat publishes images for. Only the major version counts:
+  Red Hat's image brings its own latest patch release.
 - The server listens on port 3000 (or `process.env.PORT`) on all interfaces, as
   NestJS does by default. An app listening only on `localhost` is unreachable
   from outside the container.

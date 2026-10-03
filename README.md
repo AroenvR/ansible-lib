@@ -71,6 +71,8 @@ service that starts at boot, from a laptop or from a pipeline. In short:
 cd ansible
 ansible-playbook image.yml    # build images/<name>-<version>.tar
 ansible-playbook deploy.yml   # install and start it on the servers in inventory.yml
+ansible-playbook site.yml     # both in one go, also for a new version
+ansible-playbook remove.yml   # remove it from the servers again, data included
 ```
 
 On the servers the deploy follows fixed conventions: an account per service,
@@ -126,13 +128,14 @@ Every role documents its variables; read them offline with
 ## Ready-made playbooks
 
 For people who don't write Ansible: run these by name, no playbook of your own
-needed. The `image.yml` and `deploy.yml` that node_setup writes import the last two.
+needed. The `image.yml`, `deploy.yml` and `remove.yml` that node_setup writes import the last three.
 
 | Playbook | Run it from | What it does |
 |---|---|---|
 | `ansible-playbook acme.infra.node_setup` | The project's root | Writes `ansible/` into the Node.js project, see [node_setup](roles/node_setup/README.md) |
 | `ansible-playbook acme.infra.node_image` | `ansible/` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
-| `ansible-playbook acme.infra.node_deploy` | `ansible/` | Deploys that image to the servers, see [node_deploy](roles/node_deploy/README.md) |
+| `ansible-playbook acme.infra.node_deploy` | `ansible/` | Deploys that image to the servers, or a newer version over the old one, see [node_deploy](roles/node_deploy/README.md) |
+| `ansible-playbook acme.infra.node_remove` | `ansible/` | Removes the service from the servers, data included, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |
 
 ## Versioning
 

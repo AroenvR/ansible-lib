@@ -63,12 +63,10 @@
       changed_when: false
 
 - name: Check the results of {{ node_image_test_app.name }}
-  vars:
-    __node_image_test_major: "{{ (node_image_test_app.nvmrc | default('') | regex_replace('^v', '')).split('.')[0] }}"
   ansible.builtin.assert:
     that:
       - node_image_test_app.expect | default('[]') in __node_image_test_response.content
-      - __node_image_test_major == '' or __node_image_test_inside.results[0].stdout.startswith('v' ~ __node_image_test_major ~ '.')
+      - __node_image_test_inside.results[0].stdout.startswith('v' ~ node_image_test_app.node ~ '.')
       - __node_image_test_inside.results[1].stdout == 'hello from the env file'
       - __node_image_test_inside.results[2].stdout == '1001'
       - __node_image_test_inside.results[3].stdout == 'none'

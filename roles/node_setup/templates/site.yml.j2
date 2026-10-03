@@ -1,0 +1,7 @@
+---
+# Builds the image and deploys it, in one go: ansible-playbook site.yml
+- name: Build the image
+  ansible.builtin.import_playbook: image.yml
+
+- name: Deploy it
+  ansible.builtin.import_playbook: deploy.yml

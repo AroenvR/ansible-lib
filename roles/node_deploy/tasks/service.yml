@@ -1,0 +1,37 @@
+---
+# Shared by the deploy (main.yml) and the removal (remove.yml): works out the
+# service's names and checks that Ansible acts as root on the server.
+- name: Check the project's package.json is there
+  ansible.builtin.assert:
+    that: ((node_deploy_ansible_dir | dirname) ~ '/package.json') is file
+    fail_msg: "No package.json in {{ node_deploy_ansible_dir | dirname }}. Run this from the project's ansible/ directory."
+    quiet: true
+
+# Named after the package, the same way node_setup and node_image do it.
+- name: Work out the service's names and files from package.json
+  vars:
+    __node_deploy_package: "{{ lookup('file', (node_deploy_ansible_dir | dirname) ~ '/package.json') | from_json }}"
+    __node_deploy_slug: "{{ __node_deploy_package.name | regex_replace('^@', '') | replace('/', '-') }}"
+  ansible.builtin.set_fact:
+    __node_deploy_name: "{{ __node_deploy_package.name }}"
+    __node_deploy_service: "{{ __node_deploy_slug }}"
+    __node_deploy_user: "{{ node_deploy_user or __node_deploy_slug }}"
+    __node_deploy_dir: "{{ node_deploy_dir or '/opt/' ~ __node_deploy_slug }}"
+    __node_deploy_image: "localhost/{{ __node_deploy_package.name | regex_replace('^@', '') }}:{{ __node_deploy_package.version }}"
+    __node_deploy_version: "{{ __node_deploy_package.version }}"
+    __node_deploy_archive: "{{ __node_deploy_slug }}-{{ __node_deploy_package.version }}.tar"
+    # Archives of every version of this service, and of no other service.
+    __node_deploy_archives: "^{{ __node_deploy_slug | regex_escape }}-[0-9][^/]*\\.tar$"
+
+- name: Look up which account Ansible acts as on the server
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", user]
+
+- name: Check that Ansible acts as root
+  ansible.builtin.assert:
+    that: ansible_facts.user_uid == 0
+    fail_msg: >-
+      This manages the service's account, image and Quadlet file, which takes root on
+      {{ inventory_hostname }}. Connect as root or with sudo; with sudo asking for a password,
+      add --ask-become-pass.
+    quiet: true

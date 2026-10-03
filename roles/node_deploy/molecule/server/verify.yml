@@ -2,6 +2,7 @@
 - name: Check the deployed service works, and comes back by itself when the server restarts
   hosts: all
   gather_facts: false
+  vars_files: [vars/project.yml]
   tasks:
     - name: Query the service
       ansible.builtin.uri:
@@ -41,6 +42,7 @@
     - name: Check the service's settings, its data, its files and its start at boot
       ansible.builtin.assert:
         that:
+          - __node_deploy_test_before.json.version == '1.0.0'
           - __node_deploy_test_before.json.greeting == 'hello from container.env'
           - __node_deploy_test_files.results[0].stat.pw_name == 'deploy-test-app'
           - __node_deploy_test_files.results[0].stat.uid == 3001
@@ -53,3 +55,120 @@
           writes /opt/deploy-test-app as its own account (UID 3001), keeps its Quadlet and environment files
           in /etc/containers/systemd/users/3001/, and started by itself when the server restarted, with its
           data (start count {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).
+
+- name: Build a new version of the test project, as a developer would
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Raise the version in package.json to 1.0.1
+      ansible.builtin.replace:
+        path: "{{ node_deploy_test_project }}/package.json"
+        regexp: '"version": "1\.0\.0"'
+        replace: '"version": "1.0.1"'
+
+    - name: Run node_image
+      ansible.builtin.include_role:
+        name: acme.infra.node_image
+      vars:
+        node_image_source: "{{ node_deploy_test_project }}"
+        node_image_output_dir: "{{ node_deploy_test_project }}/ansible/images"
+
+- name: Check a deploy of the new version replaces the old one and keeps the data
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Query the service before the update
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_old
+
+    - name: Run node_deploy with the new version
+      ansible.builtin.include_role:
+        name: acme.infra.node_deploy
+
+    - name: Query the updated service
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_new
+
+    - name: Find the service's image archives
+      ansible.builtin.find:
+        paths: /opt/containers/images
+        patterns: deploy-test-app-*.tar
+      register: __node_deploy_test_archives
+
+    - name: List the account's images
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=deploy-test-app
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/3001
+          - podman
+          - images
+          - --format={% raw %}{{.Repository}}:{{.Tag}}{% endraw %}
+        chdir: /
+      register: __node_deploy_test_images
+      changed_when: false
+
+    - name: Check the new version runs with the old data, and only the new version is left
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_new.json.version == '1.0.1'
+          - __node_deploy_test_new.json.starts > __node_deploy_test_old.json.starts
+          - __node_deploy_test_archives.files | map(attribute='path') | list == ['/opt/containers/images/deploy-test-app-1.0.1.tar']
+          - __node_deploy_test_images.stdout_lines == ['localhost/deploy-test-app:1.0.1']
+        success_msg: >-
+          PASSED node_deploy update: version 1.0.1 answers with the data of 1.0.0 (start count
+          {{ __node_deploy_test_new.json.starts }}); the archive and image of 1.0.0 are gone.
+
+- name: Check the removal leaves the server as it was before the deploy
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Remove the service
+      ansible.builtin.include_role:
+        name: acme.infra.node_deploy
+        tasks_from: remove
+
+    - name: Remove it again, which must work on a clean server too
+      ansible.builtin.include_role:
+        name: acme.infra.node_deploy
+        tasks_from: remove
+
+    - name: Look up the service's account
+      ansible.builtin.getent:
+        database: passwd
+        key: deploy-test-app
+        fail_key: false
+
+    - name: Look for what the deploy created
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/containers/systemd/users/3001
+        - /opt/containers/images/deploy-test-app-1.0.1.tar
+        - /opt/deploy-test-app
+        - /home/deploy-test-app
+        - /var/lib/systemd/linger/deploy-test-app
+      register: __node_deploy_test_leftovers
+
+    - name: Query the service's port
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_gone
+      failed_when: false
+
+    - name: Check the account, the files and the service are gone
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd['deploy-test-app'] is none
+          - __node_deploy_test_leftovers.results | selectattr('stat.exists') | map(attribute='item') | list == []
+          - __node_deploy_test_gone.status == -1
+        success_msg: >-
+          PASSED node_deploy remove: the account, its home directory, Quadlet directory, image archive,
+          service directory and lingering are gone, nothing answers on port 3009, and a second run works.

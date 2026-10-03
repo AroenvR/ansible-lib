@@ -20,6 +20,8 @@
           - lookup('file', __node_setup_test_dir ~ '/group_vars/all.yml') is search('node_deploy_dir: /opt/acme-orders-api')
           - lookup('file', __node_setup_test_dir ~ '/image.yml') is search('import_playbook: acme.infra.node_image')
           - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: acme.infra.node_deploy')
+          - lookup('file', __node_setup_test_dir ~ '/site.yml') is search('import_playbook: image.yml')
+          - lookup('file', __node_setup_test_dir ~ '/remove.yml') is search('import_playbook: acme.infra.node_remove')
           - lookup('file', __node_setup_test_dir ~ '/.gitignore') is search('^container\.env$', multiline=True)
           - __node_setup_test_env.stat.mode == '0600'
           - lookup('file', __node_setup_test_dir ~ '/README.md') is search('systemctl --user -M acme-orders-api@ status acme-orders-api')
@@ -28,7 +30,7 @@
     - name: Check the playbooks it wrote are valid
       ansible.builtin.command:
         argv: [ansible-playbook, --syntax-check, "{{ __node_setup_test_dir }}/{{ item }}"]
-      loop: [image.yml, deploy.yml]
+      loop: [image.yml, deploy.yml, site.yml, remove.yml]
       changed_when: false
 
     - name: Change the project's files and damage the guide, as time would

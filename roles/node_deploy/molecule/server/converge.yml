@@ -7,7 +7,3 @@
     - name: Run node_deploy
       ansible.builtin.include_role:
         name: acme.infra.node_deploy
-      vars:
-        node_deploy_ansible_dir: "{{ node_deploy_test_project }}/ansible"
-        node_deploy_port: 3009
-        node_deploy_uid: "3001"

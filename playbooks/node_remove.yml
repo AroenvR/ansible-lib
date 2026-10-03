@@ -1,0 +1,15 @@
+---
+# Removes the Node.js project's service from every server in the inventory,
+# data included, leaving the servers as they were before acme.infra.node_deploy.
+# Run it from the project's ansible/ directory (see acme.infra.node_setup):
+#   ansible-playbook acme.infra.node_remove
+# It works as root on the servers, through sudo. Options: ansible-doc -t role acme.infra.node_deploy
+- name: Remove the Node.js project's service
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove the service, its account, image, Quadlet file and directory
+      ansible.builtin.import_role:
+        name: acme.infra.node_deploy
+        tasks_from: remove

@@ -2,24 +2,8 @@
 # Runs as root on the server. The conventions it follows are described in
 # meta/argument_specs.yml: an account per service, images in
 # /opt/containers/images/, Quadlet files in /etc/containers/systemd/users/<UID>/.
-- name: Check the project's package.json is there
-  ansible.builtin.assert:
-    that: ((node_deploy_ansible_dir | dirname) ~ '/package.json') is file
-    fail_msg: "No package.json in {{ node_deploy_ansible_dir | dirname }}. Run the deploy from the project's ansible/ directory."
-    quiet: true
-
-# Named after the package, the same way node_setup and node_image do it.
-- name: Work out the service's names and files from package.json
-  vars:
-    __node_deploy_package: "{{ lookup('file', (node_deploy_ansible_dir | dirname) ~ '/package.json') | from_json }}"
-    __node_deploy_slug: "{{ __node_deploy_package.name | regex_replace('^@', '') | replace('/', '-') }}"
-  ansible.builtin.set_fact:
-    __node_deploy_name: "{{ __node_deploy_package.name }}"
-    __node_deploy_service: "{{ __node_deploy_slug }}"
-    __node_deploy_user: "{{ node_deploy_user or __node_deploy_slug }}"
-    __node_deploy_dir: "{{ node_deploy_dir or '/opt/' ~ __node_deploy_slug }}"
-    __node_deploy_image: "localhost/{{ __node_deploy_package.name | regex_replace('^@', '') }}:{{ __node_deploy_package.version }}"
-    __node_deploy_archive: "{{ __node_deploy_slug }}-{{ __node_deploy_package.version }}.tar"
+- name: Work out the service's names and check Ansible acts as root
+  ansible.builtin.import_tasks: service.yml
 
 - name: Check the image and the environment file are there
   ansible.builtin.assert:
@@ -34,19 +18,6 @@
   loop_control:
     loop_var: __node_deploy_needed
     label: "{{ __node_deploy_needed.path | basename }}"
-
-- name: Look up which account Ansible acts as on the server
-  ansible.builtin.setup:
-    gather_subset: ["!all", "!min", user]
-
-- name: Check that Ansible acts as root
-  ansible.builtin.assert:
-    that: ansible_facts.user_uid == 0
-    fail_msg: >-
-      The deploy manages an account, its image and its Quadlet file, which takes root on
-      {{ inventory_hostname }}. Connect as root or with sudo; with sudo asking for a password,
-      add --ask-become-pass.
-    quiet: true
 
 - name: Look up the Podman version on the server
   ansible.builtin.command: podman --version
@@ -88,6 +59,18 @@
     msg: >-
       The systemd instance of {{ __node_deploy_user }} did not start on {{ inventory_hostname }}.
       See why with: journalctl --unit user@{{ __node_deploy_account.uid }}.service
+
+# Commands as the account: `runuser` with the account's runtime directory, where
+# Podman keeps its state and systemctl finds the account's systemd instance. Unlike
+# `systemctl --user -M <user>@`, this needs no D-Bus session bus for the account.
+- name: Prepare running commands as the account
+  ansible.builtin.set_fact:
+    __node_deploy_as_account:
+      - runuser
+      - --user={{ __node_deploy_user }}
+      - --
+      - env
+      - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_account.uid }}
 
 - name: Create the image store, the account's Quadlet directory and the service's directory
   ansible.builtin.file:
@@ -137,17 +120,19 @@
 - name: Load the image and restart the service now, where needed
   ansible.builtin.meta: flush_handlers
 
-# The systemd module cannot reach another account's systemd instance, `systemctl -M` can.
+# The systemd module cannot act as another account; runuser can (see above).
 - name: Look up whether the service runs
-  ansible.builtin.command:  # noqa: command-instead-of-module
-    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", is-active, "{{ __node_deploy_service }}.service"]
+  ansible.builtin.command:
+    argv: "{{ __node_deploy_as_account + ['systemctl', '--user', 'is-active', __node_deploy_service ~ '.service'] }}"
+    chdir: /
   register: __node_deploy_active
   changed_when: false
   failed_when: false
 
 - name: Start the service, {{ __node_deploy_service }}
-  ansible.builtin.command:  # noqa: command-instead-of-module
-    argv: [systemctl, --user, --machine, "{{ __node_deploy_user }}@", start, "{{ __node_deploy_service }}.service"]
+  ansible.builtin.command:
+    argv: "{{ __node_deploy_as_account + ['systemctl', '--user', 'start', __node_deploy_service ~ '.service'] }}"
+    chdir: /
   when: __node_deploy_active.rc != 0
   changed_when: true
 
@@ -168,9 +153,27 @@
       changed_when: false
       failed_when: true
 
+# An update leaves the previous version behind; keep only the deployed one.
+- name: Find the archives of other versions of the service
+  ansible.builtin.find:
+    paths: /opt/containers/images
+    patterns: "{{ __node_deploy_archives }}"
+    use_regex: true
+    excludes: "{{ __node_deploy_archive | regex_escape }}"
+  register: __node_deploy_old_archives
+
+- name: Remove the archives of other versions of the service
+  ansible.builtin.file:
+    path: "{{ __node_deploy_old.path }}"
+    state: absent
+  loop: "{{ __node_deploy_old_archives.files }}"
+  loop_control:
+    loop_var: __node_deploy_old
+    label: "{{ __node_deploy_old.path | basename }}"
+
 - name: Show where the service runs
   ansible.builtin.debug:
     msg: >-
       {{ __node_deploy_image }} runs as the service {{ __node_deploy_service }} of the account
       {{ __node_deploy_user }}, on {{ node_deploy_bind_address }}:{{ node_deploy_port }}.
-      Check it: systemctl --user -M {{ __node_deploy_user }}@ status {{ __node_deploy_service }}
+      Its log: journalctl _SYSTEMD_USER_UNIT={{ __node_deploy_service }}.service

@@ -21,14 +21,17 @@
     fail_msg: "No package.json in {{ node_image_source }}. Run the build from the project's ansible/ directory."
     quiet: true
 
-# .nvmrc and package-lock.json are optional.
+# .nvmrc and package-lock.json are optional. .nvmrc holds a version (24, v24.3.0)
+# or an LTS line (lts/*, lts/krypton), see vars/main.yml.
 - name: Read package.json, and .nvmrc if there is one
+  vars:
+    __node_image_nvmrc: >-
+      {{ (lookup('file', node_image_source ~ '/.nvmrc') if (node_image_source ~ '/.nvmrc') is file else node_image_node_version)
+      | string | trim | lower }}
   ansible.builtin.set_fact:
     __node_image_package: "{{ lookup('file', node_image_source ~ '/package.json') | from_json }}"
     __node_image_has_lockfile: "{{ (node_image_source ~ '/package-lock.json') is file }}"
-    __node_image_node_version: >-
-      {{ (lookup('file', node_image_source ~ '/.nvmrc') if (node_image_source ~ '/.nvmrc') is file else node_image_node_version)
-      | string | trim | regex_replace('^v', '') }}
+    __node_image_node_version: "{{ __node_image_lts_lines.get(__node_image_nvmrc, __node_image_nvmrc) | regex_replace('^v', '') }}"
 
 - name: Check package.json and the Node.js version
   ansible.builtin.assert:
@@ -40,8 +43,8 @@
       - __node_image_node_version is match('^[0-9]+(\.|$)')
     fail_msg: >-
       package.json needs "name", "version" and the scripts "build" and "start:prod"
-      (the NestJS convention), and .nvmrc a Node.js version such as 24 or v24.3.0
-      (found '{{ __node_image_node_version }}').
+      (the NestJS convention), and .nvmrc a Node.js version such as 24 or v24.3.0, or one of
+      {{ __node_image_lts_lines.keys() | join(', ') }} (found '{{ __node_image_node_version }}').
     quiet: true
 
 - name: Warn that builds without package-lock.json are not reproducible

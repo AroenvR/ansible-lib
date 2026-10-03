@@ -12,7 +12,7 @@ and the acme.infra collection installed (see acme.infra's README).
 | `ansible.cfg` | Points Ansible at `inventory.yml` | Yes |
 | `inventory.yml` | The servers to deploy to | Yes |
 | `group_vars/all.yml` | The settings: port, directories, account, and more | Yes |
-| `image.yml`, `deploy.yml` | The playbooks | Yes |
+| `image.yml`, `deploy.yml`, `site.yml`, `remove.yml` | The playbooks: build, deploy, both in one go, remove | Yes |
 | `container.env` | The container's settings and secrets | **No** |
 | `images/` | The built images | No |
 
@@ -56,7 +56,7 @@ The deploy works as root (through sudo) and, on each server:
 4. installs `container.env` and the Quadlet file `{{ __node_setup_service }}.container` in
    `/etc/containers/systemd/users/<the account's UID>/`;
 5. starts the service, or restarts it when something changed, and waits until it
-   answers on `127.0.0.1:3000`. If it does not, it shows the service's log.
+   answers on its port (`127.0.0.1:3000` by default). If it does not, it shows the service's log.
 
 The app can write only to `/data` (the service's directory, kept across
 deploys) and `/tmp`; the rest of the container is read-only. The service starts
@@ -73,6 +73,30 @@ sudo systemctl --user -M {{ __node_setup_service }}@ status {{ __node_setup_serv
 sudo journalctl _SYSTEMD_USER_UNIT={{ __node_setup_service }}.service
 curl http://127.0.0.1:3000/
 ```
+
+## Deploying a new version
+
+Raise the `version` in package.json, then build and deploy again:
+
+```sh
+ansible-playbook site.yml                # image.yml, then deploy.yml
+```
+
+The deploy loads the new image, restarts the service and waits until it answers.
+It keeps only the version it deployed: other versions' archives in
+`/opt/containers/images/` and the account's unused images are removed. A change
+to `container.env` or `group_vars/all.yml` alone needs only `ansible-playbook deploy.yml`.
+
+## Removing it
+
+```sh
+ansible-playbook remove.yml              # add --ask-become-pass if sudo asks for a password
+```
+
+This removes everything the deploy created on each server: the service, its
+account (with its home directory and images), the Quadlet and environment files,
+the image archives and `/opt/{{ __node_setup_service }}/`, **the app's data included**. Copy that
+directory first if you need it. A deploy afterwards starts from scratch.
 
 ## In a pipeline
 
