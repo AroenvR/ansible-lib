@@ -1,0 +1,17 @@
+---
+# Sets up, builds and deploys a small test app (app/) the way a project would,
+# on the RHEL 9 test server, then restarts the server and checks the service came
+# back by itself, with its data. The app's own container runs inside the test
+# server, hence the extra settings below.
+scenario:
+  name: server
+platforms:
+  - name: rhel9
+    image: localhost/aslib-test/rhel9:latest
+    pre_build_image: true
+    command: /sbin/init
+    systemd: always
+    privileged: true
+    # Rootless Podman cannot keep its storage on the test server's own overlay
+    # filesystem, so /home lives on a volume.
+    volumes: [/home]

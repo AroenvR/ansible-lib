@@ -1,0 +1,9 @@
+---
+- name: Deploy the test project to the RHEL 9 test server, on port 3009 and with a fixed UID
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Run node_deploy
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy

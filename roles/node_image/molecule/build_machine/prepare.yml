@@ -1,0 +1,76 @@
+---
+# Puts the source code of every test app (vars/apps.yml) in its own directory.
+- name: Prepare the node_image test apps
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/apps.yml]
+  tasks:
+    - name: Create a directory per test app, with an ansible/ directory as node_setup writes
+      ansible.builtin.file:
+        path: "{{ node_image_test_dir }}/{{ item.name }}/ansible"
+        state: directory
+        mode: "0755"
+      loop: "{{ node_image_test_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Copy the test apps that live in this scenario
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/{{ item.source }}/"
+        dest: "{{ node_image_test_dir }}/{{ item.name }}/"
+        mode: preserve
+      loop: "{{ node_image_test_apps | selectattr('source', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Download NestJS's REST sample at each pinned commit
+      ansible.builtin.unarchive:
+        src: https://github.com/nestjs/nest/archive/{{ item.nestjs_ref }}.tar.gz
+        remote_src: true
+        dest: "{{ node_image_test_dir }}/{{ item.name }}"
+        extra_opts: [--strip-components=3, --wildcards, "*/sample/01-cats-app/*"]
+        creates: "{{ node_image_test_dir }}/{{ item.name }}/package.json"
+      loop: "{{ node_image_test_apps | selectattr('nestjs_ref', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Rename each NestJS sample after its test case, so their images get different tags
+      ansible.builtin.replace:
+        path: "{{ node_image_test_dir }}/{{ item.name }}/package.json"
+        regexp: '^  "name": ".*",$'
+        replace: '  "name": "{{ item.name }}",'
+      loop: "{{ node_image_test_apps | selectattr('nestjs_ref', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # NestJS's samples have no lockfile and their dev dependencies disagree on
+    # peer versions; NestJS itself installs them with --legacy-peer-deps
+    # (tools/gulp/tasks/samples.ts). A project's .npmrc is how any project says so,
+    # and the build machine's own npm settings work as well (machine_npmrc).
+    - name: Let npm install NestJS's samples the way NestJS does
+      ansible.builtin.copy:
+        content: "legacy-peer-deps=true\n"
+        dest: "{{ node_image_test_dir }}/{{ item.name ~ '/.npmrc' if not item.machine_npmrc | default(false) else 'machine.npmrc' }}"
+        mode: "0600"
+      loop: "{{ node_image_test_apps | selectattr('nestjs_ref', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # node_image must never put the project's ansible/ directory in the image.
+    - name: Give each test app an ansible/ directory holding a secret
+      ansible.builtin.copy:
+        content: "SECRET=must-not-be-in-the-image\n"
+        dest: "{{ node_image_test_dir }}/{{ item.name }}/ansible/container.env"
+        mode: "0600"
+      loop: "{{ node_image_test_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Write .nvmrc where a test case pins a Node.js version
+      ansible.builtin.copy:
+        content: "{{ item.nvmrc }}\n"
+        dest: "{{ node_image_test_dir }}/{{ item.name }}/.nvmrc"
+        mode: "0644"
+      loop: "{{ node_image_test_apps | selectattr('nvmrc', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"

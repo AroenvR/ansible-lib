@@ -1,0 +1,75 @@
+---
+# Builds the aslib.infra tarball from this checkout into dist/. Not part of the
+# collection itself; run it from the repository root with any ansible-core 2.12+.
+#
+#   ansible-playbook build.yml
+#     A build to try out, named after the branch, the commit and the time:
+#     dist/aslib-infra.<branch>.<commit>.<UTC yyyymmddHHMM>.tgz. CI publishes the
+#     same as a branch build. Install it where you want to use it:
+#       ansible-galaxy collection install --force dist/aslib-infra.<...>.tgz
+#
+#   ansible-playbook build.yml -e release=true
+#     A release, as CI makes one from main once every test passed: writes the
+#     next version (dev/ci/next-version.sh) into galaxy.yml and builds
+#     dist/aslib-infra-<version>.tar.gz.
+- name: Build the aslib.infra tarball
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    release: false
+    # CI passes the branch it builds (-e branch=...), as its checkout may not be on one.
+    branch: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
+    __build_tarball: "{{ playbook_dir }}/dist/aslib-infra-{{ (lookup('file', playbook_dir ~ '/galaxy.yml') | from_yaml).version }}.tar.gz"
+  tasks:
+    - name: Work out the next release version
+      ansible.builtin.command: sh dev/ci/next-version.sh
+      args:
+        chdir: "{{ playbook_dir }}"
+      register: __build_next_version
+      changed_when: false
+      when: release | bool
+
+    - name: Write the release version into galaxy.yml
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/galaxy.yml"
+        regexp: "^version: .*$"
+        replace: "version: {{ __build_next_version.stdout }}"
+      when: release | bool
+
+    # Only runtime files go in: build_ignore in galaxy.yml leaves out tests and tooling.
+    - name: Build dist/aslib-infra-<version>.tar.gz
+      ansible.builtin.command: ansible-galaxy collection build --output-path dist --force
+      args:
+        chdir: "{{ playbook_dir }}"
+      changed_when: true
+
+    - name: Name the build after the branch, the commit and the time
+      ansible.builtin.copy:
+        src: "{{ __build_tarball }}"
+        dest: "{{ playbook_dir }}/dist/aslib-infra.{{ branch | replace('/', '.') }}.{{ __build_commit }}.{{ __build_time }}.tgz"
+        mode: "0644"
+      vars:
+        __build_commit: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse HEAD') }}"
+        __build_time: "{{ now(utc=true, fmt='%Y%m%d%H%M') }}"
+      register: __build_named
+      when: not release | bool
+
+    - name: Compute the build's SHA-256 checksum
+      ansible.builtin.stat:
+        path: "{{ __build_named.dest | default(__build_tarball) }}"
+        checksum_algorithm: sha256
+      register: __build_file
+
+    # Lets whoever downloads it check it: sha256sum --check <file>.sha256
+    - name: Write the checksum next to the build
+      ansible.builtin.copy:
+        content: "{{ __build_file.stat.checksum }}  {{ __build_file.stat.path | basename }}\n"
+        dest: "{{ __build_file.stat.path }}.sha256"
+        mode: "0644"
+
+    - name: Show what was built
+      ansible.builtin.debug:
+        msg: >-
+          Built {{ __build_file.stat.path }} (SHA-256 in {{ __build_file.stat.path | basename }}.sha256).
+          Install it with: ansible-galaxy collection install --force <that file>

@@ -1,0 +1,13 @@
+---
+# Updates the Node.js project's ansible/ directory to this aslib.infra, like
+# aslib.infra.node_setup does from the project root. Run it from ansible/:
+#   ansible-playbook aslib.infra.node_update
+# Options: ansible-doc -t role aslib.infra.node_setup
+- name: Update the Node.js project's ansible/ directory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: aslib.infra.node_setup
+      vars:
+        node_setup_project: "{{ lookup('env', 'PWD') | dirname }}"

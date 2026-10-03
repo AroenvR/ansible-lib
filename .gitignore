@@ -1,0 +1,13 @@
+# Development directories
+.venv
+.venv/
+dist
+dist/
+tmp
+tmp/
+
+# Archives
+*.tgz
+*.zip
+*.gpg
+*.bak

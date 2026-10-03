@@ -1,0 +1,133 @@
+---
+# Lint, test and publish aslib.infra. Every job runs a make target, so a
+# pipeline does exactly what `make` does locally (see CONTRIBUTING.md).
+#
+# The test jobs start Podman containers inside the job, which the runner must
+# allow. The runner-check job reports what the runner offers; the test jobs
+# only run once it passes.
+
+variables:
+  # Job images. Override them in Settings > CI/CD > Variables, e.g. to use an
+  # internal registry mirror. Pin them to a tag or digest once the pipeline is green.
+  PYTHON_IMAGE: docker.io/library/python:3.12
+  PODMAN_IMAGE: quay.io/podman/stable:latest
+  # Ansible loads the collection from <dir>/ansible_collections/aslib/infra
+  # (see CONTRIBUTING.md), so every job works on a copy at this path.
+  COLLECTION_DIR: /tmp/src/ansible_collections/aslib/infra
+
+workflow:
+  rules:
+    # Experimental phase: every branch, on every push, schedule or manual run.
+    # main and accept get pipelines of their own later.
+    - if: $CI_COMMIT_BRANCH
+
+stages: [check, test, publish]
+
+.copy-to-collection-dir: &copy-to-collection-dir
+  - mkdir -p "$(dirname "$COLLECTION_DIR")"
+  - cp -a . "$COLLECTION_DIR"
+  - cd "$COLLECTION_DIR"
+
+.with-podman:
+  image: $PODMAN_IMAGE
+  needs: [runner-check]
+  before_script:
+    # The Podman image is Fedora; the test venvs need Python 3.10.
+    - dnf install --assumeyes --quiet make python3.10
+    - *copy-to-collection-dir
+
+lint:
+  stage: check
+  image: $PYTHON_IMAGE
+  before_script: *copy-to-collection-dir
+  script:
+    - make lint PYTHON_LINT=python3
+
+runner-check:
+  stage: check
+  image: $PODMAN_IMAGE
+  script:
+    - sh dev/ci/runner-check.sh
+
+servers:
+  stage: test
+  extends: .with-podman
+  parallel:
+    matrix:
+      - ANSIBLE: ["2.12", "2.14"]
+  script:
+    - make images test-servers-$ANSIBLE PYTHON_COMPAT=python3.10
+
+build-machine:
+  stage: test
+  extends: .with-podman
+  parallel:
+    matrix:
+      - ANSIBLE: ["2.12", "2.14"]
+  script:
+    - make test-build-machine-$ANSIBLE PYTHON_COMPAT=python3.10
+
+native:
+  stage: test
+  extends: .with-podman
+  script:
+    - make test-native PYTHON_LINT=python3
+
+# Every other branch: a build kept for 7 days. GitLab keeps each pipeline's
+# build until it expires; download one from the job's artifacts.
+branch-build:
+  stage: publish
+  image: $PYTHON_IMAGE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  before_script: *copy-to-collection-dir
+  script:
+    - make dist BRANCH="$CI_COMMIT_BRANCH" PYTHON_LINT=python3
+    - cp dist/aslib-infra.*.tgz "$CI_PROJECT_DIR/"
+  artifacts:
+    paths: ["aslib-infra.*.tgz"]
+    expire_in: 7 days
+
+# The default branch (main): the next version, uploaded to the package registry
+# and published as a release, which also creates its tag.
+publish:
+  stage: publish
+  image: $PYTHON_IMAGE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  resource_group: release  # two pushes in a row must not claim the same version
+  before_script: *copy-to-collection-dir
+  script:
+    - make dist-release PYTHON_LINT=python3
+    - VERSION=$(make --silent version)
+    - |
+      for file in "aslib-infra-$VERSION.tar.gz" "aslib-infra-$VERSION.tar.gz.sha256"; do
+        curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "dist/$file" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/aslib-infra/$VERSION/$file"
+      done
+    - echo "VERSION=$VERSION" > "$CI_PROJECT_DIR/release.env"
+  artifacts:
+    reports:
+      dotenv: release.env
+
+release:
+  stage: publish
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs: [publish]
+  script:
+    - echo "Creating release v$VERSION"
+  release:
+    tag_name: v$VERSION
+    ref: $CI_COMMIT_SHA
+    name: v$VERSION
+    description: See CHANGELOG.md for what changed.
+    assets:
+      links:
+        - name: aslib-infra-$VERSION.tar.gz
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/aslib-infra/$VERSION/aslib-infra-$VERSION.tar.gz
+          link_type: package
+        - name: aslib-infra-$VERSION.tar.gz.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/aslib-infra/$VERSION/aslib-infra-$VERSION.tar.gz.sha256
+          link_type: other

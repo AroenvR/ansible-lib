@@ -1,0 +1,33 @@
+---
+# Deploys the image of the version in package.json with aslib.infra.podman_service,
+# which does the work on the server; this role supplies the project's files.
+- name: Work out the service from package.json
+  ansible.builtin.import_tasks: service.yml
+
+- name: Check the image and the environment file are there
+  ansible.builtin.assert:
+    that: __node_deploy_needed.path is file
+    fail_msg: "{{ __node_deploy_needed.path }} is missing. {{ __node_deploy_needed.fix }}"
+    quiet: true
+  loop:
+    - path: "{{ __node_deploy_archive }}"
+      fix: "Build it first: ansible-playbook image.yml"
+    - path: "{{ node_deploy_ansible_dir }}/container.env"
+      fix: It holds the container's settings and secrets and is not in git. Create it; it may be empty.
+  loop_control:
+    loop_var: __node_deploy_needed
+    label: "{{ __node_deploy_needed.path | basename }}"
+
+# The Quadlet template is the project's (ansible/templates/service.container.j2,
+# from node_setup, for the project to tune) if it has one, else podman_service's.
+- name: Deploy the service
+  ansible.builtin.import_role:
+    name: aslib.infra.podman_service
+  vars:
+    __node_deploy_template: "{{ node_deploy_ansible_dir }}/templates/service.container.j2"
+    podman_service_name: "{{ __node_deploy_service }}"
+    podman_service_image: "{{ __node_deploy_image }}"
+    podman_service_archive: "{{ __node_deploy_archive }}"
+    podman_service_env_file: "{{ node_deploy_ansible_dir }}/container.env"
+    podman_service_config_files: "{{ query('fileglob', (node_deploy_ansible_dir | dirname) ~ '/' ~ node_deploy_config_files) }}"
+    podman_service_quadlet_template: "{{ __node_deploy_template if __node_deploy_template is file else '' }}"

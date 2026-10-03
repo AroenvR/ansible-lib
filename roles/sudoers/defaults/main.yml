@@ -1,0 +1,3 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml.
+sudoers_rules: []

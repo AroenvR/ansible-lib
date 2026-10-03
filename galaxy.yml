@@ -1,0 +1,46 @@
+---
+# Collection metadata: identity, version and what ends up in the release tarball.
+namespace: aslib
+name: infra
+# Releases are made by CI from main: each gets the next patch version after the
+# latest v* tag, or this version when it is higher. Raise it here to release a
+# new minor or major version (see CONTRIBUTING.md).
+version: 0.1.0
+readme: README.md
+description: Tested building blocks for RHEL 9 and Ubuntu 22.04 servers.
+authors:
+  - AroenvR (https://github.com/AroenvR)
+license_file: LICENSE
+tags:
+  - linux
+  - infrastructure
+
+# Deliberately empty: the library only uses ansible.builtin, so consumers need
+# nothing beyond the ansible-core package their OS ships. Adding an entry here
+# makes every consumer (including offline ones) ship that collection too.
+dependencies: {}
+
+repository: https://github.com/AroenvR/ansible-lib
+
+# Development-only files never ship to consumers, nor what .gitignore keeps out
+# of git (ansible-galaxy does not read it), such as private files in tmp/.
+build_ignore:
+  - AGENTS.md
+  - build.yml
+  - CLAUDE.md
+  - .config
+  - .github
+  - .gitignore
+  - .gitlab-ci.yml
+  - .ansible-lint
+  - .venv
+  - CONTRIBUTING.md
+  - Makefile
+  - dev
+  - dist
+  - roles/*/molecule
+  - tmp
+  - "*.tgz"
+  - "*.zip"
+  - "*.gpg"
+  - "*.bak"

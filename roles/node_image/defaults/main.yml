@@ -1,0 +1,12 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml.
+node_image_source: "{{ lookup('env', 'PWD') | dirname }}"
+node_image_output_dir: "{{ lookup('env', 'PWD') }}/images"
+node_image_node_version: "24"
+node_image_port: 3000
+node_image_build_packages: []
+node_image_runtime_packages: []
+node_image_ignore: []
+node_image_main: dist/main.js
+node_image_registry: registry.access.redhat.com
+node_image_npmrc: "{{ lookup('env', 'HOME') }}/.npmrc"

@@ -1,0 +1,114 @@
+---
+argument_specs:
+  main:
+    short_description: Run an image archive as a rootless Podman service that starts at boot
+    description:
+      - Deploys an image archive (made with podman save) to the server as a Quadlet service, run rootless by an
+        account of its own. aslib.infra.node_deploy uses it for Node.js projects.
+      - Works as root on the server and follows these conventions. The account may run services while nobody is
+        logged in (lingering). Image archives are kept in /opt/containers/images/<service>/ and loaded into the
+        account's Podman. The Quadlet file and the environment file are in
+        /etc/containers/systemd/users/<the account's UID>/, managed by root.
+      - The service's directory (/opt/<service> by default) belongs to the app and is its working directory, at the
+        same path in the container, so relative paths such as data/ or prod.db end up there. The deploy creates it and
+        data/ in it when missing, manages only config/ in it, and hands it to the account when it belongs to another
+        UID (a new account after a removal). The code stays read-only in the image.
+      - Starts the service, or restarts it when the image, the environment file, the config files or the Quadlet
+        file changed, then waits until it answers HTTP requests on its port. If it does not, the deploy fails and
+        shows its log. Only the deployed version stays; other versions' archives and the account's other images
+        are removed.
+      - The default Quadlet file runs the container as the user of Red Hat's UBI images (1001), mapped to the
+        account, with a read-only root filesystem (/tmp is in memory), no capabilities and no privilege
+        escalation, and starts it again after a crash or reboot.
+      - Servers need RHEL 9.2 or newer with Podman 4.4 or newer (Quadlet) installed. No network access is needed.
+    options:
+      podman_service_name:
+        type: str
+        required: true
+        description: The service's name, e.g. C(orders-api). Also the name of its account, directory, Quadlet file and
+          systemd unit, unless set otherwise.
+      podman_service_image:
+        type: str
+        required: true
+        description: The image to run, with its tag, as the archive names it, e.g. C(localhost/orders-api:1.4.0).
+      podman_service_archive:
+        type: path
+        required: true
+        description: The image archive on the Ansible machine, made with C(podman save). It is kept on the server as
+          /opt/containers/images/<service>/<its file name>.
+      podman_service_env_file:
+        type: path
+        required: true
+        description: The container's environment variables on the Ansible machine, one C(KEY=value) per line without
+          quotes. It may hold secrets, never shows in Ansible's output, and is readable by root and the account only.
+      podman_service_config_files:
+        type: list
+        elements: path
+        default: []
+        description:
+          - Config files on the Ansible machine. The deploy copies them into config/ in the service's directory,
+            removes files that are no longer listed, and restarts the service when they change.
+          - The app finds them read-only in config/ in its working directory.
+      podman_service_quadlet_template:
+        type: str
+        default: ""
+        description: A template of the Quadlet file, for what the settings do not cover. Empty means the role's own,
+          templates/service.container.j2, which documents the variables it can use.
+      podman_service_user:
+        type: str
+        default: ""
+        description: The account the service runs as. Empty means the service's name.
+      podman_service_uid:
+        type: str
+        default: ""
+        description: The account's UID, e.g. to have the same UID on every server. Empty lets the server pick a free one
+          when it creates the account. Set it before the first deploy; to change it later, remove the service first
+          (its data stays, and the next deploy hands it to the new UID).
+      podman_service_dir:
+        type: str
+        default: ""
+        description: The service's own directory on the server and the app's working directory, at the same path in the
+          container. The app may create anything in it. Empty means /opt/<service>.
+      podman_service_port:
+        type: int
+        default: 3000
+        description: The service's port on the server.
+      podman_service_bind_address:
+        type: str
+        default: 127.0.0.1
+        description: The address the port is published on. 127.0.0.1 keeps it for this server, e.g. for a reverse proxy;
+          0.0.0.0 makes it reachable from other machines (if the firewall allows).
+      podman_service_container_port:
+        type: int
+        default: 3000
+        description: The port the app listens on inside the container.
+      podman_service_tmp_size:
+        type: str
+        default: 512m
+        description: Size limit of the app's /tmp, which is in memory and emptied on every restart, e.g. C(2g). For large
+          temporary files on disk, the app makes a directory of its own in its working directory.
+  remove:
+    short_description: Remove a service that aslib.infra.podman_service deployed, keeping its data unless asked
+    description:
+      - Stops the service and removes its account (with the account's home directory, Podman storage and
+        images), its Quadlet and environment files, its image archives and its config files. The service's
+        directory, with the app's data, stays unless I(podman_service_remove_data) is true; a later deploy uses it
+        again. Running it again changes nothing.
+      - Works as root on the server, like the deploy.
+    options:
+      podman_service_name:
+        type: str
+        required: true
+        description: The service's name.
+      podman_service_user:
+        type: str
+        default: ""
+        description: The service's account. Empty means the service's name.
+      podman_service_dir:
+        type: str
+        default: ""
+        description: The service's own directory on the server. Empty means /opt/<service>.
+      podman_service_remove_data:
+        type: bool
+        default: false
+        description: Also remove the service's directory, B(with the app's data).

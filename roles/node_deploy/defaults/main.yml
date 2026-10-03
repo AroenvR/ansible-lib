@@ -1,0 +1,6 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml. The
+# settings of the service itself (port, account, directory, ...) are
+# aslib.infra.podman_service's.
+node_deploy_ansible_dir: "{{ lookup('env', 'PWD') }}"
+node_deploy_config_files: config/production/*.json

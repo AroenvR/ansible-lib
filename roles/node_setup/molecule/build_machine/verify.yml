@@ -1,0 +1,152 @@
+---
+- name: Check the files node_setup writes, and that an update keeps the project's own
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  vars:
+    __node_setup_test_dir: "{{ node_setup_test_project }}/ansible"
+    __node_setup_test_roles: "{{ playbook_dir }}/../../.."
+  tasks:
+    - name: Inspect the environment file
+      ansible.builtin.stat:
+        path: "{{ __node_setup_test_dir }}/container.env"
+      register: __node_setup_test_env
+
+    - name: Check the files are there, with their contents
+      ansible.builtin.assert:
+        that:
+          - (__node_setup_test_dir ~ '/README.md') is file
+          - lookup('file', __node_setup_test_dir ~ '/ansible.cfg') is search('^inventory = inventory\.yml$', multiline=True)
+          - lookup('file', __node_setup_test_dir ~ '/ansible.cfg') is search('^callbacks_enabled = aslib\.infra\.run_log$', multiline=True)
+          - (lookup('file', __node_setup_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
+          - lookup('file', __node_setup_test_dir ~ '/prebuild.yml') is search('import_playbook: aslib.infra.node_prebuild')
+          - lookup('file', __node_setup_test_dir ~ '/image.yml') is search('import_playbook: aslib.infra.node_image')
+          - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: aslib.infra.node_deploy')
+          - lookup('file', __node_setup_test_dir ~ '/build-and-deploy.yml') is search('import_playbook: image.yml')
+          - lookup('file', __node_setup_test_dir ~ '/remove.yml') is search('import_playbook: aslib.infra.node_remove')
+          - lookup('file', __node_setup_test_dir ~ '/update-playbooks.yml') is search('import_playbook: aslib.infra.node_update')
+          - lookup('file', __node_setup_test_dir ~ '/.gitignore').splitlines() is superset(['container.env', '*.bak', 'logs/'])
+          - lookup('file', __node_setup_test_dir ~ '/templates/service.container.j2')
+            == lookup('file', __node_setup_test_roles ~ '/podman_service/templates/service.container.j2')
+          - lookup('file', __node_setup_test_dir ~ '/container.env')
+            == "# Production settings\nDATABASE_CONFIG=config/db_config.json\nGREETING=hello, world\nPLAIN=as it is"
+          - __node_setup_test_env.stat.mode == '0600'
+          - lookup('file', __node_setup_test_dir ~ '/README.md') is search('systemctl --user -M acme-invoice-service@ status acme-invoice-service')
+        success_msg: >-
+          PASSED node_setup wrote ansible/ with its settings, playbooks, inventory, Quadlet template, guide
+          and a private, git-ignored environment file copied from .env.production without the quotes.
+
+    # Both settings files must hold exactly the roles' defaults, or they would mislead.
+    - name: Check both settings files hold every setting at the roles' default
+      vars:
+        __node_setup_test_role_defaults: >-
+          {{ lookup('file', __node_setup_test_roles ~ '/node_image/defaults/main.yml') | from_yaml
+             | combine(lookup('file', __node_setup_test_roles ~ '/node_deploy/defaults/main.yml') | from_yaml)
+             | combine(lookup('file', __node_setup_test_roles ~ '/podman_service/defaults/main.yml') | from_yaml) }}
+        __node_setup_test_settings: "{{ lookup('file', __node_setup_test_dir ~ '/group_vars/all/' ~ item) | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __node_setup_test_settings | length > 10
+          - __node_setup_test_settings | dict2items | rejectattr('key', 'in', __node_setup_test_role_defaults) | list == []
+          - __node_setup_test_settings == __node_setup_test_role_defaults | dict2items
+            | selectattr('key', 'in', __node_setup_test_settings) | items2dict
+        quiet: true
+        success_msg: "PASSED node_setup: {{ item }} holds {{ __node_setup_test_settings | length }} settings, each at its default."
+      loop: [defaults.yml, project.yml]
+
+    - name: Look for the project's name in the files that belong to the project
+      ansible.builtin.command:
+        argv: [grep, --recursive, --files-with-matches, --exclude=README.md, invoice-service, "{{ __node_setup_test_dir }}"]
+      register: __node_setup_test_named
+      changed_when: false
+      failed_when: __node_setup_test_named.rc != 1  # 1: no file names it
+
+    - name: Check the playbooks it wrote are valid
+      ansible.builtin.command:
+        argv: [ansible-playbook, --syntax-check, "{{ __node_setup_test_dir }}/{{ item }}"]
+      loop: [prebuild.yml, image.yml, deploy.yml, build-and-deploy.yml, remove.yml, update-playbooks.yml]
+      changed_when: false
+
+    # As a developer would, from the project's ansible/ directory: with its ansible.cfg
+    # and, since playbooks find the project through it, its path in PWD.
+    - name: Run update-playbooks.yml from the project's ansible/ directory
+      ansible.builtin.command:
+        argv: [ansible-playbook, update-playbooks.yml]
+        chdir: "{{ __node_setup_test_dir }}"
+      environment:
+        ANSIBLE_CONFIG: "{{ __node_setup_test_dir }}/ansible.cfg"
+        PWD: "{{ __node_setup_test_dir }}"
+      changed_when: false
+
+    - name: Find the run's log
+      ansible.builtin.find:
+        paths: "{{ __node_setup_test_dir }}/logs"
+        patterns: update-playbooks-*.log
+      register: __node_setup_test_logs
+
+    - name: Check the run wrote its own log, readable by its owner only
+      ansible.builtin.assert:
+        that:
+          - __node_setup_test_logs.files | length == 1
+          - __node_setup_test_logs.files[0].mode == '0600'
+          - lookup('file', __node_setup_test_logs.files[0].path) is search('^TASK \[aslib.infra.node_setup.+Write aslib.infra.s files\]$', multiline=True)
+          - lookup('file', __node_setup_test_logs.files[0].path) is search('^PLAY RECAP$', multiline=True)
+        success_msg: >-
+          PASSED aslib.infra.run_log wrote the run of update-playbooks.yml to
+          logs/{{ __node_setup_test_logs.files[0].path | basename }}.
+
+    - name: Change files of the project's and of aslib.infra's, as time would
+      ansible.builtin.copy:
+        content: "{{ __node_setup_test_change.content }}"
+        dest: "{{ __node_setup_test_dir }}/{{ __node_setup_test_change.file }}"
+        mode: preserve
+      loop:
+        - { file: container.env, content: "GREETING=kept\n" }
+        - { file: group_vars/all/project.yml, content: "podman_service_port: 3009\n" }
+        - { file: deploy.yml, content: "# changed locally\n" }
+      loop_control:
+        loop_var: __node_setup_test_change
+        label: "{{ __node_setup_test_change.file }}"
+
+    - name: Run node_setup again, as an update does
+      ansible.builtin.include_role:
+        name: aslib.infra.node_setup
+      vars:
+        node_setup_project: "{{ node_setup_test_project }}"
+
+    - name: Check the update kept the project's files and restored aslib.infra's, keeping the changed one as .bak
+      ansible.builtin.assert:
+        that:
+          - lookup('file', __node_setup_test_dir ~ '/container.env') == 'GREETING=kept'
+          - lookup('file', __node_setup_test_dir ~ '/group_vars/all/project.yml') == 'podman_service_port: 3009'
+          - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: aslib.infra.node_deploy')
+          - lookup('file', __node_setup_test_dir ~ '/deploy.yml.bak') == '# changed locally'
+          - (__node_setup_test_dir ~ '/image.yml.bak') is not exists
+        success_msg: PASSED an update kept the project's files, restored deploy.yml and kept the local change in deploy.yml.bak.
+
+    - name: Turn the directory into one of an older setup, with a single group_vars/all.yml
+      ansible.builtin.command:
+        argv: [mv, group_vars/all/project.yml, group_vars/all.yml]
+        chdir: "{{ __node_setup_test_dir }}"
+        creates: "{{ __node_setup_test_dir }}/group_vars/all.yml"
+
+    - name: Update the older setup
+      ansible.builtin.include_role:
+        name: aslib.infra.node_setup
+      vars:
+        node_setup_project: "{{ node_setup_test_project }}"
+
+    - name: Read the settings Ansible sees for the project
+      ansible.builtin.command:
+        argv: [ansible-inventory, "--inventory={{ __node_setup_test_dir }}/inventory.yml", --host, localhost]
+      register: __node_setup_test_inventory
+      changed_when: false
+
+    - name: Check the older settings became project.yml and win over the defaults
+      ansible.builtin.assert:
+        that:
+          - (__node_setup_test_dir ~ '/group_vars/all.yml') is not exists
+          - lookup('file', __node_setup_test_dir ~ '/group_vars/all/project.yml') == 'podman_service_port: 3009'
+          - (__node_setup_test_inventory.stdout | from_json).podman_service_port == 3009
+          - (__node_setup_test_inventory.stdout | from_json).podman_service_tmp_size == '512m'
+        success_msg: PASSED an older setup's group_vars/all.yml became group_vars/all/project.yml; its settings win, defaults.yml fills the rest.

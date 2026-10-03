@@ -1,0 +1,19 @@
+---
+- name: Build an image of every node_image test app
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/apps.yml]
+  tasks:
+    - name: Run node_image for each test app
+      ansible.builtin.include_role:
+        name: aslib.infra.node_image
+      vars:
+        node_image_source: "{{ node_image_test_dir }}/{{ node_image_test_app.name }}"
+        node_image_output_dir: "{{ node_image_test_dir }}/{{ node_image_test_app.name }}/ansible/images"
+        node_image_main: "{{ node_image_test_app.main | default('dist/main.js') }}"
+        # Only the build machine npm settings of the test, never those of the machine running it.
+        node_image_npmrc: "{{ node_image_test_dir ~ '/machine.npmrc' if node_image_test_app.machine_npmrc | default(false) else '' }}"
+      loop: "{{ node_image_test_apps }}"
+      loop_control:
+        loop_var: node_image_test_app
+        label: "{{ node_image_test_app.name }}"

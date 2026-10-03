@@ -1,0 +1,3 @@
+---
+# Lowest ansible-core the library supports: what Ubuntu 22.04 ships natively.
+requires_ansible: ">=2.12.0"

@@ -1,0 +1,19 @@
+---
+- name: Prepare the servers for the sudoers tests
+  hosts: all
+  tasks:
+    - name: Create the user the test rule grants rights to
+      ansible.builtin.user:
+        name: deploy
+
+    - name: Create the rules directory, as sudo is not installed yet
+      ansible.builtin.file:
+        path: /etc/sudoers.d
+        state: directory
+        mode: "0750"
+
+    - name: Create a stale rule that converge must remove
+      ansible.builtin.copy:
+        content: "# stale rule\n"
+        dest: /etc/sudoers.d/old_rule
+        mode: "0440"

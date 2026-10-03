@@ -1,0 +1,15 @@
+---
+# Deploys the Node.js project to every server in the inventory, as a rootless
+# Podman service that starts at boot. Run it from the project's ansible/
+# directory (see aslib.infra.node_setup), after aslib.infra.node_image:
+#   ansible-playbook aslib.infra.node_deploy
+# It works as root on the servers, through sudo. Options: ansible-doc -t role aslib.infra.node_deploy
+- name: Deploy the Node.js project as a rootless Podman service
+  hosts: all
+  become: true
+  gather_facts: false
+  # A failed deploy still restarts the service for what it changed before failing,
+  # or the next run, finding nothing to change, would not.
+  force_handlers: true
+  roles:
+    - role: aslib.infra.node_deploy

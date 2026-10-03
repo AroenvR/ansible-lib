@@ -1,0 +1,9 @@
+# Ubuntu 22.04 with the ansible-core (2.12.0) and Podman (3.4) packages Ubuntu
+# itself ships: both a server and a build machine exactly as Ubuntu provides them.
+FROM localhost/aslib-test/ubuntu2204:latest
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install --yes ansible-core podman \
+ && apt-get clean
+# This container runs inside Podman, whose network is also 10.88.0.0/16. The
+# Podman in here gets another subnet, or its containers are unreachable.
+RUN sed -i 's/10\.88\./10.89./g' /etc/cni/net.d/87-podman-bridge.conflist

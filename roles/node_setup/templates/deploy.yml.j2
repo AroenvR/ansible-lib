@@ -1,0 +1,4 @@
+---
+# Deploys the image in images/ to the servers in inventory.yml: ansible-playbook deploy.yml
+- name: Deploy the service
+  ansible.builtin.import_playbook: aslib.infra.node_deploy

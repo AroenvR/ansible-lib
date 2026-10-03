@@ -1,0 +1,10 @@
+{
+  "name": "deploy-test-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test app for node_deploy: answers with what the deployment gave it.",
+  "scripts": {
+    "build": "node --check src/main.js && mkdir -p dist && cp src/main.js dist/main.js",
+    "start:prod": "node dist/main.js"
+  }
+}

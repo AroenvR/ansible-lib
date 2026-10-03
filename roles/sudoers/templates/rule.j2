@@ -1,0 +1,2 @@
+# {{ ansible_managed }}
+{{ __sudoers_rule.who }} ALL=(ALL) {{ 'NOPASSWD: ' if __sudoers_rule.nopasswd | default(false) else '' }}{{ __sudoers_rule.commands | join(', ') }}

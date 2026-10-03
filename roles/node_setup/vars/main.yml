@@ -1,0 +1,14 @@
+---
+# aslib.infra's files in the project's ansible/ directory, which every setup and
+# update rewrites (see tasks/main.yml). The project's own files are in tasks/main.yml.
+__node_setup_ours:
+  - { src: ansible.cfg.j2, dest: ansible.cfg }
+  - { src: .gitignore.j2, dest: .gitignore }
+  - { src: settings.yml.j2, dest: group_vars/all/defaults.yml }
+  - { src: prebuild.yml.j2, dest: prebuild.yml }
+  - { src: image.yml.j2, dest: image.yml }
+  - { src: deploy.yml.j2, dest: deploy.yml }
+  - { src: build-and-deploy.yml.j2, dest: build-and-deploy.yml }
+  - { src: remove.yml.j2, dest: remove.yml }
+  - { src: update-playbooks.yml.j2, dest: update-playbooks.yml }
+  - { src: README.md.j2, dest: README.md }

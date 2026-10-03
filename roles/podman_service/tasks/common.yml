@@ -1,0 +1,20 @@
+---
+# Shared by the deploy (main.yml) and the removal (remove.yml).
+- name: Work out the service's account and directories
+  ansible.builtin.set_fact:
+    __podman_service_user: "{{ podman_service_user or podman_service_name }}"
+    __podman_service_dir: "{{ podman_service_dir or '/opt/' ~ podman_service_name }}"
+    __podman_service_archive_dir: /opt/containers/images/{{ podman_service_name }}
+
+- name: Look up which account Ansible acts as on the server
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", user]
+
+- name: Check that Ansible acts as root
+  ansible.builtin.assert:
+    that: ansible_facts.user_uid == 0
+    fail_msg: >-
+      This manages the service's account, image and Quadlet file, which takes root on
+      {{ inventory_hostname }}. Connect as root or with sudo; with sudo asking for a password,
+      add --ask-become-pass.
+    quiet: true

@@ -1,0 +1,38 @@
+---
+# The apps the node_image tests build, run and query. Each entry is one test case:
+# covering another version means adding an entry, not code.
+#   source       a directory next to this file, or
+#   nestjs_ref   a commit or branch of github.com/nestjs/nest; its REST sample
+#                (sample/01-cats-app, no lockfile, no .nvmrc) is used
+#   nvmrc        written to .nvmrc; leave out to test the role's default version
+#   node         the Node.js major version the image must run
+#   main         node_image_main, when not dist/main.js
+#   machine_npmrc  true: npm's settings for the sample go into the build machine's
+#                npm settings (node_image_npmrc) instead of the project's .npmrc
+#   request      path to GET (default /cats)
+#   expect       text the response must contain (default [], an empty cat list)
+node_image_test_apps:
+  - name: native-addon          # a native (C) module compiles and loads
+    source: app
+    request: /
+    expect: native addon works
+    node: "24"                  # from app/.nvmrc
+    main: server.js
+  - name: nestjs-10             # last commit of the sample on NestJS 10
+    nestjs_ref: fb20d462f72c2061a735056ca7d45f14e7b77082
+    nvmrc: lts/jod
+    node: "22"
+  - name: nestjs-11             # last commit on NestJS 11
+    nestjs_ref: e4258105daabf26203e2580ccafb96dfba749a92
+    nvmrc: v24.11.0
+    node: "24"
+  - name: nestjs-12             # NestJS 12, pinned
+    nestjs_ref: a24bb137b5371956c35369e4c6646334d64b70be
+    node: "24"                  # no .nvmrc: the role's default
+  - name: nestjs-master         # follows NestJS's default branch, so it can break when they change things
+    nestjs_ref: master
+    nvmrc: lts/*
+    node: "24"
+    machine_npmrc: true
+
+node_image_test_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/node-image-test', true) }}/apps"

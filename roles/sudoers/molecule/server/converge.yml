@@ -1,0 +1,16 @@
+---
+- name: Apply sudoers with one rule to add and one to remove
+  hosts: all
+  tasks:
+    - name: Run sudoers
+      ansible.builtin.include_role:
+        name: aslib.infra.sudoers
+      vars:
+        sudoers_rules:
+          - name: deploy_restart_app
+            who: deploy
+            commands:
+              - /usr/bin/systemctl restart myapp
+            nopasswd: true
+          - name: old_rule
+            state: absent

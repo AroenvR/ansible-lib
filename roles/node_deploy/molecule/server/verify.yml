@@ -1,0 +1,397 @@
+---
+- name: Check the deployed service works, and comes back by itself when the server restarts
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Query the service
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_before
+
+    - name: Inspect the service's account, directory and files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /opt/deploy-test-app/data/starts
+        - /opt/deploy-test-app/app.state
+        - /etc/containers/systemd/users/3001/deploy-test-app.env
+        - /etc/containers/systemd/users/3001/deploy-test-app.container
+      register: __node_deploy_test_files
+
+    - name: Restart the test server, as a reboot would
+      ansible.builtin.command:
+        argv: [podman, restart, "{{ inventory_hostname }}"]
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Query the service again once the server is back, showing its log if it does not answer
+      block:
+        - name: Query the service again once the server is back
+          ansible.builtin.uri:
+            url: http://127.0.0.1:3009/
+          register: __node_deploy_test_after
+          until: __node_deploy_test_after is succeeded
+          retries: 60
+          delay: 2
+      rescue:
+        - name: Show the service's log
+          ansible.builtin.command: journalctl --no-pager --lines=50 _SYSTEMD_USER_UNIT=deploy-test-app.service
+          changed_when: false
+          failed_when: true
+
+    - name: Check the service's settings, its working directory, its files and its start at boot
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_before.json.version == '1.0.0'
+          - __node_deploy_test_before.json.greeting == 'hello from .env.production'
+          - __node_deploy_test_before.json.config == 'config/production'
+          - __node_deploy_test_before.json.tuned == 'yes'
+          - __node_deploy_test_before.json.cwd == '/opt/deploy-test-app'
+          - __node_deploy_test_before.json.tmpBytes == 512 * 1024 * 1024
+          - __node_deploy_test_files.results[0].stat.uid == 3001
+          - __node_deploy_test_files.results[1].stat.pw_name == 'deploy-test-app'
+          - __node_deploy_test_files.results[2].stat.mode == '0640'
+          - __node_deploy_test_files.results[2].stat.gr_name == 'deploy-test-app'
+          - __node_deploy_test_files.results[3].stat.exists
+          - __node_deploy_test_after.json.starts > __node_deploy_test_before.json.starts
+        success_msg: >-
+          PASSED node_deploy: the service answers on 127.0.0.1:3009 with the setting from .env.production,
+          its production config and the line added to the project's Quadlet template. It runs in
+          /opt/deploy-test-app, writes data/ and app.state there as its own account (UID 3001), has a 512 MB /tmp,
+          and started by itself when the server restarted, with its data (start count
+          {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).
+
+- name: Check the overview shows the service, and the log of a service that does not run
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  vars:
+    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, systemctl, --user]
+  tasks:
+    - name: Run podman_overview
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_overview
+
+    - name: Note the overview of the running service
+      ansible.builtin.set_fact:
+        __node_deploy_test_running: "{{ podman_overview_services }}"
+
+    - name: Stop the service
+      ansible.builtin.command:
+        argv: "{{ __node_deploy_test_systemctl + ['stop', 'deploy-test-app.service'] }}"
+        chdir: /
+      changed_when: true
+
+    - name: Run podman_overview with the service stopped
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_overview
+
+    - name: Start the service again
+      ansible.builtin.command:
+        argv: "{{ __node_deploy_test_systemctl + ['start', 'deploy-test-app.service'] }}"
+        chdir: /
+      changed_when: true
+
+    - name: Wait until the service answers again
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_back
+      until: __node_deploy_test_back is succeeded
+      retries: 30
+      delay: 2
+
+    - name: Check the overview showed the service, then its state and log once stopped
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_running | length == 1
+          - __node_deploy_test_running[0].name == 'deploy-test-app'
+          - __node_deploy_test_running[0].account == 'deploy-test-app'
+          - __node_deploy_test_running[0].uid == '3001'
+          - __node_deploy_test_running[0].state == 'active'
+          - __node_deploy_test_running[0].substate == 'running'
+          - __node_deploy_test_running[0].image == 'localhost/deploy-test-app:1.0.0'
+          - __node_deploy_test_running[0].ports == ['127.0.0.1:3009:3000']
+          - __node_deploy_test_running[0].log == []
+          - podman_overview_services | length == 1
+          - podman_overview_services[0].state != 'active'
+          - podman_overview_services[0].log is search('deploy-test-app 1.0.0 listens')
+        success_msg: >-
+          PASSED podman_overview: it showed deploy-test-app running as its account (UID 3001), with its image
+          and port, then {{ podman_overview_services[0].state }} once stopped, with the app's log lines.
+
+- name: Build a new version of the test project, as a developer would
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Raise the version in package.json to 1.0.1
+      ansible.builtin.replace:
+        path: "{{ node_deploy_test_project }}/package.json"
+        regexp: '"version": "1\.0\.0"'
+        replace: '"version": "1.0.1"'
+
+    - name: Change a config file
+      ansible.builtin.copy:
+        content: '{ "source": "config/production, changed" }'
+        dest: "{{ node_deploy_test_project }}/config/production/app.json"
+        mode: "0644"
+
+    - name: Remove a config file
+      ansible.builtin.file:
+        path: "{{ node_deploy_test_project }}/config/production/old.json"
+        state: absent
+
+    - name: Run node_image
+      ansible.builtin.include_role:
+        name: aslib.infra.node_image
+      vars:
+        node_image_source: "{{ node_deploy_test_project }}"
+        node_image_output_dir: "{{ node_deploy_test_project }}/ansible/images"
+        node_image_npmrc: ""
+
+    - name: List the project's images on the build machine
+      ansible.builtin.command:
+        argv: [podman, images, --filter=label=org.opencontainers.image.title=deploy-test-app, "--format={% raw %}{{.Repository}}:{{.Tag}}{% endraw %}"]
+      register: __node_deploy_test_built
+      changed_when: false
+
+    - name: Check the build machine keeps only the new image and its build stage
+      ansible.builtin.assert:
+        that: __node_deploy_test_built.stdout_lines | sort == ['localhost/deploy-test-app:1.0.1', 'localhost/deploy-test-app:build']
+        success_msg: PASSED node_image keeps deploy-test-app:1.0.1 and its build stage, and removed the images of 1.0.0.
+
+- name: Check a deploy of the new version replaces the old one and keeps the data
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Query the service before the update
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_old
+
+    - name: Run node_deploy with the new version
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy
+
+    - name: Query the updated service
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_new
+
+    - name: Find the service's image archives
+      ansible.builtin.find:
+        paths: /opt/containers/images/deploy-test-app
+      register: __node_deploy_test_archives
+
+    - name: Find the service's config files
+      ansible.builtin.find:
+        paths: /opt/deploy-test-app/config
+      register: __node_deploy_test_config
+
+    - name: List the account's images
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=deploy-test-app
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/3001
+          - podman
+          - images
+          - --format={% raw %}{{.Repository}}:{{.Tag}}{% endraw %}
+        chdir: /
+      register: __node_deploy_test_images
+      changed_when: false
+
+    - name: Check the new version runs with the old data and the new config, and only the new version is left
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_new.json.version == '1.0.1'
+          - __node_deploy_test_new.json.config == 'config/production, changed'
+          - __node_deploy_test_config.files | map(attribute='path') | list == ['/opt/deploy-test-app/config/app.json']
+          - __node_deploy_test_new.json.starts > __node_deploy_test_old.json.starts
+          - __node_deploy_test_archives.files | map(attribute='path') | list == ['/opt/containers/images/deploy-test-app/deploy-test-app-1.0.1.tar']
+          - __node_deploy_test_images.stdout_lines == ['localhost/deploy-test-app:1.0.1']
+        success_msg: >-
+          PASSED node_deploy update: version 1.0.1 answers with the data of 1.0.0 (start count
+          {{ __node_deploy_test_new.json.starts }}) and the changed config file; the removed config file,
+          the archive and the image of 1.0.0 are gone.
+
+- name: Check the removal takes away the service and keeps its data
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Remove the service
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy
+        tasks_from: remove
+
+    - name: Remove it again, which must work on a clean server too
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy
+        tasks_from: remove
+
+    - name: Run podman_overview after the removal
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_overview
+
+    - name: Look up the service's account
+      ansible.builtin.getent:
+        database: passwd
+        key: deploy-test-app
+        fail_key: false
+
+    - name: Look for what the deploy created
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/containers/systemd/users/3001
+        - /opt/containers/images/deploy-test-app
+        - /opt/deploy-test-app/config
+        - /home/deploy-test-app
+        - /var/lib/systemd/linger/deploy-test-app
+      register: __node_deploy_test_leftovers
+
+    - name: Look for the app's data
+      ansible.builtin.stat:
+        path: /opt/deploy-test-app/data/starts
+      register: __node_deploy_test_kept
+
+    - name: Query the service's port
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_gone
+      failed_when: false
+
+    - name: Check the account, the files and the service are gone, and the data is not
+      ansible.builtin.assert:
+        that:
+          - podman_overview_services == []
+          - ansible_facts.getent_passwd['deploy-test-app'] is none
+          - __node_deploy_test_leftovers.results | selectattr('stat.exists') | map(attribute='item') | list == []
+          - __node_deploy_test_kept.stat.exists
+          - __node_deploy_test_gone.status == -1
+        success_msg: >-
+          PASSED node_deploy remove: the account, its home directory, Quadlet directory, image archive,
+          config files and lingering are gone, nothing answers on port 3009 and podman_overview lists no
+          service, the app's data is still there, and a second run works.
+
+- name: Check a new deploy, as an account with another UID, takes over the data
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Run node_deploy with UID 3002
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy
+      vars:
+        podman_service_uid: "3002"
+
+    - name: Query the service
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_again
+
+    - name: Inspect the data the earlier account wrote
+      ansible.builtin.stat:
+        path: /opt/deploy-test-app/data/starts
+      register: __node_deploy_test_taken
+
+    - name: Check the service continues with the data, now owned by the new account
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_again.json.starts > __node_deploy_test_new.json.starts
+          - __node_deploy_test_taken.stat.uid == 3002
+        success_msg: >-
+          PASSED node_deploy took over the data of the removed account as UID 3002 (start count
+          {{ __node_deploy_test_again.json.starts }}).
+
+- name: Check the removal with podman_service_remove_data takes the data as well
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Remove the service and its data
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy
+        tasks_from: remove
+      vars:
+        podman_service_remove_data: "true"   # as -e podman_service_remove_data=true passes it
+
+    - name: Look for the service's directory
+      ansible.builtin.stat:
+        path: /opt/deploy-test-app
+      register: __node_deploy_test_dir
+
+    - name: Check the service's directory is gone
+      ansible.builtin.assert:
+        that: not __node_deploy_test_dir.stat.exists
+        success_msg: PASSED node_deploy remove with podman_service_remove_data=true removed /opt/deploy-test-app too.
+
+- name: Check the deploy stops when the project still uses a setting's name from before 0.1.0
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Deploy with node_deploy_port, the earlier name of podman_service_port
+      block:
+        - name: Run node_deploy with node_deploy_port
+          ansible.builtin.include_role:
+            name: aslib.infra.node_deploy
+          vars:
+            node_deploy_port: 3009
+
+        - name: Fail, as node_deploy accepted the earlier name
+          ansible.builtin.fail:
+            msg: node_deploy accepted node_deploy_port
+      rescue:
+        - name: Check it stopped and named the new setting
+          ansible.builtin.assert:
+            that: ansible_failed_result.msg is search('rename node_deploy_port to podman_service_port')
+            success_msg: PASSED node_deploy stopped at node_deploy_port and named podman_service_port instead.
+
+- name: Check the overview playbook shows this machine without an inventory, and every server with one
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Create a directory for the inventories
+      ansible.builtin.tempfile:
+        state: directory
+      register: __node_deploy_test_inventories
+
+    - name: Write an empty inventory, as on a server without one, and one with two servers
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "{{ __node_deploy_test_inventories.path }}/{{ item.name }}"
+        mode: "0644"
+      loop:
+        - { name: empty.yml, content: "" }
+        - { name: servers.yml, content: "all:\n  hosts:\n    web1:\n    web2:\n" }
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: List the hosts the overview playbook runs on
+      ansible.builtin.command:
+        argv: [ansible-playbook, aslib.infra.podman_overview, --list-hosts, "--inventory={{ __node_deploy_test_inventories.path }}/{{ item }}"]
+      loop: [empty.yml, servers.yml]
+      register: __node_deploy_test_overview_hosts
+      changed_when: false
+
+    - name: Remove the inventories
+      ansible.builtin.file:
+        path: "{{ __node_deploy_test_inventories.path }}"
+        state: absent
+
+    - name: Check the overview runs on this machine without servers, and on the servers otherwise
+      vars:
+        __node_deploy_test_without: "{{ __node_deploy_test_overview_hosts.results[0].stdout_lines | map('trim') | list }}"
+        __node_deploy_test_with: "{{ __node_deploy_test_overview_hosts.results[1].stdout_lines | map('trim') | list }}"
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_without is superset(['hosts (1):', 'localhost'])
+          - __node_deploy_test_with is superset(['hosts (2):', 'web1', 'web2'])
+          - "'localhost' not in __node_deploy_test_with"
+        success_msg: PASSED podman_overview's playbook shows this machine without an inventory, and only the servers with one.

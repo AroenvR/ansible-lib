@@ -1,0 +1,16 @@
+---
+# Prepares the Node.js project on this machine for development, with npm
+# running in throwaway containers instead of on this machine. Run it from the
+# project's ansible/ directory (see aslib.infra.node_setup):
+#   ansible-playbook aslib.infra.node_prebuild
+# Each step is a task below; new kinds of preparation become new steps.
+- name: Prepare the Node.js project
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    # Options: ansible-doc -t role aslib.infra.node_image (entry point node_modules)
+    - name: Install the dependencies into node_modules, keeping the previous one as a backup
+      ansible.builtin.import_role:
+        name: aslib.infra.node_image
+        tasks_from: node_modules

@@ -1,0 +1,102 @@
+---
+- name: Prepare the RHEL 9 test server, as an administrator would
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install Podman, and the PAM module that starts an account's systemd instance
+      ansible.builtin.dnf:
+        name: [podman, systemd-pam]
+        state: present
+
+    # Two gaps of Red Hat's ubi-init image that a real RHEL server does not have,
+    # which keep an account's systemd instance (user@.service) from starting:
+    # systemd-logind is masked, and the PAM stack of user@.service fails in it.
+    - name: Run systemd-logind, as on any RHEL server
+      ansible.builtin.systemd:
+        name: systemd-logind
+        masked: false
+        state: started
+
+    - name: Give an account's systemd instance a PAM stack that works in this container
+      ansible.builtin.copy:
+        content: |
+          # Test container only. A real server keeps the stack systemd ships.
+          # pam_systemd gives the systemd instance its runtime directory.
+          account  required pam_permit.so
+          session  optional pam_systemd.so
+        dest: /etc/pam.d/systemd-user
+        mode: "0644"
+
+    # RHEL keeps the journal in memory (/run/log/journal/) unless /var/log/journal
+    # exists, readable by root and the systemd-journal group only. Rootless Podman
+    # then writes a container's output to files instead of the journal, unless the
+    # Quadlet file asks for journald. The test server does the same; its
+    # /var/log/journal is a mount of Podman's, so it cannot simply go.
+    - name: Create the directory for the journal's settings
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: Keep the journal in memory, as a RHEL server does by default
+      ansible.builtin.copy:
+        content: |
+          [Journal]
+          Storage=volatile
+        dest: /etc/systemd/journald.conf.d/volatile.conf
+        mode: "0644"
+
+    - name: Empty the journal on disk
+      ansible.builtin.command:
+        argv: [find, /var/log/journal, -mindepth, 1, -delete]
+      changed_when: true
+
+    - name: Restart the journal, now in memory
+      ansible.builtin.systemd:
+        name: systemd-journald
+        state: restarted
+
+    - name: Find the journal's directory in memory
+      ansible.builtin.find:
+        paths: /run/log/journal
+        file_type: directory
+      register: __node_deploy_test_journal_dirs
+
+    - name: Keep it from other accounts, as systemd-tmpfiles does at boot
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        mode: "2750"
+      loop: "{{ __node_deploy_test_journal_dirs.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+- name: Prepare the test project, as a developer would
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Copy the test app
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/app/"
+        dest: "{{ node_deploy_test_project }}/"
+        mode: preserve
+
+    - name: Run node_setup
+      ansible.builtin.include_role:
+        name: aslib.infra.node_setup
+      vars:
+        node_setup_project: "{{ node_deploy_test_project }}"
+
+    - name: Tune the project's Quadlet template, as a developer would
+      ansible.builtin.lineinfile:
+        path: "{{ node_deploy_test_project }}/ansible/templates/service.container.j2"
+        insertafter: '^\[Container\]$'
+        line: Environment=TUNED=yes
+
+    - name: Run node_image
+      ansible.builtin.include_role:
+        name: aslib.infra.node_image
+      vars:
+        node_image_source: "{{ node_deploy_test_project }}"
+        node_image_output_dir: "{{ node_deploy_test_project }}/ansible/images"
+        node_image_npmrc: ""                # the test machine's own npm settings stay out of it

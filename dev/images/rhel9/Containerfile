@@ -1,0 +1,5 @@
+# Test target mimicking a default RHEL 9.6 install. ubi-init already runs systemd
+# as PID 1 and ships Python 3 and dnf. UBI repositories hold a subset of RHEL;
+# on a subscribed RHEL host Podman gives the container the full RHEL repositories.
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-init:9.6
+FROM ${BASE_IMAGE}

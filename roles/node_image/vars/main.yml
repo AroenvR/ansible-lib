@@ -1,0 +1,9 @@
+---
+# nvm's names for Node.js LTS lines, as .nvmrc may hold them. "lts/*" means the
+# newest LTS line, which here is node_image_node_version: the newest one Red Hat
+# publishes images for. Source: https://github.com/nodejs/Release (schedule.json).
+__node_image_lts_lines:
+  lts/*: "{{ node_image_node_version }}"
+  lts/iron: "20"
+  lts/jod: "22"
+  lts/krypton: "24"

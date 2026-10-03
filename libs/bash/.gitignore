@@ -1,0 +1,53 @@
+# Logs
+**/logs
+**/*.log
+
+# OS
+.DS_Store
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv environment variable files
+**/.env
+**/.env.local
+**/.env.development
+**/.env.test
+**/.env.accept
+**/.env.production
+
+# RSA files
+**/*.key
+**/*.pem
+
+# Temporary files / directories
+**/.temp
+**/.tmp
+**/TMP.md
+**/TEMPORARY.md
+**/tmp
+**/TODO.md
+
+# Backups
+**/*.bak
+
+# Archives
+**/*.tgz
+**/*.zip
+**/*.gpg
+
+# Database files
+**/*.db

@@ -1,0 +1,123 @@
+---
+- name: Check the project has a package.json
+  ansible.builtin.assert:
+    that: (node_setup_project ~ '/package.json') is file
+    fail_msg: "No package.json in {{ node_setup_project }}. Run the setup from the project root."
+    quiet: true
+
+# Named after the package, the same way node_image and node_deploy do it:
+# "@acme/orders-api" becomes the service acme-orders-api and the image acme/orders-api.
+- name: Work out the service name from package.json
+  vars:
+    __node_setup_package: "{{ lookup('file', node_setup_project ~ '/package.json') | from_json }}"
+  ansible.builtin.set_fact:
+    __node_setup_name: "{{ __node_setup_package.name }}"
+    __node_setup_service: "{{ __node_setup_package.name | regex_replace('^@', '') | replace('/', '-') }}"
+    __node_setup_image: "{{ __node_setup_package.name | regex_replace('^@', '') }}"
+    __node_setup_dir: "{{ node_setup_project }}/ansible"
+
+- name: Create the ansible directory
+  ansible.builtin.file:
+    path: "{{ __node_setup_dir }}/{{ __node_setup_subdir }}"
+    state: directory
+    mode: "0755"
+  loop: [group_vars/all, templates]
+  loop_control:
+    loop_var: __node_setup_subdir
+
+# Setups before group_vars/all/ had a single group_vars/all.yml, which Ansible
+# stops reading once group_vars/all/ exists: it becomes the project's settings.
+- name: Move the settings of an older setup, group_vars/all.yml, to group_vars/all/project.yml
+  ansible.builtin.command:
+    argv: [mv, --no-clobber, group_vars/all.yml, group_vars/all/project.yml]
+    chdir: "{{ __node_setup_dir }}"
+    creates: "{{ __node_setup_dir }}/group_vars/all/project.yml"
+    removes: "{{ __node_setup_dir }}/group_vars/all.yml"
+
+# The project's files: written when missing, never touched afterwards.
+- name: Write the project's files, where missing
+  ansible.builtin.template:
+    src: "{{ __node_setup_file.src }}"
+    dest: "{{ __node_setup_dir }}/{{ __node_setup_file.dest }}"
+    mode: "0644"
+    force: false
+  loop:
+    - { src: inventory.yml.j2, dest: inventory.yml }
+    - { src: settings.yml.j2, dest: group_vars/all/project.yml }
+  loop_control:
+    loop_var: __node_setup_file
+    label: "{{ __node_setup_file.dest }}"
+
+# Podman reads the file as it is, while dotenv (and so the app in development) drops
+# the quotes around a value: the copy drops them too, or the app would get them.
+- name: Write the container's environment file, from .env.production if there is one, where missing
+  vars:
+    __node_setup_dotenv: "{{ node_setup_project }}/.env.production"
+    __node_setup_quoted: '^(\w+)=(["''])(.*)\2$'  # KEY="value" or KEY='value'
+    __node_setup_unquoted: '\1=\3'                # KEY=value
+  ansible.builtin.copy:
+    content: |
+      {{ (lookup('file', __node_setup_dotenv) | regex_replace(__node_setup_quoted, __node_setup_unquoted, multiline=true)
+          if __node_setup_dotenv is file else lookup('template', 'container.env.j2')) | trim }}
+    dest: "{{ __node_setup_dir }}/container.env"
+    mode: "0600"
+    force: false
+  diff: false  # never print secrets
+
+# aslib.infra's files: every run brings them up to date. A file that changes is
+# kept as <file>.bak first (a single copy, git-ignored), so a local change is not
+# lost; changes that would help every project belong in aslib.infra itself.
+# None of them names the project, except the guide, README.md.
+- name: See which of aslib.infra's files change
+  ansible.builtin.template:
+    src: "{{ __node_setup_file.src }}"
+    dest: "{{ __node_setup_dir }}/{{ __node_setup_file.dest }}"
+    mode: "0644"
+  loop: "{{ __node_setup_ours }}"
+  loop_control:
+    loop_var: __node_setup_file
+    label: "{{ __node_setup_file.dest }}"
+  check_mode: true
+  register: __node_setup_ours_check
+
+# A copy of podman_service's own template, which the deploy renders.
+- name: See whether the Quadlet template changes
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../podman_service/templates/service.container.j2"
+    dest: "{{ __node_setup_dir }}/templates/service.container.j2"
+    mode: "0644"
+  check_mode: true
+  register: __node_setup_quadlet_check
+
+- name: Keep each existing file that changes as <file>.bak
+  ansible.builtin.copy:
+    src: "{{ __node_setup_changed }}"
+    dest: "{{ __node_setup_changed }}.bak"
+    remote_src: true
+    mode: preserve
+  loop: >-
+    {{ (__node_setup_ours_check.results | selectattr('changed') | map(attribute='__node_setup_file.dest') | list
+        + (['templates/service.container.j2'] if __node_setup_quadlet_check is changed else []))
+       | map('regex_replace', '^', __node_setup_dir ~ '/') | select('file') | list }}
+  loop_control:
+    loop_var: __node_setup_changed
+
+- name: Write aslib.infra's files
+  ansible.builtin.template:
+    src: "{{ __node_setup_file.src }}"
+    dest: "{{ __node_setup_dir }}/{{ __node_setup_file.dest }}"
+    mode: "0644"
+  loop: "{{ __node_setup_ours }}"
+  loop_control:
+    loop_var: __node_setup_file
+    label: "{{ __node_setup_file.dest }}"
+
+- name: Write the Quadlet template
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../podman_service/templates/service.container.j2"
+    dest: "{{ __node_setup_dir }}/templates/service.container.j2"
+    mode: "0644"
+
+- name: Show what to do next
+  ansible.builtin.debug:
+    msg: "Wrote {{ __node_setup_dir }}. Run everything else from there; see its README.md."

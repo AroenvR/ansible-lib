@@ -1,0 +1,2 @@
+---
+node_setup_test_project: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/node-setup-test', true) }}/invoice-service"

@@ -1,0 +1,135 @@
+---
+- name: Check every node_image test app's image works as a backend would use it
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/apps.yml]
+  tasks:
+    - name: Check each test app
+      ansible.builtin.include_tasks: tasks/verify_app.yml
+      loop: "{{ node_image_test_apps }}"
+      loop_control:
+        loop_var: node_image_test_app
+        label: "{{ node_image_test_app.name }}"
+
+- name: Check node_modules comes from a throwaway container and the previous one is kept
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/apps.yml]
+  vars:
+    # A NestJS sample: dependencies and devDependencies, which npm installs only
+    # with legacy-peer-deps=true. That comes from the build machine's npm settings
+    # here, as the project's .npmrc is removed first.
+    __node_image_test_project: "{{ node_image_test_dir }}/nestjs-12"
+  tasks:
+    - name: Remove the project's .npmrc, so npm's settings come from the build machine's
+      ansible.builtin.file:
+        path: "{{ __node_image_test_project }}/.npmrc"
+        state: absent
+
+    - name: Give the project a node_modules of its own, as a developer's machine has
+      ansible.builtin.file:
+        path: "{{ __node_image_test_project }}/node_modules"
+        state: directory
+        mode: "0755"
+
+    - name: Mark that node_modules
+      ansible.builtin.copy:
+        content: "from before\n"
+        dest: "{{ __node_image_test_project }}/node_modules/old-marker"
+        mode: "0644"
+
+    - name: Run the node_modules entry point
+      ansible.builtin.include_role:
+        name: aslib.infra.node_image
+        tasks_from: node_modules
+      vars:
+        node_image_source: "{{ __node_image_test_project }}"
+        node_image_npmrc: "{{ node_image_test_dir }}/machine.npmrc"
+
+    - name: Inspect the new node_modules and the project
+      ansible.builtin.stat:
+        path: "{{ __node_image_test_project }}/{{ item }}"
+      loop:
+        - node_modules/@nestjs/core/package.json
+        - node_modules/typescript/package.json
+        - node_modules/old-marker
+        - package.json
+      register: __node_image_test_installed
+
+    - name: Find the backups of node_modules
+      ansible.builtin.find:
+        paths: "{{ __node_image_test_project }}"
+        patterns: node_modules.*.bak.tgz
+      register: __node_image_test_backups
+
+    - name: List the backup
+      ansible.builtin.command:
+        argv: [tar, --list, --gzip, "--file={{ __node_image_test_backups.files[0].path }}"]
+      register: __node_image_test_backup
+      changed_when: false
+
+    - name: Look for containers left behind
+      ansible.builtin.command:
+        argv: [podman, ps, --all, --quiet, "--filter=ancestor={{ __node_image_builder }}"]
+      register: __node_image_test_leftovers
+      changed_when: false
+
+    - name: Check the dependencies, the owner, the backup and the cleanup
+      ansible.builtin.assert:
+        that:
+          - __node_image_test_installed.results[0].stat.exists
+          - __node_image_test_installed.results[1].stat.exists
+          - not __node_image_test_installed.results[2].stat.exists
+          - __node_image_test_installed.results[0].stat.uid == __node_image_test_installed.results[3].stat.uid
+          - __node_image_test_backups.matched == 1
+          - "'node_modules/old-marker' in __node_image_test_backup.stdout_lines"
+          - __node_image_test_leftovers.stdout == ''
+        success_msg: >-
+          PASSED node_image node_modules: the dependencies and devDependencies of nestjs-12 came from a
+          throwaway container (gone now) using the build machine's npm settings, belong to the project's
+          owner, and the previous node_modules is in {{ __node_image_test_backups.files[0].path | basename }}.
+
+- name: Check node_image refuses a package in both dependencies and devDependencies
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/apps.yml]
+  vars:
+    __node_image_test_project: "{{ node_image_test_dir }}/in-both-lists"
+  tasks:
+    - name: Create the project
+      ansible.builtin.file:
+        path: "{{ __node_image_test_project }}"
+        state: directory
+        mode: "0755"
+
+    - name: Write a project that lists fs-extra twice
+      ansible.builtin.copy:
+        content: |
+          { "name": "in-both-lists", "version": "1.0.0",
+            "scripts": { "build": "true", "start:prod": "true" },
+            "dependencies": { "fs-extra": "^11.3.0" },
+            "devDependencies": { "fs-extra": "^11.3.0", "typescript": "^5.0.0" } }
+        dest: "{{ __node_image_test_project }}/package.json"
+        mode: "0644"
+
+    - name: Run node_image, which must stop
+      block:
+        - name: Run node_image on the project
+          ansible.builtin.include_role:
+            name: aslib.infra.node_image
+          vars:
+            node_image_source: "{{ __node_image_test_project }}"
+            node_image_output_dir: "{{ __node_image_test_project }}/ansible/images"
+            node_image_npmrc: ""
+      rescue:
+        - name: Note why it stopped
+          ansible.builtin.set_fact:
+            __node_image_test_refusal: "{{ ansible_failed_result.msg }}"
+
+    - name: Check it stopped before building, naming the package
+      ansible.builtin.assert:
+        that:
+          - __node_image_test_refusal is defined
+          - __node_image_test_refusal is match('fs-extra in both')
+          - (__node_image_test_project ~ '/ansible/images/Containerfile') is not file
+        success_msg: "PASSED node_image stops before building when a package is in both lists: {{ __node_image_test_refusal | default('') }}"

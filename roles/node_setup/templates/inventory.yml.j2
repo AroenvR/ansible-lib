@@ -1,0 +1,13 @@
+---
+# The servers `ansible-playbook deploy.yml` deploys the service to.
+# The deploy manages an account, the image and the Quadlet file there as root,
+# through sudo: connect as root or as an account that may use sudo.
+all:
+  hosts:
+    # This machine. Remove it to deploy to servers only.
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ '{{' }} ansible_playbook_python {{ '}}' }}"
+    # A server, reached over SSH:
+    # orders-1.example.com:
+    #   ansible_user: admin

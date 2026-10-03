@@ -1,0 +1,287 @@
+---
+# Entry point "main": deploys an image archive as a rootless Podman service. Runs
+# as root on the server; the conventions it follows are in meta/argument_specs.yml.
+- name: Work out the service's account and directories, and check Ansible acts as root
+  ansible.builtin.import_tasks: common.yml
+
+- name: Check the image archive and the environment file are there
+  ansible.builtin.assert:
+    that: __podman_service_input is file
+    fail_msg: "{{ __podman_service_input }} is missing on the Ansible machine."
+    quiet: true
+  loop: ["{{ podman_service_archive }}", "{{ podman_service_env_file }}"]
+  loop_control:
+    loop_var: __podman_service_input
+
+- name: Look up the Podman version on the server
+  ansible.builtin.command: podman --version
+  register: __podman_service_podman
+  changed_when: false
+  failed_when: false
+
+- name: Check that Podman 4.4 or newer is installed
+  ansible.builtin.assert:
+    that:
+      - __podman_service_podman.rc == 0
+      - __podman_service_podman.stdout.split()[-1] is version('4.4', '>=')
+    fail_msg: >-
+      The service needs Podman 4.4 or newer for Quadlet (RHEL 9.2 or newer); found:
+      {{ __podman_service_podman.stdout | default('none', true) }}. Install it: dnf install podman
+    quiet: true
+
+- name: Create the account the service runs as, {{ __podman_service_user }}
+  ansible.builtin.user:
+    name: "{{ __podman_service_user }}"
+    uid: "{{ podman_service_uid or omit }}"
+  register: __podman_service_account
+
+- name: Check the service does not run as root
+  ansible.builtin.assert:
+    that: __podman_service_account.uid != 0
+    fail_msg: "{{ __podman_service_user }} is root. Choose another account (podman_service_user)."
+    quiet: true
+
+- name: Let the account run services while nobody is logged in, so the service starts at boot
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ __podman_service_user }}"]
+    creates: /var/lib/systemd/linger/{{ __podman_service_user }}
+
+- name: Wait for the account's systemd instance, which runs the service
+  ansible.builtin.wait_for:
+    path: /run/user/{{ __podman_service_account.uid }}/systemd/private
+    timeout: 60
+    msg: >-
+      The systemd instance of {{ __podman_service_user }} did not start on {{ inventory_hostname }}.
+      See why with: journalctl --unit user@{{ __podman_service_account.uid }}.service
+
+# Commands as the account: `runuser` with the account's runtime directory, where
+# Podman keeps its state and systemctl finds the account's systemd instance. Unlike
+# `systemctl --user -M <user>@`, this needs no D-Bus session bus for the account.
+# Such commands run from / (chdir), which every account may enter.
+- name: Prepare running commands as the account
+  ansible.builtin.set_fact:
+    __podman_service_as_account:
+      - runuser
+      - --user={{ __podman_service_user }}
+      - --
+      - env
+      - XDG_RUNTIME_DIR=/run/user/{{ __podman_service_account.uid }}
+
+# The service's directory is the app's: the deploy manages only config/ in it.
+# It may be left from an earlier deploy (the removal keeps it), owned by an account
+# with another UID: then everything in it is handed to this account, once.
+- name: Look up the service's directory, {{ __podman_service_dir }}
+  ansible.builtin.stat:
+    path: "{{ __podman_service_dir }}"
+  register: __podman_service_dir_stat
+
+- name: Hand the service's directory and everything in it to the account
+  ansible.builtin.command:
+    argv: [chown, --recursive, "{{ __podman_service_user }}:{{ __podman_service_user }}", "{{ __podman_service_dir }}"]
+  when: __podman_service_dir_stat.stat.exists and __podman_service_dir_stat.stat.uid != __podman_service_account.uid
+  changed_when: true
+
+- name: Create the image archive directory, the Quadlet directory, the service's directory and its config directory
+  ansible.builtin.file:
+    path: "{{ __podman_service_directory.path }}"
+    state: directory
+    owner: "{{ __podman_service_directory.owner }}"
+    group: "{{ __podman_service_directory.owner }}"
+    mode: "{{ __podman_service_directory.mode }}"
+  loop:
+    - { path: /opt/containers/images, owner: root, mode: "0755" }
+    - { path: "{{ __podman_service_archive_dir }}", owner: root, mode: "0755" }
+    - { path: "/etc/containers/systemd/users/{{ __podman_service_account.uid }}", owner: root, mode: "0755" }
+    - { path: "{{ __podman_service_dir }}", owner: "{{ __podman_service_user }}", mode: "0750" }
+    - { path: "{{ __podman_service_dir }}/config", owner: "{{ __podman_service_user }}", mode: "0755" }
+  loop_control:
+    loop_var: __podman_service_directory
+    label: "{{ __podman_service_directory.path }}"
+
+- name: Create the data directory if there is none, in {{ __podman_service_dir }}
+  ansible.builtin.command:
+    argv:
+      - install
+      - --directory
+      - --owner={{ __podman_service_user }}
+      - --group={{ __podman_service_user }}
+      - --mode=0750
+      - "{{ __podman_service_dir }}/data"
+    creates: "{{ __podman_service_dir }}/data"
+
+- name: Copy the image archive, {{ podman_service_archive | basename }}
+  ansible.builtin.copy:
+    src: "{{ podman_service_archive }}"
+    dest: "{{ __podman_service_archive_dir }}/{{ podman_service_archive | basename }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: __podman_service_archive_copy
+
+- name: Look up whether the account has the image, {{ podman_service_image }}
+  ansible.builtin.command:
+    argv: "{{ __podman_service_as_account + ['podman', 'image', 'exists', podman_service_image] }}"
+    chdir: /
+  register: __podman_service_image_exists
+  changed_when: false
+  failed_when: __podman_service_image_exists.rc not in [0, 1]
+
+# Also when only the image is missing, e.g. after an earlier deploy failed between
+# copying the archive and loading it.
+- name: Load the image into the account's Podman
+  ansible.builtin.command:
+    argv: "{{ __podman_service_as_account + ['podman', 'load', '--input=' ~ __podman_service_archive_dir ~ '/' ~ podman_service_archive | basename] }}"
+    chdir: /
+  when: __podman_service_archive_copy is changed or __podman_service_image_exists.rc != 0
+  changed_when: true
+  notify: Restart the service
+
+# The handlers (handlers/main.yml) reload the account's systemd and restart the
+# service, but only for what changed: a rerun without changes changes nothing.
+- name: Install the container's settings and secrets, readable by root and the account only
+  ansible.builtin.copy:
+    src: "{{ podman_service_env_file }}"
+    dest: /etc/containers/systemd/users/{{ __podman_service_account.uid }}/{{ podman_service_name }}.env
+    owner: root
+    group: "{{ __podman_service_user }}"
+    mode: "0640"
+  diff: false  # never print secrets
+  notify: Restart the service
+
+# config/ mirrors podman_service_config_files and is mounted read-only. The files
+# belong to the account, as Podman can only relabel its own files for SELinux.
+- name: Copy the config files
+  ansible.builtin.copy:
+    src: "{{ __podman_service_config_file }}"
+    dest: "{{ __podman_service_dir }}/config/"
+    owner: "{{ __podman_service_user }}"
+    group: "{{ __podman_service_user }}"
+    mode: "0644"
+  loop: "{{ podman_service_config_files }}"
+  loop_control:
+    loop_var: __podman_service_config_file
+    label: "{{ __podman_service_config_file | basename }}"
+  notify: Restart the service
+
+- name: Find config files that are no longer in podman_service_config_files
+  ansible.builtin.find:
+    paths: "{{ __podman_service_dir }}/config"
+    excludes: "{{ podman_service_config_files | map('basename') | list }}"
+  register: __podman_service_stale_config
+
+- name: Remove config files that are no longer in podman_service_config_files
+  ansible.builtin.file:
+    path: "{{ __podman_service_stale.path }}"
+    state: absent
+  loop: "{{ __podman_service_stale_config.files }}"
+  loop_control:
+    loop_var: __podman_service_stale
+    label: "{{ __podman_service_stale.path | basename }}"
+  notify: Restart the service
+
+# The template sees the account and the directory in use under their public names.
+- name: Install the Quadlet file of the service {{ podman_service_name }}
+  ansible.builtin.template:
+    src: "{{ podman_service_quadlet_template or 'service.container.j2' }}"
+    dest: /etc/containers/systemd/users/{{ __podman_service_account.uid }}/{{ podman_service_name }}.container
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    podman_service_user: "{{ __podman_service_user }}"
+    podman_service_dir: "{{ __podman_service_dir }}"
+  notify: [Make systemd read the Quadlet file, Restart the service]
+
+- name: Restart the service now, where needed
+  ansible.builtin.meta: flush_handlers
+
+# The systemd module cannot act as another account; runuser can (see above).
+- name: Look up whether the service runs
+  ansible.builtin.command:
+    argv: "{{ __podman_service_as_account + ['systemctl', '--user', 'is-active', podman_service_name ~ '.service'] }}"
+    chdir: /
+  register: __podman_service_active
+  changed_when: false
+  failed_when: false
+
+- name: Start the service, {{ podman_service_name }}
+  ansible.builtin.command:
+    argv: "{{ __podman_service_as_account + ['systemctl', '--user', 'start', podman_service_name ~ '.service'] }}"
+    chdir: /
+  when: __podman_service_active.rc != 0
+  changed_when: true
+
+# Any HTTP answer will do: it shows the app started and listens.
+- name: Wait until the service answers, showing its log if it does not
+  block:
+    - name: Wait until the service answers on port {{ podman_service_port }}
+      ansible.builtin.uri:
+        url: "http://{{ '127.0.0.1' if podman_service_bind_address in ['0.0.0.0', '::'] else podman_service_bind_address }}:{{ podman_service_port }}/"
+      register: __podman_service_answer
+      until: __podman_service_answer.status | default(-1) > 0
+      retries: 30
+      delay: 2
+      failed_when: __podman_service_answer.status | default(-1) <= 0  # any HTTP status will do
+  rescue:
+    - name: Read the service's log
+      ansible.builtin.command: journalctl --no-pager --lines=50 _SYSTEMD_USER_UNIT={{ podman_service_name }}.service
+      register: __podman_service_log
+      changed_when: false
+
+    - name: Show the service's log
+      ansible.builtin.debug:
+        var: __podman_service_log.stdout_lines
+
+    - name: Stop, as the service does not answer
+      ansible.builtin.fail:
+        msg: >-
+          {{ podman_service_name }} did not answer on port {{ podman_service_port }} within a minute; its log is above.
+          All of it: sudo journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service
+
+# Only the deployed version stays: its archive and its image. The account holds
+# this one service, so every other image is an earlier version or build.
+- name: Find the archives of other versions
+  ansible.builtin.find:
+    paths: "{{ __podman_service_archive_dir }}"
+    excludes: "{{ podman_service_archive | basename }}"
+  register: __podman_service_old_archives
+
+- name: Remove the archives of other versions
+  ansible.builtin.file:
+    path: "{{ __podman_service_old.path }}"
+    state: absent
+  loop: "{{ __podman_service_old_archives.files }}"
+  loop_control:
+    loop_var: __podman_service_old
+    label: "{{ __podman_service_old.path | basename }}"
+
+- name: Look up the image the service runs, and the account's images
+  ansible.builtin.command:
+    argv: "{{ __podman_service_as_account + __podman_service_query }}"
+    chdir: /
+  loop:
+    - [podman, image, inspect, --format=json, "{{ podman_service_image }}"]
+    - [podman, images, --format=json]
+  loop_control:
+    loop_var: __podman_service_query
+  register: __podman_service_image_ids
+  changed_when: false
+
+- name: Remove the account's other images
+  ansible.builtin.command:
+    argv: "{{ __podman_service_as_account + ['podman', 'rmi'] + __podman_service_unused }}"
+    chdir: /
+  vars:
+    __podman_service_in_use: "{{ (__podman_service_image_ids.results[0].stdout | from_json)[0].Id }}"
+    __podman_service_unused: >-
+      {{ __podman_service_image_ids.results[1].stdout | from_json | map(attribute='Id')
+         | reject('equalto', __podman_service_in_use) | list }}
+  when: __podman_service_unused | length > 0
+  changed_when: true
+
+- name: Show where the service runs
+  ansible.builtin.debug:
+    msg: >-
+      {{ podman_service_image }} runs as the service {{ podman_service_name }} of the account
+      {{ __podman_service_user }}, on {{ podman_service_bind_address }}:{{ podman_service_port }}.
+      Its log: journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service

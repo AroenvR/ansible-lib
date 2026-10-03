@@ -1,0 +1,64 @@
+{#
+  The Quadlet file of the service: how Podman and systemd run it. The deploy
+  renders this template for every server into
+  /etc/containers/systemd/users/<the account's UID>/<service>.container
+  and restarts the service when the result changes. The keys that RHEL 9's Podman
+  (4.4 and newer) knows are listed in
+  https://docs.podman.io/en/v4.4/markdown/podman-systemd.unit.5.html
+  aslib.infra owns this file: an update replaces it, keeping your version as .bak.
+  Changes that would help every project belong in aslib.infra itself.
+
+  Filled in by the deploy:
+    podman_service_name   the service's name, e.g. orders-api (a Node.js project's from package.json)
+    podman_service_image  the image of the version to run, e.g. localhost/orders-api:1.4.0
+    podman_service_user   the account the service runs as
+    podman_service_dir    the service's directory on the server, also its working directory
+  and every other podman_service_ setting, such as podman_service_port.
+#}
+# {{ podman_service_name }}, deployed by aslib.infra.podman_service: the next deploy replaces this file.
+
+[Unit]
+Description={{ podman_service_name }}
+
+[Container]
+Image={{ podman_service_image }}
+ContainerName={{ podman_service_name }}
+# The app runs as the user of Red Hat's UBI images, 1001, which is the account
+# {{ podman_service_user }} here: what it writes to {{ podman_service_dir }} belongs to that account.
+User=1001
+Group=1001
+PodmanArgs=--userns=keep-id:uid=1001,gid=1001
+PublishPort={{ podman_service_bind_address }}:{{ podman_service_port }}:{{ podman_service_container_port }}
+# Settings and secrets, next to this file.
+EnvironmentFile={{ podman_service_name }}.env
+# The service's directory is its working directory, at the same path inside the
+# container: relative paths such as config/db.json, prod.db or data/ end up there.
+# The code stays read-only in the image.
+Volume={{ podman_service_dir }}:{{ podman_service_dir }}:Z
+PodmanArgs=--workdir={{ podman_service_dir }}
+# The config files, read-only.
+Volume={{ podman_service_dir }}/config:{{ podman_service_dir }}/config:ro,Z
+# Temporary files (/tmp, os.tmpdir() in Node.js) go to memory, at most
+# podman_service_tmp_size, and are gone after a restart.
+PodmanArgs=--tmpfs=/tmp:rw,size={{ podman_service_tmp_size }},mode=1777
+# Hardening: a read-only root filesystem, no capabilities, no privilege escalation.
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+# An init process forwards stop signals, so the app shuts down cleanly.
+RunInit=true
+# The app's output goes to the journal, where root reads it with
+# journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service. Without this, Podman writes
+# it to a file in the account's storage when the account cannot read the journal,
+# as on RHEL by default.
+PodmanArgs=--log-driver=journald
+
+[Service]
+Restart=always
+# Wait between restarts, so a crashing service keeps retrying (systemd gives up
+# after 5 starts within 10 seconds).
+RestartSec=10
+
+[Install]
+# Start at boot.
+WantedBy=default.target

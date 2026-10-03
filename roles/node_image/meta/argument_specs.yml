@@ -1,0 +1,114 @@
+---
+argument_specs:
+  main:
+    short_description: Build a production container image of a Node.js project with Podman.
+    description:
+      - Runs on the machine where Ansible runs (the build machine) and needs Podman 3.4 or newer there.
+      - Needs package.json with C(name), C(version) and a C(build) script that makes I(node_image_main) (the NestJS
+        convention, C(dist/main.js)), and no package in both C(dependencies) and C(devDependencies) (npm would leave it
+        out of the image). The image is tagged C(name):C(version) and starts C(node /opt/app-root/src/)I(node_image_main),
+        by its absolute path, so the app may run in any working directory.
+      - Takes the Node.js major version from .nvmrc, or I(node_image_node_version) when there is none.
+        .nvmrc may hold a version (C(24), C(v24.3.0)) or an LTS line (C(lts/*), C(lts/jod), C(lts/krypton));
+        C(lts/*) means I(node_image_node_version).
+      - Builds in two stages on Red Hat UBI 9. The build stage (ubi9/nodejs-<major>) has gcc, g++, make and Python 3,
+        so native npm modules compile; it installs dependencies (C(npm ci) with package-lock.json, otherwise
+        C(npm install)), runs C(npm run build) and removes dev dependencies. The runtime stage
+        (ubi9/nodejs-<major>-minimal) has no compilers and runs as user 1001, which cannot change the app's files.
+      - Runs from the project's ansible/ directory (see aslib.infra.node_setup); the project is its parent directory.
+        The ansible/ directory never goes into the image.
+      - Writes the generated Containerfile and the image archive (C(podman save), OCI format) to I(node_image_output_dir).
+        The image carries the labels org.opencontainers.image.title and .version (from package.json) and
+        org.opencontainers.image.revision (the project's git commit, if it is a git checkout).
+      - Keeps two images of the project on the build machine, the image and its build stage (C(name):build, the cache
+        that keeps a rebuild without changes from making a new image), and removes its older ones.
+      - Downloads, each from a source you can point at a mirror. The base images from I(node_image_registry), through
+        the build machine's registries.conf. Everything npm downloads (packages, the Node.js headers for native
+        modules, prebuilt binaries) as the project's .npmrc says, and below that the build machine's own npm settings
+        (I(node_image_npmrc)), else from npm's and the packages' defaults. The RPMs in I(node_image_build_packages)
+        and I(node_image_runtime_packages), if any, from the UBI repositories the base images are set up with.
+    options:
+      node_image_source:
+        type: str
+        default: "{{ lookup('env', 'PWD') | dirname }}"
+        description: Project directory with package.json, package-lock.json and .nvmrc. Defaults to the parent of the
+          current directory, which is the project's ansible/ directory.
+      node_image_output_dir:
+        type: str
+        default: "{{ lookup('env', 'PWD') }}/images"
+        description: Where the generated Containerfile and the image archive are written. Never part of the image.
+      node_image_node_version:
+        type: str
+        default: "24"
+        description: Node.js major version used when the project has no .nvmrc, or one saying C(lts/*). Follows the
+          newest LTS release that Red Hat publishes images for.
+      node_image_port:
+        type: int
+        default: 3000
+        description: Port the app listens on. Set as the PORT environment variable and exposed by the image.
+      node_image_build_packages:
+        type: list
+        elements: str
+        default: []
+        description: Extra RPM packages for the build stage, e.g. C(libpq-devel) when a native module needs it.
+      node_image_runtime_packages:
+        type: list
+        elements: str
+        default: []
+        description: Extra RPM packages for the runtime stage, e.g. C(libpq) for a native module built against it.
+      node_image_ignore:
+        type: list
+        elements: str
+        default: []
+        description: Extra patterns kept out of the image, in .containerignore syntax. .git, node_modules, .env files,
+          the ansible/ directory, and config/, data/ and *.db (which belong to the server's service directory) are
+          always excluded.
+      node_image_main:
+        type: str
+        default: dist/main.js
+        description: The app's entry point, relative to the project, which C(npm run build) makes. The image starts
+          C(node /opt/app-root/src/)I(node_image_main).
+      node_image_registry:
+        type: str
+        default: registry.access.redhat.com
+        description: Registry, with an optional path, holding Red Hat's ubi9/nodejs-<major> and ubi9/nodejs-<major>-minimal
+          images. A mirror for one environment belongs in that machine's registries.conf instead, which Podman applies
+          to these names too.
+      node_image_npmrc:
+        type: str
+        default: "{{ lookup('env', 'HOME') }}/.npmrc"
+        description:
+          - The build machine's own npm settings, e.g. the registry and tokens of its environment. They apply under the
+            project's .npmrc, which wins where both set something, and are never stored in an image. Ignored when the
+            file does not exist; empty uses none.
+  node_modules:
+    short_description: Install a Node.js project's dependencies into node_modules in a throwaway container
+    description:
+      - Installs the dependencies, devDependencies included, without running npm or the packages' install scripts on
+        this machine. They run in a container of the builder image the image build uses (ubi9/nodejs-<major>, the
+        major version from .nvmrc), which gets package.json, package-lock.json and .npmrc and nothing else of this
+        machine, has no capabilities, and is removed afterwards. C(npm ci) with package-lock.json, otherwise
+        C(npm install); npm takes its settings from the project's .npmrc and, below that, I(node_image_npmrc).
+      - Only once the install has succeeded, the current node_modules is saved as
+        node_modules.<UTC yyyymmddHHMMSS>.bak.tgz in the project and replaced by the new one.
+      - The result is for this machine if it runs Linux with glibc 2.34 or newer (RHEL 9, Ubuntu 22.04) and the
+        same Node.js major version, as native modules are compiled in the container.
+      - Runs from the project's ansible/ directory, like the image build, and needs Podman 3.4 or newer.
+    options:
+      node_image_source:
+        type: str
+        default: "{{ lookup('env', 'PWD') | dirname }}"
+        description: Project directory with package.json. Defaults to the parent of the current directory.
+      node_image_node_version:
+        type: str
+        default: "24"
+        description: Node.js major version used when the project has no .nvmrc, or one saying C(lts/*).
+      node_image_registry:
+        type: str
+        default: registry.access.redhat.com
+        description: Registry, with an optional path, holding Red Hat's ubi9/nodejs-<major> images.
+      node_image_npmrc:
+        type: str
+        default: "{{ lookup('env', 'HOME') }}/.npmrc"
+        description: The build machine's own npm settings, under the project's .npmrc. Ignored when the file does not
+          exist; empty uses none.
