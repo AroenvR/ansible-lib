@@ -106,5 +106,5 @@ One service, on its server:
 
 ```sh
 sudo systemctl --user -M <account>@ status <service>   # the account: <service> by default
-sudo journalctl _SYSTEMD_USER_UNIT=<service>.service
+sudo journalctl _SYSTEMD_USER_UNIT=<service>.service            # its output; -f to follow
 ```

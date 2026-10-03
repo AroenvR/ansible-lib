@@ -226,6 +226,13 @@ source of truth.
 - The command module's `chdir` does not change `PWD`, from which the project's
   playbooks take their directory: a test that runs ansible-playbook from the
   project's `ansible/` sets `PWD` (and `ANSIBLE_CONFIG`) in `environment`.
+- Rootless Podman logs to the journal by default only when the account can read
+  a journal directory (containers/common `useJournald`). RHEL keeps the journal
+  in memory by default, in `/run/log/journal/<machine ID>/` (mode 2750), so it
+  falls back to `k8s-file` and the app's output never reaches the journal. The
+  Quadlet file sets `--log-driver=journald`. Test containers hid this: Podman's
+  systemd mode mounts a tmpfs on `/var/log/journal` (persistent, readable), so
+  node_deploy's test server sets `Storage=volatile`, as on RHEL.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
 

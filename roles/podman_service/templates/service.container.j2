@@ -47,6 +47,11 @@ DropCapability=all
 NoNewPrivileges=true
 # An init process forwards stop signals, so the app shuts down cleanly.
 RunInit=true
+# The app's output goes to the journal, where root reads it with
+# journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service. Without this, Podman writes
+# it to a file in the account's storage when the account cannot read the journal,
+# as on RHEL by default.
+PodmanArgs=--log-driver=journald
 
 [Service]
 Restart=always

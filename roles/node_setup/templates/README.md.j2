@@ -139,7 +139,7 @@ does not run. It changes nothing. On a server itself:
 
 ```sh
 sudo systemctl --user -M {{ __node_setup_service }}@ status {{ __node_setup_service }}
-sudo journalctl _SYSTEMD_USER_UNIT={{ __node_setup_service }}.service
+sudo journalctl _SYSTEMD_USER_UNIT={{ __node_setup_service }}.service   # its output; -f to follow
 curl http://127.0.0.1:3000/
 ```
 

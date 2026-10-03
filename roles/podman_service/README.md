@@ -79,6 +79,11 @@ has its own account, UID and range of subordinate UIDs, so two services never
 share files or processes, even though both run as 1001 inside their containers.
 After a crash, systemd starts the service again every 10 seconds.
 
+The app's output goes to the journal (`--log-driver=journald`), where root reads
+it. Without that, Podman writes it to a file in the account's storage whenever
+the account cannot read the journal, which is RHEL's default; `podman logs` as
+the account cannot read the journal there either.
+
 For anything the settings do not cover, such as a memory limit or a network,
 pass a template of your own as `podman_service_quadlet_template`; start from a
 copy of this one, which lists the variables it can use.
@@ -144,5 +149,5 @@ One service, on its server:
 
 ```sh
 sudo systemctl --user -M <account>@ status <service>
-sudo journalctl _SYSTEMD_USER_UNIT=<service>.service
+sudo journalctl _SYSTEMD_USER_UNIT=<service>.service            # its output; -f to follow
 ```

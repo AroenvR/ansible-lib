@@ -27,7 +27,8 @@ ok: [web1] => {
 ```
 
 A service that is not `active` gets its latest log lines (`podman_overview_log_lines`,
-20 by default), indented below it. A service stopped by hand shows as `inactive`
+20 by default), indented below it; a running service's output is one
+`journalctl` away (below). A service stopped by hand shows as `inactive`
 or `failed`, depending on how the app ends when it is told to stop.
 
 ## Why root needs this
@@ -41,7 +42,7 @@ Quadlet files. By hand, as root:
 ls /etc/containers/systemd/users/*/                          # the services, by UID
 ls /var/lib/systemd/linger/                                  # the accounts whose services start at boot
 sudo systemctl --user -M <account>@ status <service>         # one service
-sudo journalctl _SYSTEMD_USER_UNIT=<service>.service         # its log
+sudo journalctl _SYSTEMD_USER_UNIT=<service>.service         # its output; -f to follow
 ```
 
 ## In a playbook

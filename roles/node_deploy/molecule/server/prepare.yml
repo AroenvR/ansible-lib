@@ -27,6 +27,49 @@
         dest: /etc/pam.d/systemd-user
         mode: "0644"
 
+    # RHEL keeps the journal in memory (/run/log/journal/) unless /var/log/journal
+    # exists, readable by root and the systemd-journal group only. Rootless Podman
+    # then writes a container's output to files instead of the journal, unless the
+    # Quadlet file asks for journald. The test server does the same; its
+    # /var/log/journal is a mount of Podman's, so it cannot simply go.
+    - name: Create the directory for the journal's settings
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: Keep the journal in memory, as a RHEL server does by default
+      ansible.builtin.copy:
+        content: |
+          [Journal]
+          Storage=volatile
+        dest: /etc/systemd/journald.conf.d/volatile.conf
+        mode: "0644"
+
+    - name: Empty the journal on disk
+      ansible.builtin.command:
+        argv: [find, /var/log/journal, -mindepth, 1, -delete]
+      changed_when: true
+
+    - name: Restart the journal, now in memory
+      ansible.builtin.systemd:
+        name: systemd-journald
+        state: restarted
+
+    - name: Find the journal's directory in memory
+      ansible.builtin.find:
+        paths: /run/log/journal
+        file_type: directory
+      register: __node_deploy_test_journal_dirs
+
+    - name: Keep it from other accounts, as systemd-tmpfiles does at boot
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        mode: "2750"
+      loop: "{{ __node_deploy_test_journal_dirs.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
 - name: Prepare the test project, as a developer would
   hosts: localhost
   gather_facts: false

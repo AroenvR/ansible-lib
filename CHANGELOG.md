@@ -38,11 +38,12 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   creates it and `data/`, and manages only `config/` in it (read-only for the
   app). `/tmp` is in memory (`podman_service_tmp_size`). Read-only, without
   capabilities; the deploy waits until the service answers HTTP and shows its
-  log if it does not. Only the deployed version stays: other versions' archives
-  and the account's other images are removed. Its `remove` entry point removes
-  the service with its account and files, keeping the app's data unless
-  `podman_service_remove_data` is true; a later deploy takes the data over, also
-  as an account with another UID.
+  log if it does not. The app's output goes to the journal, also where the
+  account cannot read it (RHEL's default). Only the deployed version stays:
+  other versions' archives and the account's other images are removed. Its
+  `remove` entry point removes the service with its account and files, keeping
+  the app's data unless `podman_service_remove_data` is true; a later deploy
+  takes the data over, also as an account with another UID.
 - Added role `node_deploy` and playbooks `aslib.infra.node_deploy` and
   `aslib.infra.node_remove`: deploy and remove a Node.js project's image with
   `podman_service`, named after package.json, with the project's
