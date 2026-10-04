@@ -41,6 +41,11 @@
     fail_msg: "{{ __podman_service_user }} is root. Choose another account (podman_service_user)."
     quiet: true
 
+# Before the account's systemd instance starts below, so its services get the group.
+- name: Give the service the shared zone, /opt/containers/shared/
+  ansible.builtin.import_tasks: shared.yml
+  when: podman_service_shared | bool
+
 - name: Let the account run services while nobody is logged in, so the service starts at boot
   ansible.builtin.command:
     argv: [loginctl, enable-linger, "{{ __podman_service_user }}"]
@@ -150,23 +155,31 @@
 
 # config/ mirrors podman_service_config_files and is mounted read-only. The files
 # belong to the account, as Podman can only relabel its own files for SELinux.
+# An entry is a file's path, or a mapping with its name and content.
 - name: Copy the config files
   ansible.builtin.copy:
-    src: "{{ __podman_service_config_file }}"
-    dest: "{{ __podman_service_dir }}/config/"
+    src: "{{ __podman_service_config_file if __podman_service_config_file is string else omit }}"
+    content: "{{ omit if __podman_service_config_file is string else __podman_service_config_file.content }}"
+    dest: "{{ __podman_service_dir }}/config/{{ __podman_service_config_name }}"
     owner: "{{ __podman_service_user }}"
     group: "{{ __podman_service_user }}"
     mode: "0644"
   loop: "{{ podman_service_config_files }}"
   loop_control:
     loop_var: __podman_service_config_file
-    label: "{{ __podman_service_config_file | basename }}"
+    label: "{{ __podman_service_config_name }}"
+  vars:
+    __podman_service_config_name: >-
+      {{ __podman_service_config_file | basename if __podman_service_config_file is string
+         else __podman_service_config_file.name }}
   notify: Restart the service
 
 - name: Find config files that are no longer in podman_service_config_files
   ansible.builtin.find:
     paths: "{{ __podman_service_dir }}/config"
-    excludes: "{{ podman_service_config_files | map('basename') | list }}"
+    excludes: >-
+      {{ podman_service_config_files | select('string') | map('basename') | list
+         + podman_service_config_files | reject('string') | map(attribute='name') | list }}
   register: __podman_service_stale_config
 
 - name: Remove config files that are no longer in podman_service_config_files
@@ -211,32 +224,8 @@
   when: __podman_service_active.rc != 0
   changed_when: true
 
-# Any HTTP answer will do: it shows the app started and listens.
-- name: Wait until the service answers, showing its log if it does not
-  block:
-    - name: Wait until the service answers on port {{ podman_service_port }}
-      ansible.builtin.uri:
-        url: "http://{{ '127.0.0.1' if podman_service_bind_address in ['0.0.0.0', '::'] else podman_service_bind_address }}:{{ podman_service_port }}/"
-      register: __podman_service_answer
-      until: __podman_service_answer.status | default(-1) > 0
-      retries: 30
-      delay: 2
-      failed_when: __podman_service_answer.status | default(-1) <= 0  # any HTTP status will do
-  rescue:
-    - name: Read the service's log
-      ansible.builtin.command: journalctl --no-pager --lines=50 _SYSTEMD_USER_UNIT={{ podman_service_name }}.service
-      register: __podman_service_log
-      changed_when: false
-
-    - name: Show the service's log
-      ansible.builtin.debug:
-        var: __podman_service_log.stdout_lines
-
-    - name: Stop, as the service does not answer
-      ansible.builtin.fail:
-        msg: >-
-          {{ podman_service_name }} did not answer on port {{ podman_service_port }} within a minute; its log is above.
-          All of it: sudo journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service
+- name: Wait until the service is ready, showing its log if it is not
+  ansible.builtin.import_tasks: ready.yml
 
 # Only the deployed version stays: its archive and its image. The account holds
 # this one service, so every other image is an earlier version or build.
@@ -283,5 +272,5 @@
   ansible.builtin.debug:
     msg: >-
       {{ podman_service_image }} runs as the service {{ podman_service_name }} of the account
-      {{ __podman_service_user }}, on {{ podman_service_bind_address }}:{{ podman_service_port }}.
+      {{ __podman_service_user }}, {{ 'on ' ~ podman_service_bind_address ~ ':' ~ podman_service_port if podman_service_port | int > 0 else 'without a port' }}.
       Its log: journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service

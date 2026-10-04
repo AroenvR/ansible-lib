@@ -18,7 +18,7 @@ project's or aslib.infra's:
 | `container.env` | The container's settings and secrets, kept out of git. Copied from the project's `.env.production` if it has one (without quotes around values, which Podman would keep) | The project's |
 | `group_vars/all/defaults.yml` | Every setting at its default; `project.yml` wins | aslib.infra's |
 | `prebuild.yml` | Installs node_modules for development in a throwaway container, keeping the previous one as a backup | aslib.infra's |
-| `image.yml`, `deploy.yml`, `build-and-deploy.yml`, `remove.yml` | Build the image, deploy it, both in one go (also for new versions), remove the service | aslib.infra's |
+| `image.yml`, `deploy.yml`, `build-and-deploy.yml`, `restart.yml`, `remove.yml` | Build the image, deploy it, both in one go (also for new versions), restart the service, remove it | aslib.infra's |
 | `templates/service.container.j2` | The Quadlet file of the service; the deploy renders it | aslib.infra's |
 | `update-playbooks.yml` | Brings aslib.infra's files up to date | aslib.infra's |
 | `ansible.cfg`, `.gitignore`, `README.md` | Ansible's settings (each run logged to `logs/<playbook>-<UTC time>.log` by [aslib.infra.run_log](../../plugins/callback/run_log.py)), what stays out of git, the guide | aslib.infra's |

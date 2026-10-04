@@ -1,0 +1,28 @@
+#!/bin/sh
+# {{ __claude_code_name }}: runs Claude Code in the always-on container {{ __claude_code_name }}, as its account.
+# Installed by aslib.infra.claude_code; the next deploy replaces this file.
+#
+#   claude-code            an interactive session
+#   claude-code ARGS...    ARGS go to claude, e.g. --continue, --resume, -p "a prompt", agents
+#
+# Root only. Without a terminal (a script, cron), it runs without one, e.g. with -p.
+set -eu
+
+account={{ __claude_code_user }}
+container={{ __claude_code_name }}
+workdir={{ __claude_code_dir }}
+
+[ "$(id -u)" -eq 0 ] || { echo "claude-code: run it as root, e.g. sudo -i" >&2; exit 1; }
+uid=$(id -u "$account")
+
+tty=
+if [ -t 0 ] && [ -t 1 ]; then tty=--tty; fi
+
+# From /, which the account may enter: runuser keeps the working directory. It
+# keeps the environment too, so the D-Bus address is set to the account's: a root
+# shell entered with su carries its user's, with which Podman cannot reach the
+# account's systemd ("no systemd user session available").
+cd /
+exec runuser --user="$account" -- \
+  env XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+  podman exec --interactive $tty --env=TERM="${TERM:-xterm-256color}" --workdir="$workdir" "$container" claude "$@"

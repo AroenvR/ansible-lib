@@ -1,0 +1,112 @@
+---
+# The shared zone, /opt/containers/shared/: every service with podman_service_shared
+# may read and write it, through the group containers-shared. Its container keeps
+# that group (--group-add=keep-groups in the Quadlet file), and whatever an app
+# creates there is writable for the group, whichever mode the app asks for. No
+# sticky bit: with fs.protected_regular=2 (Ubuntu's default) it also stops a
+# service from opening another's file with O_CREAT, which most writes do.
+- name: Create the shared zone's group, containers-shared
+  ansible.builtin.group:
+    name: containers-shared
+    system: true
+
+- name: Add the account to the shared zone's group
+  ansible.builtin.user:
+    name: "{{ __podman_service_user }}"
+    groups: [containers-shared]
+    append: true
+  register: __podman_service_shared_member
+
+# An account's processes get a new group only when its systemd instance starts.
+# For a new account it starts later in the deploy; a running one restarts here,
+# and with it the account's services.
+- name: Look up whether the account's systemd instance runs
+  ansible.builtin.stat:
+    path: /run/user/{{ __podman_service_account.uid }}/systemd/private
+  register: __podman_service_manager
+
+- name: Restart the account's systemd instance, so its services get the group
+  ansible.builtin.systemd:
+    name: user@{{ __podman_service_account.uid }}.service
+    state: restarted
+  when:
+    - __podman_service_shared_member is changed
+    - __podman_service_manager.stat.exists
+
+# /opt/containers first: created along with the zone, it would get the zone's
+# mode, and keep accounts outside the group from their image archives.
+- name: Create the shared zone, for the group only, with new files and directories in the group
+  ansible.builtin.file:
+    path: "{{ __podman_service_shared_dir.path }}"
+    state: directory
+    owner: root
+    group: "{{ __podman_service_shared_dir.group }}"
+    mode: "{{ __podman_service_shared_dir.mode }}"
+  loop:
+    - { path: /opt/containers, group: root, mode: "0755" }
+    - { path: /opt/containers/shared, group: containers-shared, mode: "2770" }
+  loop_control:
+    loop_var: __podman_service_shared_dir
+    label: "{{ __podman_service_shared_dir.path }}"
+
+# getfacl and setfacl come with the acl package, which a minimal RHEL install
+# lacks. Installed only when missing: only then does the server need its
+# package repositories.
+- name: Look up setfacl
+  ansible.builtin.stat:
+    path: /usr/bin/setfacl
+  register: __podman_service_setfacl
+
+- name: Install the acl package (setfacl) when it is missing
+  ansible.builtin.package:
+    name: acl
+    state: present
+  when: not __podman_service_setfacl.stat.exists
+
+- name: Look up the shared zone's access rules
+  ansible.builtin.command:
+    argv: [getfacl, --omit-header, /opt/containers/shared]
+  register: __podman_service_shared_acl
+  changed_when: false
+
+- name: Make whatever is created in the shared zone writable for the group
+  ansible.builtin.command:
+    argv:
+      - setfacl
+      - --modify=default:user::rwx,default:group::rwx,default:other::---
+      - /opt/containers/shared
+  when: __podman_service_shared_acl.stdout_lines is not superset(['default:group::rwx', 'default:other::---'])
+  changed_when: true
+
+# Root's, so no service can change it, as none is its owner or in its group. One
+# could still remove it from the group-writable directory: every deploy puts it back.
+- name: Write the shared zone's README.md, how services work there
+  ansible.builtin.copy:
+    src: shared-README.md
+    dest: /opt/containers/shared/README.md
+    owner: root
+    group: root
+    mode: "0644"
+    setype: container_file_t
+
+# Untested: no test server runs SELinux in enforcing mode.
+- name: Look up whether SELinux is enabled
+  ansible.builtin.command: selinuxenabled
+  register: __podman_service_selinux
+  changed_when: false
+  failed_when: false
+
+- name: Look up the shared zone's SELinux label
+  ansible.builtin.command:
+    argv: [stat, --format=%C, /opt/containers/shared]
+  register: __podman_service_shared_label
+  when: __podman_service_selinux.rc == 0
+  changed_when: false
+
+- name: Label the shared zone for every container (SELinux)
+  ansible.builtin.command:
+    argv: [chcon, --recursive, --type=container_file_t, /opt/containers/shared]
+  when:
+    - __podman_service_selinux.rc == 0
+    - __podman_service_shared_label.stdout is not search(':container_file_t:')
+  changed_when: true

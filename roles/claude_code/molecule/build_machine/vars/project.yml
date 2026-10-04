@@ -1,0 +1,8 @@
+---
+claude_code_test_project: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/claude-code-test', true) }}/claude-code"
+
+# true builds the real image, which needs Red Hat's registry and Anthropic's
+# repository. false builds the stand-in (claude_code/molecule/mock) on
+# claude_code_test_mock_base instead, for machines that reach neither.
+claude_code_test_real: true
+claude_code_test_mock_base: registry.access.redhat.com/ubi9/ubi-minimal

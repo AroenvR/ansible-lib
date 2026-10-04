@@ -1,0 +1,128 @@
+# Building, deploying and entering Claude Code
+
+This directory was written by `ansible-playbook aslib.infra.claude_setup`. Run every
+command below **from this directory**, on a machine with ansible-core and the
+aslib.infra collection installed (see aslib.infra's README). Every run writes its
+output to a file of its own in `logs/`, such as `logs/deploy-20261003T081502Z.log`.
+
+| File | What it is | Whose | In git |
+|---|---|---|---|
+| `inventory.yml` | The servers to deploy to | Yours | Yes |
+| `group_vars/all/project.yml` | The project's settings: written with every default, then yours | Yours | Yes |
+| `container.env` | The container's environment variables and secrets, e.g. an API key | Yours | **No** |
+| `../config/` | The policy and Claude's instructions | Yours | Yes |
+| `../Containerfile`, `../.containerignore`, `../README.md` | The image, what stays out of its build, running it with plain Podman | aslib.infra | Yes |
+| `group_vars/all/defaults.yml` | Every setting at aslib.infra's default; `project.yml` wins | aslib.infra | Yes |
+| `image.yml`, `deploy.yml`, `build-and-deploy.yml`, `restart.yml`, `remove.yml` | Build, deploy, both in one go, restart, remove | aslib.infra | Yes |
+| `templates/service.container.j2` | The Quadlet file: how Podman and systemd run the service | aslib.infra | Yes |
+| `update-playbooks.yml`, `ansible.cfg`, `.gitignore`, this guide | | aslib.infra | Yes |
+| `images/`, `logs/`, `*.bak` | The built image, the log of every run, copies an update keeps | | No |
+
+Your files are never overwritten. aslib.infra's are brought up to date by every
+update (step 5), which keeps the old version of each changed file as `<file>.bak`:
+merge what you need from it, then remove it. At the project's root, a `.bak` is
+not git-ignored, so it shows until then.
+
+## 1. Set up
+
+`ansible-playbook aslib.infra.claude_setup` wrote this project. Before the first
+deploy, look at what is yours: the policy in
+`../config/managed-settings.json` (see `../README.md`), Claude's instructions in
+`../config/CLAUDE.md`, the servers in `inventory.yml` (this machine by default)
+and the settings in `group_vars/all/project.yml`.
+
+## 2. Build and deploy
+
+```sh
+ansible-playbook build-and-deploy.yml    # add --ask-become-pass if sudo asks for a password
+```
+
+This runs `image.yml`, then `deploy.yml`.
+
+**The image** (`image.yml`) needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04) and
+access to the [download sources](#download-sources). It lands in `images/` as `{{ __claude_code_name }}-<version>.tar`, with the
+newest version of the repository's channel unless `claude_code_version` pins one.
+A build without a new version or a changed Containerfile leaves everything as it was.
+
+**The deploy** (`deploy.yml`) works as root (through sudo) and, on each server,
+runs the image as the always-on service `{{ __claude_code_name }}`, as an account of
+its own whose home is `{{ __claude_code_dir }}/`. Claude keeps its login, history,
+memory and notes there. `../config/` becomes `config/` in it, read-only for
+Claude, who finds it as `/etc/claude-code/`. With `podman_service_shared`, Claude
+also works in the shared zone, `/opt/containers/shared/`, which every service of
+aslib.infra may read and write. It installs the command `{{ __claude_code_name }}` for root.
+
+**Without permission prompts:** `ansible-playbook deploy.yml -e
+claude_code_bypass_permissions=true`, or the setting in `group_vars/all/project.yml`,
+installs the policy with `permissions.defaultMode: bypassPermissions`. Its deny
+rules still apply. Claude Code asks once, in the first interactive session, to
+accept the mode; background sessions start only after that.
+
+What a server needs: RHEL 9.2 or newer with Podman, and SSH access with sudo
+(or as root) for Ansible.
+
+## 3. Use it
+
+As root on the server:
+
+```sh
+sudo -i
+{{ __claude_code_name }}                # Claude in the container; arguments go to claude
+{{ __claude_code_name }} --continue     # e.g. the last conversation; see {{ __claude_code_name }} --help
+```
+
+It runs `claude` in the container as its account, from `{{ __claude_code_dir }}/`, with
+your terminal, or without one in a script (`{{ __claude_code_name }} -p "..."`).
+Sessions, background sessions and returning to them are Claude Code's own; to
+keep a terminal around, use tmux or screen on your side as you like. The first
+session asks you to sign in once for everyone: the sign-in page shows a code to
+paste into Claude.
+
+A new image, policy or `CLAUDE.md` restarts the service, which ends what runs in
+it; the conversations stay, so `{{ __claude_code_name }} --continue` resumes the last one.
+
+## 4. Check on it
+
+```sh
+ansible-playbook aslib.infra.overview      # every service, Claude Code included, with how to read its log
+```
+
+On the server: `sudo journalctl _SYSTEMD_USER_UNIT={{ __claude_code_name }}.service`.
+
+To restart it, for a change the deploy does not see: `ansible-playbook restart.yml`.
+A deploy restarts it by itself when it changes something (the image, `../config/`,
+`container.env`, the settings or the Quadlet template). Either way, a restart ends
+what runs in the container; conversations stay.
+
+## 5. Update
+
+- **Claude Code:** `ansible-playbook build-and-deploy.yml` builds the newest version
+  and deploys it when there is one.
+- **aslib.infra:** install the newer release, then `ansible-playbook update-playbooks.yml`.
+  It brings aslib.infra's files up to date, keeping each changed one as `<file>.bak`.
+  New settings appear in `group_vars/all/defaults.yml`; copy one into `project.yml`
+  to change it.
+- **The policy or the instructions:** edit `../config/`, then `ansible-playbook deploy.yml`.
+  The service restarts with it, as with a new image (step 3).
+
+## 6. Remove it
+
+```sh
+ansible-playbook remove.yml                                        # keeps {{ __claude_code_dir }}, with the login
+ansible-playbook remove.yml -e podman_service_remove_workdir=true  # removes it as well
+```
+
+## Download sources
+
+`image.yml` downloads; `deploy.yml` does not, but installs acl (for the shared
+zone) from the server's repositories when it is missing.
+
+| What | Set in the project | Set on the machine that builds |
+|---|---|---|
+| Red Hat's UBI 9 image, from `registry.access.redhat.com` | `claude_code_base_image` | `registries.conf` |
+| Claude Code, from `downloads.claude.ai` | `claude_code_repository`, `claude_code_key_url` | |
+| The tools in the Containerfile | | Red Hat's UBI repositories, as set up in the base image |
+| nvm, from `raw.githubusercontent.com` | `NVM_URL` in `../Containerfile` | |
+
+Claude itself needs `api.anthropic.com` and, to sign in, `claude.ai`, `claude.com`
+and `platform.claude.com`.

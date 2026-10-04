@@ -1,0 +1,11 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml. The
+# service's own settings (account, /tmp size, shared zone) are
+# aslib.infra.podman_service's.
+claude_code_project: "{{ lookup('env', 'PWD') }}"
+claude_code_ansible_dir: "{{ lookup('env', 'PWD') }}"
+claude_code_base_image: registry.access.redhat.com/ubi9/ubi
+claude_code_repository: https://downloads.claude.ai/claude-code/rpm/stable
+claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc
+claude_code_version: ""
+claude_code_bypass_permissions: false

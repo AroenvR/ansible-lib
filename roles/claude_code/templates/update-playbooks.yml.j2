@@ -1,0 +1,18 @@
+---
+# Updates this directory to the installed aslib.infra; run it after installing a newer one.
+# aslib.infra's files (here and the project's Containerfile, .containerignore and
+# README.md) are replaced, each changed one kept as <file>.bak first; yours
+# (inventory.yml, group_vars/all/project.yml, container.env and config/) are
+# never touched.
+#   ansible-playbook update-playbooks.yml
+- name: Update this directory to the installed aslib.infra
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Update the project's ansible/ directory
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_code
+        tasks_from: setup
+      vars:
+        claude_code_project: "{{ '{{' }} lookup('env', 'PWD') | dirname {{ '}}' }}"

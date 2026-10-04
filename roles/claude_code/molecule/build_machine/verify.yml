@@ -1,0 +1,237 @@
+---
+- name: Check the project the setup wrote, its image, and that an update keeps the project's own files
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  vars:
+    __claude_code_test_dir: "{{ claude_code_test_project }}/ansible"
+    __claude_code_test_roles: "{{ playbook_dir }}/../../.."
+    __claude_code_test_policy: "{{ lookup('file', claude_code_test_project ~ '/config/managed-settings.json') | from_json }}"
+    # What a real image must have: Claude Code and the Containerfile's tools.
+    __claude_code_test_tools: [git, ssh, jq, less, which, find, diff, patch, file, ps, ip, vi, tar, gzip, unzip, xz, zstd,
+                               rsync, python3.12, pip3.12, gcc, g++, make, node, npm, sqlite3, mysql, psql]
+    __claude_code_test_commands: "{{ ['claude'] + (__claude_code_test_tools if claude_code_test_real | bool else []) }}"
+  tasks:
+    - name: Inspect the environment file
+      ansible.builtin.stat:
+        path: "{{ __claude_code_test_dir }}/container.env"
+      register: __claude_code_test_env
+
+    - name: Check the project's files are there, with their contents
+      ansible.builtin.assert:
+        that:
+          - (claude_code_test_project ~ '/README.md') is file
+          - (claude_code_test_project ~ '/.containerignore') is file
+          - (claude_code_test_project ~ '/config/CLAUDE.md') is file
+          - lookup('file', claude_code_test_project ~ '/Containerfile')
+            == lookup('file', __claude_code_test_roles ~ '/claude_code/' ~ ('files' if claude_code_test_real | bool else 'molecule/mock') ~ '/Containerfile')
+          - __claude_code_test_policy.permissions.additionalDirectories == ['/opt/claude-code', '/opt/containers/shared']
+          - __claude_code_test_policy.autoMemoryDirectory == '/opt/claude-code/memory'
+          - __claude_code_test_policy.permissions.deny is contains('Edit(//opt/claude-code/config/**)')
+          - __claude_code_test_policy.env.DISABLE_AUTOUPDATER == '1'
+          - (lookup('file', __claude_code_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
+          - __claude_code_test_env.stat.mode == '0600'
+        success_msg: >-
+          PASSED claude_code wrote the Containerfile, the policy and instructions in config/, the guide, the inventory
+          and a private environment file.
+
+    - name: Check aslib.infra's files are there, with their contents
+      ansible.builtin.assert:
+        that:
+          - lookup('file', __claude_code_test_dir ~ '/ansible.cfg') is search('^callbacks_enabled = aslib\.infra\.run_log$', multiline=True)
+          - lookup('file', __claude_code_test_dir ~ '/.gitignore').splitlines() is superset(['container.env', '*.bak', 'logs/'])
+          - lookup('file', __claude_code_test_dir ~ '/images/.gitignore') == '*'
+          - "lookup('file', __claude_code_test_dir ~ '/image.yml') is search('tasks_from: image')"
+          - "lookup('file', __claude_code_test_dir ~ '/deploy.yml') is search('name: aslib.infra.claude_code')"
+          - "lookup('file', __claude_code_test_dir ~ '/build-and-deploy.yml') is search('import_playbook: deploy.yml')"
+          - "lookup('file', __claude_code_test_dir ~ '/remove.yml') is search('tasks_from: remove')"
+          - "lookup('file', __claude_code_test_dir ~ '/restart.yml') is search('tasks_from: restart')"
+          - "lookup('file', __claude_code_test_dir ~ '/update-playbooks.yml') is search('tasks_from: setup')"
+          - lookup('file', __claude_code_test_dir ~ '/README.md') is search('sudo journalctl _SYSTEMD_USER_UNIT=claude-code.service')
+          - lookup('file', __claude_code_test_dir ~ '/templates/service.container.j2')
+            == lookup('file', __claude_code_test_roles ~ '/podman_service/templates/service.container.j2')
+        success_msg: PASSED claude_code wrote ansible/ with its playbooks, guide, Quadlet template and git rules.
+
+    # Both settings files must hold exactly the roles' defaults, or they would mislead.
+    - name: Check both settings files hold every setting at the roles' default
+      vars:
+        __claude_code_test_role_defaults: >-
+          {{ lookup('file', __claude_code_test_roles ~ '/claude_code/defaults/main.yml') | from_yaml
+             | combine(lookup('file', __claude_code_test_roles ~ '/podman_service/defaults/main.yml') | from_yaml) }}
+        __claude_code_test_settings: "{{ lookup('file', __claude_code_test_dir ~ '/group_vars/all/' ~ item) | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_test_settings | length > 5
+          - __claude_code_test_settings | dict2items | rejectattr('key', 'in', __claude_code_test_role_defaults) | list == []
+          - __claude_code_test_settings == __claude_code_test_role_defaults | dict2items
+            | selectattr('key', 'in', __claude_code_test_settings) | items2dict
+        quiet: true
+        success_msg: "PASSED claude_code: {{ item }} holds {{ __claude_code_test_settings | length }} settings, each at its default."
+      loop: [defaults.yml, project.yml]
+
+    - name: Check the playbooks it wrote are valid
+      ansible.builtin.command:
+        argv: [ansible-playbook, --syntax-check, "{{ __claude_code_test_dir }}/{{ item }}"]
+      loop: [image.yml, deploy.yml, build-and-deploy.yml, restart.yml, remove.yml, update-playbooks.yml]
+      changed_when: false
+
+    # The image
+    - name: Find the image archive
+      ansible.builtin.find:
+        paths: "{{ __claude_code_test_dir }}/images"
+        patterns: claude-code-*.tar
+      register: __claude_code_test_archives
+
+    - name: Note the version built
+      ansible.builtin.set_fact:
+        __claude_code_test_version: >-
+          {{ __claude_code_test_archives.files[0].path | basename | regex_replace('^claude-code-(.*)[.]tar$', '\1') }}
+      when: __claude_code_test_archives.files | length == 1
+
+    - name: Run the image's Claude Code
+      ansible.builtin.command:
+        argv: [podman, run, --rm, "localhost/claude-code:{{ __claude_code_test_version | default('none') }}", claude, --version]
+      register: __claude_code_test_claude
+      changed_when: false
+      failed_when: false
+
+    # What the deploy relies on: user 1001 with its home in /opt/claude-code, and
+    # the policy read from /etc/claude-code, which is that home's config/. The
+    # command module expands $HOME itself, hence printenv. A real image also has
+    # its tools, Node.js 24, and nvm in login shells.
+    - name: Look up the image's user, home, policy directory and commands
+      ansible.builtin.command:
+        argv:
+          - podman
+          - run
+          - --rm
+          - localhost/claude-code:{{ __claude_code_test_version | default('none') }}
+          - sh
+          - -c
+          - >-
+            id -u; printenv HOME; readlink /etc/claude-code;
+            for c in {{ __claude_code_test_commands | join(' ') }}; do command -v "$c" >/dev/null || echo "missing $c"; done;
+            {{ "node --version | grep -q '^v24[.]' || echo 'node is not 24';
+                bash -lc 'nvm --version' >/dev/null 2>&1 || echo 'no nvm in a login shell'"
+               if claude_code_test_real | bool else ':' }}
+      register: __claude_code_test_image
+      changed_when: false
+      failed_when: false
+
+    - name: Check there is one archive, and the image runs Claude Code as the deploy expects
+      ansible.builtin.assert:
+        that:
+          - __claude_code_test_archives.files | length == 1
+          - __claude_code_test_version | default('') is match('^[0-9]+[.][0-9]+[.][0-9]+')
+          - __claude_code_test_claude.stdout is match(__claude_code_test_version | default('') | regex_escape ~ ' ')
+          - __claude_code_test_image.stdout_lines == ['1001', '/opt/claude-code', '/opt/claude-code/config']
+        fail_msg: >-
+          Archives: {{ __claude_code_test_archives.files | map(attribute='path') | map('basename') | list }};
+          claude --version: {{ __claude_code_test_claude.stdout }} {{ __claude_code_test_claude.stderr }};
+          user, home, policy and missing commands: {{ __claude_code_test_image.stdout_lines }} {{ __claude_code_test_image.stderr }}
+        success_msg: >-
+          PASSED images/ holds claude-code-{{ __claude_code_test_version }}.tar; its Claude Code says
+          "{{ __claude_code_test_claude.stdout }}" and runs as 1001 in /opt/claude-code with
+          {{ __claude_code_test_commands | join(', ') }}.
+
+    # The update, as a developer would run it: from the project's ansible/ directory,
+    # with its ansible.cfg and, since playbooks find the project through it, PWD.
+    - name: Change files of the project's and of aslib.infra's, as time would
+      ansible.builtin.copy:
+        content: "{{ __claude_code_test_change.content }}"
+        dest: "{{ claude_code_test_project }}/{{ __claude_code_test_change.file }}"
+        mode: preserve
+      loop:
+        - file: Containerfile
+          content: "{{ lookup('file', claude_code_test_project ~ '/Containerfile') }}\nLABEL org.example.test=changed\n"
+        # The stand-in takes a version of its own, so a new one replaces the old.
+        - file: ansible/group_vars/all/project.yml
+          content: |
+            podman_service_uid: 3100
+            {% if not claude_code_test_real | bool %}
+            claude_code_version: "0.0.2"
+            claude_code_base_image: {{ claude_code_test_mock_base }}
+            {% endif %}
+        - { file: ansible/container.env, content: "ANTHROPIC_API_KEY=kept\n" }
+        - { file: config/CLAUDE.md, content: "# changed locally\n" }
+        - { file: ansible/deploy.yml, content: "# changed locally\n" }
+      loop_control:
+        loop_var: __claude_code_test_change
+        label: "{{ __claude_code_test_change.file }}"
+
+    - name: Run update-playbooks.yml from the project's ansible/ directory
+      ansible.builtin.command:
+        argv: [ansible-playbook, update-playbooks.yml]
+        chdir: "{{ __claude_code_test_dir }}"
+      environment:
+        ANSIBLE_CONFIG: "{{ __claude_code_test_dir }}/ansible.cfg"
+        PWD: "{{ __claude_code_test_dir }}"
+      changed_when: false
+
+    - name: Check the update kept the project's files and restored aslib.infra's, keeping each changed one as .bak
+      ansible.builtin.assert:
+        that:
+          - lookup('file', claude_code_test_project ~ '/Containerfile') == lookup('file', __claude_code_test_roles ~ '/claude_code/files/Containerfile')
+          - lookup('file', claude_code_test_project ~ '/Containerfile.bak') is search('LABEL org.example.test=changed$')
+          - "lookup('file', __claude_code_test_dir ~ '/group_vars/all/project.yml') is match('podman_service_uid: 3100')"
+          - lookup('file', __claude_code_test_dir ~ '/container.env') == 'ANTHROPIC_API_KEY=kept'
+          - lookup('file', claude_code_test_project ~ '/config/CLAUDE.md') == '# changed locally'
+          - "lookup('file', __claude_code_test_dir ~ '/deploy.yml') is search('name: aslib.infra.claude_code')"
+          - lookup('file', __claude_code_test_dir ~ '/deploy.yml.bak') == '# changed locally'
+          - (__claude_code_test_dir ~ '/image.yml.bak') is not exists
+          - (claude_code_test_project ~ '/README.md.bak') is not exists
+        success_msg: >-
+          PASSED an update kept the project's settings, environment and config/, restored the Containerfile and
+          deploy.yml, and kept each local change as .bak.
+
+    # A project that wants its change keeps it from the .bak, as a developer would.
+    - name: Take the Containerfile's change back from Containerfile.bak
+      ansible.builtin.command:
+        argv: [mv, Containerfile.bak, Containerfile]
+        chdir: "{{ claude_code_test_project }}"
+      changed_when: true
+
+    - name: Run image.yml from the project's ansible/ directory
+      ansible.builtin.command:
+        argv: [ansible-playbook, image.yml]
+        chdir: "{{ __claude_code_test_dir }}"
+      environment:
+        ANSIBLE_CONFIG: "{{ __claude_code_test_dir }}/ansible.cfg"
+        PWD: "{{ __claude_code_test_dir }}"
+      changed_when: false
+
+    - name: Find the image archive after the rebuild
+      ansible.builtin.find:
+        paths: "{{ __claude_code_test_dir }}/images"
+        patterns: claude-code-*.tar
+      register: __claude_code_test_rebuilt
+
+    - name: Look up the project's images on this machine
+      ansible.builtin.command:
+        argv: [podman, images, --quiet, --no-trunc, --filter=label=org.opencontainers.image.title=claude-code]
+      register: __claude_code_test_images
+      changed_when: false
+
+    - name: Inspect the rebuilt image
+      ansible.builtin.command:
+        argv: [podman, image, inspect, "{{ __claude_code_test_images.stdout_lines[0] | default('none') }}"]
+      register: __claude_code_test_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Check the rebuild left one archive and one image, with the project's change
+      vars:
+        __claude_code_test_new_version: "{{ __claude_code_test_version if claude_code_test_real | bool else '0.0.2' }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_test_rebuilt.files | map(attribute='path') | map('basename') | list
+            == ['claude-code-' ~ __claude_code_test_new_version ~ '.tar']
+          - __claude_code_test_images.stdout_lines | unique | length == 1
+          - (__claude_code_test_inspect.stdout | from_json)[0].Labels['org.example.test'] == 'changed'
+          - (__claude_code_test_inspect.stdout | from_json)[0].Labels['org.opencontainers.image.version'] == __claude_code_test_new_version
+        fail_msg: >-
+          Archives: {{ __claude_code_test_rebuilt.files | map(attribute='path') | map('basename') | list }};
+          images: {{ __claude_code_test_images.stdout_lines }}
+        success_msg: >-
+          PASSED image.yml, run from the project, rebuilt the changed Containerfile into
+          claude-code-{{ __claude_code_test_new_version }}.tar and left no older image of the project behind.

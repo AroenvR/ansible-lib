@@ -1,8 +1,10 @@
 ---
 # Sets up, builds and deploys a small test app (app/) the way a project would,
-# on the RHEL 9 test server, then restarts the server and checks the service came
-# back by itself, with its data. The app's own container runs inside the test
-# server, hence the extra settings below.
+# on the RHEL 9 test server, together with a Claude Code project (with a stand-in
+# for Claude Code), then restarts the server and checks both came back by
+# themselves, with their data, side by side. This also tests podman_service and
+# podman_overview. The services' own containers run inside the test server, hence
+# the extra settings below.
 scenario:
   name: server
 platforms:

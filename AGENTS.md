@@ -9,9 +9,10 @@ Instructions for AI coding agents working on this repository. Humans: see
 `aslib.infra` is an Ansible collection: a library of small, tested roles for
 RHEL 9 and Ubuntu 22.04 servers, plus roles and ready-made playbooks that take a
 Node.js backend from project to running service (node_setup, node_image,
-node_deploy). Roles are named by area: `podman_` roles work for any image,
-`node_` roles add what Node.js projects need (node_deploy is a thin layer over
-podman_service). Consumers install a release tarball that holds only runtime
+node_deploy), and an always-on Claude Code agent for root (claude_code). Roles
+are named by area: `podman_` roles work for any image, `node_` roles add what
+Node.js projects need (node_deploy is a thin layer over podman_service), and
+claude_code is the same kind of layer for Claude Code. Consumers install a release tarball that holds only runtime
 files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 
 ## Non-negotiable constraints
@@ -37,8 +38,8 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   systemd with `systemctl --user -M <user>@ ...`; roles use the same `runuser`
   prefix as for Podman (see Known pitfalls). A service's own directory is
   `/opt/<service>/`: the app's, its working directory at the same path inside
-  the container, never touched by a deploy except `config/` in it; its data
-  survives a removal unless asked. `podman_service` implements this; build every
+  the container, never touched by a deploy except `config/` in it; it
+  survives a removal unless asked (`podman_service_remove_workdir`). `podman_service` implements this; build every
   container-based role on it.
 - **Dependencies.** Development tools may be current but are pinned in
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
@@ -47,7 +48,10 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   complexity for a 1% case. SOLID applies at role level (see CONTRIBUTING.md).
 - **Documentation and linting are mandatory.** Every public role variable is
   documented in `meta/argument_specs.yml` with the same default as
-  `defaults/main.yml`; `make lint` enforces it.
+  `defaults/main.yml`; `make lint` enforces it. Each option and mechanism is
+  described once, by the role that owns it (podman_service for every service's
+  settings); other READMEs link to that section and name the option only where
+  a reader uses it. A new option then changes its own role, not every README.
 
 ## Commands
 
@@ -79,7 +83,8 @@ explains the test layout and how releases are made.
 | `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface |
 | `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
-| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service` and `podman_overview`, which need a deployed service |
+| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
+| `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
 | `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
 | `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
@@ -95,13 +100,19 @@ source of truth.
 
 - **Never lose the maintainer's edits.** Before changing a file, use the latest
   version the maintainer provided. Files they have edited so far:
-  `.gitignore` and the `on:` block of `.github/workflows/ci.yml` (including its
-  TODO comments; its push trigger was changed to every branch at their request).
-  Their repository may be ahead of the agent's copy: ask for the current
-  version of a file they may have changed before replacing it. Only change their
-  lines when they ask; suggest changes in chat instead.
-  They also keep private directories that are not in the zip and restore them
-  after overwriting; ignore them unless told otherwise.
+  `.gitignore`, the `on:` block of `.github/workflows/ci.yml` (including its
+  TODO comments; its push trigger was changed to every branch at their request)
+  and `.github/workflows/test.yml` (the starter workflow, fixed for lint with
+  `branches: ["main"]`). Their repository may be ahead of the agent's copy: ask
+  for the current version of a file they may have changed before replacing it.
+  Only change their lines when they ask; suggest changes in chat instead.
+- **The maintainer's own tooling.** `.env.example` and `.tools/archive_git.sh`
+  are in the repository and every zip exactly as they gave them; never change
+  them. `libs/bash/` is their Bash library (which `archive_git.sh` sources), a
+  git subtree they maintain: it is not in the agent's copy, so the zip lacks it,
+  and their copy stays as it is. The release tarball leaves all three out
+  (`build_ignore`). They also keep private directories that are not in the zip
+  and restore them after overwriting; ignore them unless told otherwise.
 - **Deliver every change as a complete zip** of the repository root (the zip
   root is the repository root), excluding `.git/`, `.venv/`, `dist/` and tool
   caches. The maintainer overwrites their checkout with it, so every file in the
@@ -233,18 +244,98 @@ source of truth.
   Quadlet file sets `--log-driver=journald`. Test containers hid this: Podman's
   systemd mode mounts a tmpfs on `/var/log/journal` (persistent, readable), so
   node_deploy's test server sets `Storage=volatile`, as on RHEL.
+- `selectattr('copy', 'defined')` is true for every dict (`dict.copy` is a
+  method), so a marker key must not share a name with a dict method: claude_code's
+  file lists use `as_is`.
+- In 2.12 and 2.14 the handlers of a role brought in with `import_role` do not
+  see the importing role's role variables (2.21 does); they fail with an
+  undefined variable. Pass such values as facts (claude_code's `project.yml`).
+- A rootless container drops the account's supplementary groups unless
+  `--group-add=keep-groups`: without it the shared zone gives "Permission
+  denied". A new group reaches an account's services only after its systemd
+  instance (user@<uid>.service) restarts.
+- The file module gives every parent directory it creates the task's owner,
+  group and mode: creating `/opt/containers/shared` (2770) first made
+  `/opt/containers` 2770 too, locking accounts outside the group out of their
+  image archives. Create parents explicitly.
+- The command module expands `$VAR` and `~` in its arguments itself, also in
+  `argv` (2.12, 2.14; `expand_argument_vars` came in 2.16): `sh -c 'echo $HOME'`
+  prints Ansible's HOME, not the container's. Use `printenv HOME`.
+- The maintainer's RHEL 9 server lacked the `acl` package (getfacl, setfacl),
+  while the test server had it from prepare.yml, so the tests missed it.
+  Roles install what they need when it is missing; prepare.yml installs only what
+  a default RHEL install would have.
+- Red Hat's UBI repositories lack tmux (RHEL has it in BaseOS) and shellcheck;
+  UBI's unversioned nodejs is 16 (end of life), so enable a module stream
+  (`nodejs:24`). `blockReadsOutsideWorkingDirectories` made Claude Code refuse or
+  prompt for every read of the image (/etc, /usr, /tmp), even in bypass mode, for
+  nothing the container hides: the policy leaves it off. The policy deny
+  `Read(//opt/claude-code/.claude/**)` blocks a
+  whole Bash command that touches `.claude/`, and Claude's default memory
+  location (`~/.claude/projects/<project>/memory/`) with it: the policy sets
+  `autoMemoryDirectory` instead (an allow rule cannot override a deny).
+- Claude Code sources `~/.bashrc` when it starts a session's shell (documented)
+  and keeps its functions. The image's nvm is in /etc/profile.d, so the deploy
+  writes RHEL's default `.bashrc` (which loads /etc/bashrc and profile.d) into
+  Claude's home when it has none: useradd never did, as the home is the
+  service's directory. Not verified in a real session yet.
+- A fact (set_fact, register) beats a block's or task's `vars:` of the same name,
+  for the rest of the run. podman_service's removal kept its account command in
+  a block variable; after a restart of Claude Code in the same run, the removal of
+  the Node.js service ran `podman system reset --force` as claude-code and wiped
+  its images. A role that runs for several services in one play sets such
+  per-service values with set_fact every time.
+- A plain YAML list item containing `: ` is a mapping, not text: an assert's
+  `- lookup(...) is search('key: value')` was such a mapping, and assert passed it
+  without checking anything. Quote such conditions (`- "..."`);
+  `dev/check_conditions.py` (part of `make lint`) finds them.
+- YAML flow lists split on commas: an argument like `setfacl --modify=a,b`
+  belongs in a block list.
+- A sticky bit on a group-writable directory (tried on the shared zone) also
+  makes `fs.protected_regular=2` (Ubuntu's default, also on CI's runners) refuse
+  O_CREAT opens of another user's file there, so `>>` and most writes fail with
+  Permission denied; RHEL's default is 1. Avoid the sticky bit there.
+- `runuser` keeps the caller's environment, including `DBUS_SESSION_BUS_ADDRESS`.
+  From a root shell entered with `su`, that is another user's bus: Podman as the
+  account then warns "no systemd user session available", falls back to
+  cgroupfs, and `podman exec` fails writing `cgroup.procs` (Permission denied).
+  The claude-code command sets the account's own address
+  (`unix:path=/run/user/<uid>/bus`). Seen on the maintainer's server; the cause is
+  the likeliest one, not yet confirmed there.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
 
+## Looking inside a running service (field notes)
+
+Gathered while writing Claude's CLAUDE.md with the maintainer, as root on their
+server. Not a design yet: candidates for a later feature (one command or
+playbook for every podman_service service, a smoke test after a deploy).
+
+- A command in a service's container, as podman_service itself reaches it:
+  `cx() { (cd / && runuser -u <account> -- env XDG_RUNTIME_DIR=/run/user/<uid>
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus podman exec -i <service> "$@"); }`.
+  `cd /` because runuser keeps the working directory, which the account usually
+  cannot enter; `-i` so a script can come from a heredoc (`cx bash <<'EOF'`); the
+  bus address for the reason in Known pitfalls. It is `claude-code` without its
+  terminal handling.
+- Claude itself, without a terminal: `claude-code -p "<question>"
+  --permission-prompts none --allowedTools <tools>` shows what Claude's own shell
+  and permissions see, which differs from `cx` (its `.bashrc` snapshot, working
+  directories, deny rules). `--allowedTools` takes several values and swallows a
+  prompt that follows it: the prompt goes right after `-p`. `claude-code doctor`
+  checks Claude Code's own settings and installation.
+- The service's state on the host: `/opt/<service>/` as root.
+
 ## Status
 
-Last updated 2026-10-03, preparing release 0.1.0 from main (the first; no v*
-tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
+Last updated 2026-10-04, preparing release 0.2.0 on the development branch
+(v0.1.0 is tagged on main; `dev/ci/next-version.sh` gives galaxy.yml's 0.2.0).
 
-- GitHub Actions: run #25 passed everything; the maintainer's NestJS project then
-  deployed and ran on their RHEL server. Since then, not yet run in CI: the
-  namespace `aslib`, `podman_service` and `podman_overview`, the run_log callback
-  and `build-and-deploy.yml` (verified in the agent's sandbox).
+- GitHub Actions: run #35 passed everything, and the maintainer's regression
+  tests on their RHEL server pass: the NestJS project and Claude Code side by
+  side. Since then, not yet in CI (verified in the agent's sandbox): the image's
+  files as aslib.infra's, `aslib.infra.overview` with each service's log
+  command, and the docs pass.
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
@@ -274,7 +365,8 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
     locally. Only the guide names the project; it follows a project's life: set
     up, prebuild, build and deploy, check on it, update aslib.infra, remove.
     A new version is a new build and deploy (build-and-deploy.yml); remove.yml
-    keeps the app's data unless `-e podman_service_remove_data=true`.
+    keeps the service's directory, `/opt/<service>/` with all the app wrote,
+    unless `-e podman_service_remove_workdir=true`.
   - Config: the app reads `config/<file>.json` relative to where it runs. The
     deploy mirrors the project's `config/production/*.json` (not secret, no
     development files) into `/opt/<service>/config/`, read-only for the app.
@@ -303,8 +395,41 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   - prebuild.yml (playbook aslib.infra.node_prebuild) prepares a project for
     development, each step a task there. More steps will come (an idea of the
     maintainer's: creating a sqlcipher .db file); do not add any unasked.
-  - Next, together with the maintainer: a containerized Claude Code service,
-    which must get an account (and UID) of its own like every service.
+- Claude Code, decided with the maintainer: one always-on agent per server, as
+  an account of its own (`claude-code`, home `/opt/claude-code/`), on UBI 9.
+  Whoever has root has the tool: `claude-code` runs `claude` in the container,
+  nothing more. Sessions (background ones, resuming, remote) are Claude Code's
+  own, and root users keep their terminals with tmux themselves: never manage
+  sessions for them. Claude works only in its home and the shared zone.
+  Anthropic's stable channel; every build is the update. Network restriction is
+  a setting (the sandbox block in the project's README.md), off by default. No
+  Podman in the container for now (later, if needed: nested rootless as an
+  opt-in setting, never the host's socket). The project is a repository of its
+  own, written by `aslib.infra.claude_setup`, the only collection playbook for
+  it; everything else is in its `ansible/`. Until it is handed over, its image
+  files (Containerfile, .containerignore, README.md) are aslib.infra's: every
+  update rewrites them, keeping a changed one as `.bak`, and merging is the
+  project maintainer's. config/ (the policy, CLAUDE.md) is the project's,
+  written once from aslib.infra's templates. `claude_code_bypass_permissions` is the POC's way to autonomy.
+  Tests run it next to the Node.js service.
+- The shared zone `/opt/containers/shared/`, decided with the maintainer: every
+  service reads and writes it; a default ACL keeps everything group-writable
+  ("tighten later, once the flows work"). Its README.md
+  (podman_service/files/shared-README.md, root's, rewritten by every deploy) is
+  how humans and agents learn to work there; Claude's CLAUDE.md points to it
+  instead of repeating it. A service can't change it, but could remove it until
+  the next deploy; one directory per service, created by the deploy under a
+  root-owned top level, would close that if it matters.
+- Claude's CLAUDE.md: aslib.infra ships the template (claude_code/files/CLAUDE.md),
+  each project adjusts its copy in config/. Positive, short, facts Claude can't
+  infer; nothing Claude Code's own prompt already covers. The policy denies edits
+  to instruction files in Claude's home (CLAUDE.md, CLAUDE.local.md, AGENTS.md),
+  which would load in every session.
+- Later, decided with the maintainer (SOLID at role level): node_setup and
+  claude_code each write their project with the same mechanism (theirs/ours
+  lists, `.bak`), and node_deploy and claude_code each wrap podman_service's
+  deploy, restart and remove. Extract a shared setup mechanism when a third kind
+  of project arrives, and generic lifecycle playbooks after that; not before.
 - Open: the license (`LICENSE` is a placeholder, decided later); a pinned source
   for aslib.infra in projects' pipelines once the release location is final.
 

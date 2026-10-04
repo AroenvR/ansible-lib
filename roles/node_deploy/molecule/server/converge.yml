@@ -1,5 +1,5 @@
 ---
-- name: Deploy the test project to the RHEL 9 test server, on port 3009 and with a fixed UID
+- name: Deploy both test projects to the RHEL 9 test server at once, the Node.js one on port 3009 with a fixed UID
   hosts: all
   gather_facts: false
   vars_files: [vars/project.yml]
@@ -7,3 +7,10 @@
     - name: Run node_deploy
       ansible.builtin.include_role:
         name: aslib.infra.node_deploy
+
+    # The account takes the next free UID, as without a setting.
+    - name: Deploy Claude Code next to it
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+      vars:
+        podman_service_uid: ""

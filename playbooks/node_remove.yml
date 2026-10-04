@@ -1,16 +1,16 @@
 ---
 # Removes the Node.js project's service from every server in the inventory,
-# keeping the app's data unless podman_service_remove_data is true. Run it from
+# keeping its directory, with the app's data, unless podman_service_remove_workdir is true. Run it from
 # the project's ansible/ directory (see aslib.infra.node_setup):
 #   ansible-playbook aslib.infra.node_remove
-#   ansible-playbook aslib.infra.node_remove -e podman_service_remove_data=true
+#   ansible-playbook aslib.infra.node_remove -e podman_service_remove_workdir=true
 # It works as root on the servers, through sudo. Options: ansible-doc -t role aslib.infra.node_deploy
 - name: Remove the Node.js project's service
   hosts: all
   become: true
   gather_facts: false
   tasks:
-    - name: Remove the service, its account, images, Quadlet file and config files
+    - name: Remove the service, its account, images and Quadlet file
       ansible.builtin.import_role:
         name: aslib.infra.node_deploy
         tasks_from: remove

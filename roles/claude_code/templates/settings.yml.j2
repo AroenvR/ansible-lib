@@ -1,0 +1,26 @@
+---
+{% if __claude_code_file.dest is search('defaults.yml$') %}
+# aslib.infra's settings for building and deploying Claude Code, every one at its
+# default. Every update (update-playbooks.yml) rewrites this file: change settings
+# in project.yml, which Ansible reads after it, so its values win.
+{% else %}
+# The project's settings for building and deploying Claude Code. The setup wrote
+# every one at its default; the file is yours from then on and updates never touch
+# it. Settings of newer aslib.infra versions appear, at their defaults, in defaults.yml.
+{% endif %}
+# All options: ansible-doc -t role aslib.infra.claude_code (building) and
+# aslib.infra.podman_service (the service).
+
+# Building: ansible-playbook image.yml. Mirrors for one environment belong on the
+# machine that builds: registries.conf for the image.
+claude_code_base_image: registry.access.redhat.com/ubi9/ubi   # the Containerfile's FROM; needs dnf
+claude_code_repository: https://downloads.claude.ai/claude-code/rpm/stable   # or .../rpm/latest, or a mirror
+claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc
+claude_code_version: ""                # empty: the repository's newest, so every build updates; or e.g. "2.1.211"
+
+# Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
+claude_code_bypass_permissions: false  # true: sessions start in bypassPermissions mode; also -e claude_code_bypass_permissions=true
+podman_service_tmp_size: 512m          # Claude's /tmp, in memory
+podman_service_shared: true            # the shared zone /opt/containers/shared/, shared with the other services
+podman_service_user: ""                # the account Claude runs as; empty: claude-code
+podman_service_uid: ""                 # that account's UID, e.g. 3100 on every server; empty: any free one

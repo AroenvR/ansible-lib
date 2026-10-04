@@ -1,0 +1,19 @@
+---
+# Writes a Claude Code project into an empty directory and builds its image: the
+# real one, Claude Code from Anthropic's repository on Red Hat's UBI 9. Then checks
+# the files, the image, and that running the setup again keeps the project's own
+# changes. That the service really runs, next to others, is tested in
+# node_deploy's server scenario, with a stand-in for Claude Code. The setup and the
+# build run where Ansible runs, so there are no test containers.
+scenario:
+  name: build_machine
+driver:
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      # The tested ansible-core's own Python, see node_image's build_machine scenario.
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+platforms:
+  - name: localhost

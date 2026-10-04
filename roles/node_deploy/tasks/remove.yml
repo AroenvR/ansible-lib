@@ -1,6 +1,6 @@
 ---
 # Entry point "remove": removes the project's service with aslib.infra.podman_service,
-# keeping the app's data unless podman_service_remove_data is true.
+# keeping its directory, with the app's data, unless podman_service_remove_workdir is true.
 - name: Work out the service from package.json
   ansible.builtin.import_tasks: service.yml
 

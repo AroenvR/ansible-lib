@@ -7,3 +7,7 @@ RUN apt-get update \
 # This container runs inside Podman, whose network is also 10.88.0.0/16. The
 # Podman in here gets another subnet, or its containers are unreachable.
 RUN sed -i 's/10\.88\./10.89./g' /etc/cni/net.d/87-podman-bridge.conflist
+# Nor does the Podman in here always get the pids cgroup controller from the
+# outer one: `podman run` then fails now and then with "the requested cgroup
+# controller `pids` is not available". It sets no pids limit, so it needs none.
+RUN printf '[containers]\npids_limit = 0\n' > /etc/containers/containers.conf

@@ -1,0 +1,36 @@
+---
+# One agent per server: the service, its account, its directory (also the image's
+# HOME, see files/Containerfile) and the command that enters it are all named so.
+__claude_code_name: claude-code
+__claude_code_dir: /opt/claude-code
+
+# The files the setup writes, relative to the project's root; src is relative to
+# this role. A template is rendered, any other file copied as it is.
+#
+# The project's files, written when missing and never touched afterwards.
+__claude_code_theirs:
+  - { src: files/managed-settings.json, dest: config/managed-settings.json, mode: "0644" }
+  - { src: files/CLAUDE.md, dest: config/CLAUDE.md, mode: "0644" }
+  - { src: ../node_setup/templates/inventory.yml.j2, dest: ansible/inventory.yml, mode: "0644" }
+  - { src: templates/settings.yml.j2, dest: ansible/group_vars/all/project.yml, mode: "0644" }
+  - { src: templates/container.env.j2, dest: ansible/container.env, mode: "0600" }
+
+# aslib.infra's files, which every setup and update rewrites, keeping a changed
+# one as <file>.bak first. Those marked as_is are copied as they are: the build
+# reads the Containerfile, the deploy renders the Quadlet template. The image's
+# files are aslib.infra's while it builds the agent up; config/ is the project's.
+__claude_code_ours:
+  - { src: files/Containerfile, dest: Containerfile, as_is: true }
+  - { src: files/containerignore, dest: .containerignore, as_is: true }
+  - { src: templates/project-README.md.j2, dest: README.md }
+  - { src: ../node_setup/templates/ansible.cfg.j2, dest: ansible/ansible.cfg }
+  - { src: templates/gitignore.j2, dest: ansible/.gitignore }
+  - { src: templates/settings.yml.j2, dest: ansible/group_vars/all/defaults.yml }
+  - { src: templates/image.yml.j2, dest: ansible/image.yml }
+  - { src: templates/deploy.yml.j2, dest: ansible/deploy.yml }
+  - { src: templates/build-and-deploy.yml.j2, dest: ansible/build-and-deploy.yml }
+  - { src: templates/restart.yml.j2, dest: ansible/restart.yml }
+  - { src: templates/remove.yml.j2, dest: ansible/remove.yml }
+  - { src: templates/update-playbooks.yml.j2, dest: ansible/update-playbooks.yml }
+  - { src: templates/README.md.j2, dest: ansible/README.md }
+  - { src: ../podman_service/templates/service.container.j2, dest: ansible/templates/service.container.j2, as_is: true }

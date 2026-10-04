@@ -1,9 +1,17 @@
 ---
-# Entry point "remove": takes away everything the deploy created for the service:
-# the service and its account (with the account's home directory, Podman storage
-# and images), its Quadlet and environment files, its image archives and its
-# config files. The service's directory, with the app's data, stays unless
-# podman_service_remove_data is true. Running it again changes nothing.
+# Entry point "remove": takes away what the deploy created for the service: the
+# service and its account (with the account's home directory, Podman storage and
+# images), its Quadlet and environment files and its image archives. The service's
+# directory, the app's working directory, stays as it is unless
+# podman_service_remove_workdir is true. Running it again changes nothing.
+- name: Check the removal uses the current name of its setting
+  ansible.builtin.assert:
+    that: podman_service_remove_data is not defined
+    fail_msg: >-
+      podman_service_remove_data is called podman_service_remove_workdir now; it removes the whole service
+      directory, {{ podman_service_dir or '/opt/' ~ podman_service_name }}. Nothing was removed.
+    quiet: true
+
 - name: Work out the service's account and directories, and check Ansible acts as root
   ansible.builtin.import_tasks: common.yml
 
@@ -20,14 +28,19 @@
 
 - name: Remove the service, its Quadlet file and the account's images
   when: __podman_service_account_uid | length > 0
-  vars:
-    __podman_service_as_account:
-      - runuser
-      - --user={{ __podman_service_user }}
-      - --
-      - env
-      - XDG_RUNTIME_DIR=/run/user/{{ __podman_service_account_uid }}
   block:
+    # A fact, as in the deploy: a variable of the block would lose to the fact an
+    # earlier deploy or restart of another service set in the same run, and these
+    # commands would then run as that service's account.
+    - name: Prepare running commands as the account
+      ansible.builtin.set_fact:
+        __podman_service_as_account:
+          - runuser
+          - --user={{ __podman_service_user }}
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __podman_service_account_uid }}
+
     - name: Stop the service, {{ podman_service_name }}
       ansible.builtin.command:
         argv: "{{ __podman_service_as_account + ['systemctl', '--user', 'stop', podman_service_name ~ '.service'] }}"
@@ -47,13 +60,11 @@
       changed_when: true
       failed_when: false  # the account's home directory, which holds them, goes anyway
 
-- name: Remove the image archives and the config files, and the service's directory if podman_service_remove_data is true
+- name: Remove the image archives, and the service's directory if podman_service_remove_workdir is true
   ansible.builtin.file:
     path: "{{ __podman_service_path }}"
     state: absent
-  loop:
-    - "{{ __podman_service_archive_dir }}"
-    - "{{ __podman_service_dir if podman_service_remove_data | bool else __podman_service_dir ~ '/config' }}"
+  loop: "{{ [__podman_service_archive_dir] + ([__podman_service_dir] if podman_service_remove_workdir | bool else []) }}"
   loop_control:
     loop_var: __podman_service_path
 

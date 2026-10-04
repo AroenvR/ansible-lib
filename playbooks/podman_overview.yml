@@ -6,6 +6,7 @@
 #   ansible-playbook aslib.infra.podman_overview
 #   ansible-playbook aslib.infra.podman_overview --limit <server>
 # It works as root, through sudo. Options: ansible-doc -t role aslib.infra.podman_overview
+# aslib.infra.overview shows these services along with anything else aslib.infra runs.
 - name: Show the rootless Podman services
   # Without an inventory Ansible only knows this machine, which "all" leaves out.
   hosts: "{{ 'all' if groups['all'] else 'localhost' }}"

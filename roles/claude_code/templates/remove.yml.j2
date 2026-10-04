@@ -1,0 +1,15 @@
+---
+# Removes Claude Code from the servers in inventory.yml: its service, account,
+# images, Quadlet file and the claude-code command. Its directory, with its login,
+# what it wrote and config/, stays as it is unless you ask:
+#   ansible-playbook remove.yml
+#   ansible-playbook remove.yml -e podman_service_remove_workdir=true
+- name: Remove Claude Code
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove the service and the claude-code command
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_code
+        tasks_from: remove

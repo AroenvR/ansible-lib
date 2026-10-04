@@ -1,0 +1,79 @@
+# Claude Code, always on
+
+An always-on Claude Code agent in a rootless Podman container on Red Hat UBI 9,
+which root reaches from a terminal. `ansible/` builds and deploys it with
+aslib.infra (see [ansible/README.md](ansible/README.md)).
+
+`config/` is yours. The `Containerfile`, `.containerignore` and this README are
+aslib.infra's: `ansible/update-playbooks.yml` replaces them, keeping a changed
+one as `<file>.bak` to merge from.
+
+| File | What it is |
+|---|---|
+| `Containerfile` | The image: UBI 9, the tools Claude needs, and Claude Code from Anthropic's signed dnf repository |
+| `config/` | Claude Code's `/etc/claude-code/`, mounted read-only, never in the image: `managed-settings.json`, the policy Claude Code reads as an organisation's, above every other setting; `CLAUDE.md`, the instructions it reads in every session (a template: make it yours) |
+| `.containerignore` | What never goes into the image build |
+| `ansible/` | Building, deploying and entering it on servers, with aslib.infra |
+
+## Without aslib.infra
+
+The image builds and runs with plain Podman 4.3 or newer, as any account:
+
+```sh
+podman build --tag claude-code .
+mkdir -p ~/claude-code && cp -r config ~/claude-code/
+podman run --detach --name claude-code --userns=keep-id:uid=1001,gid=1001 \
+  --volume ~/claude-code:/opt/claude-code:Z --volume ~/claude-code/config:/opt/claude-code/config:ro,Z claude-code
+podman exec --interactive --tty claude-code claude
+```
+
+`~/claude-code` is the container's home, `/opt/claude-code`: Claude keeps its
+login, history and memory there. Its `config/` is `/etc/claude-code/`, read-only
+for Claude. The container's user (1001) is your account inside it, so what
+Claude writes is yours.
+
+## Signing in
+
+The first session asks you to sign in. The browser cannot reach the container,
+so the sign-in page shows a code: paste it into Claude. If pasting misbehaves,
+run `claude auth login` in a shell in the container (`podman exec -it claude-code
+bash`), which reads the code from plain input. The login stays in the
+container's home and survives new images.
+
+## The policy
+
+`config/managed-settings.json` makes Claude's home and the shared zone of
+aslib.infra's services (`/opt/containers/shared`) its working directories, and
+keeps it away from its own login and config (`.claude/`), from `.env` files, and
+from the files that would run code at its next start (hooks, `.mcp.json`,
+`.git/config`). It may read the rest of the container, which holds only the
+read-only image. Its memory goes to
+`/opt/claude-code/memory`, its plans to `plans/` in the directory a session
+starts in. Its keys are documented in
+[Claude Code's settings reference](https://code.claude.com/docs/en/settings-reference).
+
+To let Claude's shell commands reach only an allowlist of hosts, add this block
+and `bubblewrap socat` to the Containerfile's tools (if Red Hat's UBI repositories
+offer them), then build again:
+
+```json
+"sandbox": {
+  "enabled": true,
+  "enableWeakerNestedSandbox": true,
+  "failIfUnavailable": true,
+  "allowUnsandboxedCommands": false,
+  "network": {
+    "allowedDomains": ["api.anthropic.com", "claude.ai", "claude.com", "platform.claude.com"],
+    "strictAllowlist": true
+  }
+}
+```
+
+It covers shell commands and what they start, not Claude Code's own traffic, and
+it needs the weaker nested sandbox inside an unprivileged container.
+
+## Updating Claude Code
+
+Without a pinned version, every build installs the newest Claude Code of the
+repository's channel (stable by default): a new image is the update. Claude Code
+never updates itself here.

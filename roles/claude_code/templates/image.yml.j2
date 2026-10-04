@@ -1,0 +1,12 @@
+---
+# Builds the project's Containerfile into images/: ansible-playbook image.yml
+# Without a pinned claude_code_version, each build takes the repository's newest.
+- name: Build the Claude Code image
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Build the image
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_code
+        tasks_from: image

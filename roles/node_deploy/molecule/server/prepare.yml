@@ -3,6 +3,8 @@
   hosts: all
   gather_facts: false
   tasks:
+    # Not acl (setfacl): podman_service installs it when missing, as on a minimal
+    # RHEL install.
     - name: Install Podman, and the PAM module that starts an account's systemd instance
       ansible.builtin.dnf:
         name: [podman, systemd-pam]
@@ -70,7 +72,7 @@
       loop_control:
         label: "{{ item.path }}"
 
-- name: Prepare the test project, as a developer would
+- name: Prepare the test projects, as developers would
   hosts: localhost
   gather_facts: false
   vars_files: [vars/project.yml]
@@ -100,3 +102,24 @@
         node_image_source: "{{ node_deploy_test_project }}"
         node_image_output_dir: "{{ node_deploy_test_project }}/ansible/images"
         node_image_npmrc: ""                # the test machine's own npm settings stay out of it
+
+    - name: Write the Claude Code project into an empty directory
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+        tasks_from: setup
+      vars:
+        claude_code_project: "{{ node_deploy_test_claude_project }}"
+
+    # The tests need neither Anthropic's repository nor dnf: a stand-in with the
+    # same contract replaces Claude Code. claude_code's own test builds the real one.
+    - name: Replace the project's Containerfile with the stand-in for Claude Code
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../claude_code/molecule/mock/{{ item }}"
+        dest: "{{ node_deploy_test_claude_project }}/{{ item }}"
+        mode: preserve
+      loop: [Containerfile, claude]
+
+    - name: Build the Claude Code image
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+        tasks_from: image

@@ -1,8 +1,8 @@
 # aslib.infra
 
 Tested building blocks (Ansible roles and ready-made playbooks) for RHEL 9 and
-Ubuntu 22.04 servers: rootless Podman services, and building and deploying
-Node.js backends as such services.
+Ubuntu 22.04 servers: rootless Podman services, building and deploying
+Node.js backends as such services, and an always-on Claude Code agent for root.
 Developing the collection itself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Compatibility
@@ -10,7 +10,7 @@ Developing the collection itself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 | | Supported |
 |---|---|
 | Ansible control node | The `ansible-core` package of Ubuntu 22.04 (2.12) or RHEL 9.6 (2.14), or newer |
-| Managed servers | Ubuntu 22.04, RHEL 9. `podman_service`, `podman_overview` and `node_deploy`: RHEL 9.2 or newer with Podman |
+| Managed servers | Ubuntu 22.04, RHEL 9. `podman_service`, `podman_overview`, `node_deploy` and `claude_code`: RHEL 9.2 or newer with Podman |
 | Image build machines | Ubuntu 22.04, RHEL 9, with Podman 3.4 or newer |
 | Other collections | None. Only `ansible.builtin` is used. |
 
@@ -38,7 +38,7 @@ replaces an installed copy, also one with the same version (branch builds carry
 the version of their `galaxy.yml`):
 
 ```sh
-ansible-galaxy collection install --force aslib-infra-0.1.0.tar.gz   # or the .tgz of a branch build
+ansible-galaxy collection install --force aslib-infra-0.2.0.tar.gz   # or the .tgz of a branch build
 ```
 
 **Ubuntu 22.04's own ansible-core (2.12.0):** `ansible-galaxy collection install`
@@ -47,7 +47,7 @@ Running playbooks is not affected. Install by extracting the tarball instead:
 
 ```sh
 mkdir -p ~/.ansible/collections/ansible_collections/aslib/infra
-tar -xzf aslib-infra-0.1.0.tar.gz -C ~/.ansible/collections/ansible_collections/aslib/infra
+tar -xzf aslib-infra-0.2.0.tar.gz -C ~/.ansible/collections/ansible_collections/aslib/infra
 ```
 
 **Offline control node:** copy the tarball over; installing it needs no network.
@@ -75,9 +75,10 @@ project goes through them:
 cd ansible
 ansible-playbook prebuild.yml                   # node_modules for development, from a throwaway container
 ansible-playbook build-and-deploy.yml           # build the image, then install and start it on the servers
-ansible-playbook aslib.infra.podman_overview    # what runs on the servers
+ansible-playbook aslib.infra.overview           # what runs on the servers
+ansible-playbook restart.yml                    # restart it, for a change the deploy does not see
 ansible-playbook update-playbooks.yml           # after installing a newer aslib.infra
-ansible-playbook remove.yml                     # remove it from the servers, keeping its data
+ansible-playbook remove.yml                     # remove it from the servers, keeping its directory
 ```
 
 `image.yml` and `deploy.yml` run the two halves of `build-and-deploy.yml` on
@@ -86,20 +87,44 @@ their own. Every run writes its output to `logs/<playbook>-<UTC time>.log`.
 On the servers the deploy follows fixed conventions: an account per service,
 image archives in `/opt/containers/images/<service>/`, Quadlet files in
 `/etc/containers/systemd/users/<UID>/`, the service's own directory, its working
-directory, in `/opt/<service>/`. See [node_deploy](roles/node_deploy/README.md)
+directory, in `/opt/<service>/`, and the shared zone, `/opt/containers/shared/`,
+which every service reads and writes. See [node_deploy](roles/node_deploy/README.md)
 and [podman_service](roles/podman_service/README.md), which does the work on the
 servers.
+
+## Claude Code: an always-on agent for root
+
+An always-on Claude Code agent on a server, in a rootless container on Red Hat's
+UBI 9, which root reaches from a terminal. One command writes the project, a
+repository of its own, into an empty directory:
+
+```sh
+ansible-playbook aslib.infra.claude_setup
+cd ansible
+ansible-playbook build-and-deploy.yml           # build the image with the newest Claude Code, deploy it
+sudo -i                                         # then, on the server:
+claude-code                                     # Claude, in the container; arguments go to claude
+```
+
+The project holds the Containerfile, `config/` (the policy and Claude's
+instructions, `CLAUDE.md`) and, in `ansible/`, the same kind of playbooks and
+guide as a Node.js project. Claude works in its home, `/opt/claude-code/`, and the
+shared zone. Every build is also the update to Claude Code's newest version;
+`-e claude_code_bypass_permissions=true` deploys it without permission prompts.
+See [claude_code](roles/claude_code/README.md).
 
 ## What runs on a server
 
 Every service runs rootless as an account of its own, so root's `systemctl` and
-`podman` do not list it. [podman_overview](roles/podman_overview/README.md) shows
-root every such service, with its account, state, image and ports, and the log
-of each one that does not run. On a server itself, without an inventory, it shows
-that server; from a directory with an inventory, every server in it:
+`podman` do not list it. `aslib.infra.overview` shows root everything
+aslib.infra runs: every such service ([podman_overview](roles/podman_overview/README.md)),
+with its account, state, image, ports and the command that shows its log, and
+the latest log lines of each one that does not run. On a server itself, without
+an inventory, it shows that server; from a directory with an inventory, every
+server in it:
 
 ```sh
-ansible-playbook aslib.infra.podman_overview
+ansible-playbook aslib.infra.overview
 ```
 
 ## Use roles in your own playbooks
@@ -109,19 +134,19 @@ A project that writes its own playbooks pins aslib.infra in a `requirements.yml`
 ```yaml
 collections:
   # A release on GitHub. From GitLab's package registry it is:
-  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.1.0/aslib-infra-0.1.0.tar.gz
-  - name: https://github.com/AroenvR/ansible-lib/releases/download/v0.1.0/aslib-infra-0.1.0.tar.gz
+  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.2.0/aslib-infra-0.2.0.tar.gz
+  - name: https://github.com/AroenvR/ansible-lib/releases/download/v0.2.0/aslib-infra-0.2.0.tar.gz
     type: url
 ```
 
 `ansible-galaxy collection install -r requirements.yml` installs it. To use a
 tarball file instead, such as a branch build or your own build, or a release
-downloaded from a private repository (`gh release download v0.1.0 --repo
+downloaded from a private repository (`gh release download v0.2.0 --repo
 AroenvR/ansible-lib`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
 
 ```yaml
 collections:
-  - name: ./aslib-infra-0.1.0.tar.gz
+  - name: ./aslib-infra-0.2.0.tar.gz
     type: file
 ```
 
@@ -143,8 +168,9 @@ role's README says so.
 | [node_setup](roles/node_setup/README.md) | Prepares a Node.js project: its `ansible/` directory with settings, inventory, playbooks and guide | The project's machine | No |
 | [node_image](roles/node_image/README.md) | Production container image of a Node.js project, and its node_modules for development, built in containers | The build machine | Yes, from sources you choose |
 | [node_deploy](roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot, with podman_service | Servers (RHEL 9.2+) | No |
-| [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | No |
-| [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with the log of those that do not run | Servers (RHEL 9.2+) | No |
+| [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | Only if the `acl` package is missing |
+| [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with how to read their logs | Servers (RHEL 9.2+) | No |
+| [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.2+) | To build: Red Hat's registry, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
 
 Every role documents its variables; read them offline with
 `ansible-doc -t role aslib.infra.<role>`.
@@ -161,14 +187,17 @@ needed. The playbooks node_setup writes import them.
 | `ansible-playbook aslib.infra.node_prebuild` | `ansible/` | Prepares the project for development: node_modules from a throwaway container, see [node_image](roles/node_image/README.md#node_modules-for-development) |
 | `ansible-playbook aslib.infra.node_image` | `ansible/` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
 | `ansible-playbook aslib.infra.node_deploy` | `ansible/` | Deploys that image to the servers, or a newer version over the old one, see [node_deploy](roles/node_deploy/README.md) |
-| `ansible-playbook aslib.infra.node_remove` | `ansible/` | Removes the service from the servers, keeping its data unless asked, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |
-| `ansible-playbook aslib.infra.podman_overview` | A server itself, or any directory with an inventory, such as `ansible/` | Shows the rootless Podman services on that server, or on the inventory's servers, see [podman_overview](roles/podman_overview/README.md) |
+| `ansible-playbook aslib.infra.node_restart` | `ansible/` | Restarts the service on the servers and waits until it answers, see [node_deploy](roles/node_deploy/README.md) |
+| `ansible-playbook aslib.infra.node_remove` | `ansible/` | Removes the service from the servers, keeping its directory unless asked, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |
+| `ansible-playbook aslib.infra.overview` | A server itself, or any directory with an inventory, such as `ansible/` | Shows what aslib.infra runs on that server, or on the inventory's servers, each with the command that shows its log |
+| `ansible-playbook aslib.infra.podman_overview` | The same | Shows only the rootless Podman services, see [podman_overview](roles/podman_overview/README.md) |
+| `ansible-playbook aslib.infra.claude_setup` | An empty directory, or the root of an earlier setup | Writes a Claude Code project; its `ansible/` holds every other playbook it needs, see [claude_code](roles/claude_code/README.md) |
 
 ## Plugins
 
 | Plugin | What it does |
 |---|---|
-| `aslib.infra.run_log` (callback) | Writes each playbook run to a file of its own, `logs/<playbook>-<UTC time>.log`. The `ansible.cfg` that node_setup writes enables it: `callbacks_enabled = aslib.infra.run_log`. Options: `ansible-doc -t callback aslib.infra.run_log` |
+| `aslib.infra.run_log` (callback) | Writes each playbook run to a file of its own, `logs/<playbook>-<UTC time>.log`. The `ansible.cfg` that node_setup and claude_setup write enables it: `callbacks_enabled = aslib.infra.run_log`. Options: `ansible-doc -t callback aslib.infra.run_log` |
 
 ## Status
 
@@ -179,7 +208,10 @@ Tested on every change, in CI:
   Podman 3.4 packages of Ubuntu 22.04 itself;
 - node_image with NestJS 10, 11 and 12 and NestJS's default branch;
 - a service's deploy, update, overview, removal and redeploy as another
-  account, on a RHEL 9 test container.
+  account, on a RHEL 9 test container, next to Claude Code (with a stand-in for
+  it) on the same server: separate accounts and UIDs, the shared zone both ways,
+  root running Claude Code, its read-only policy, and its removal;
+- the Claude Code project's setup, update and real image build.
 
 Not tested yet:
 
@@ -192,7 +224,10 @@ Not tested yet:
 
 Known limits and open work:
 
-- A service must answer HTTP on its port: that is how the deploy knows it started.
+- A service with a port must answer HTTP on it: that is how the deploy knows it
+  started. One without a port (Claude Code) counts as started once it runs.
+- The shared zone lets every service change what any other wrote there; who
+  writes what is up to the apps.
 - To review for security: how a pipeline gets `container.env` to the deploy (a
   secret variable written to a file, see the guide), and the project's `.npmrc`,
   which the build stage copies in: it stays in the layers of the build stage's

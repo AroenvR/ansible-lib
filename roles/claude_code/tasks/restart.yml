@@ -1,0 +1,13 @@
+---
+# Entry point "restart": restarts Claude Code's service with aslib.infra.podman_service
+# and waits until it runs. That ends what runs in the container; conversations stay.
+- name: Check this is a Claude Code project
+  ansible.builtin.import_tasks: project.yml
+
+- name: Restart the service
+  ansible.builtin.import_role:
+    name: aslib.infra.podman_service
+    tasks_from: restart
+  vars:
+    podman_service_name: "{{ __claude_code_service }}"
+    podman_service_port: 0

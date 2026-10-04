@@ -1,0 +1,19 @@
+# Stands in for the project's Containerfile in the tests: the same contract (user
+# 1001 with its home in /opt/claude-code, the policy under /etc/claude-code, always
+# on), with a stub instead of Claude Code, so the tests need neither Anthropic's
+# repository nor dnf.
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal
+FROM ${BASE_IMAGE}
+ARG CLAUDE_CODE_VERSION=0.0.0
+USER 0
+COPY claude /usr/local/bin/claude
+RUN chmod 0755 /usr/local/bin/claude \
+    && echo "$CLAUDE_CODE_VERSION" > /etc/claude-code-mock-version \
+    && echo 'claude:x:1001:1001::/opt/claude-code:/bin/sh' >> /etc/passwd \
+    && echo 'claude:x:1001:' >> /etc/group \
+    && ln -s /opt/claude-code/config /etc/claude-code
+USER 1001
+ENV HOME=/opt/claude-code \
+    CLAUDE_CONFIG_DIR=/opt/claude-code/.claude
+WORKDIR /opt/claude-code
+CMD ["sleep", "infinity"]

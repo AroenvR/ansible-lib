@@ -1,0 +1,6 @@
+---
+# Restarts the service on the servers in inventory.yml and waits until it answers:
+#   ansible-playbook restart.yml
+# A deploy restarts it by itself when it changes something; this is for the rest.
+- name: Restart the service
+  ansible.builtin.import_playbook: aslib.infra.node_restart
