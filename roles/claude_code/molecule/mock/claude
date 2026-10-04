@@ -1,0 +1,10 @@
+#!/bin/sh
+# Stands in for Claude Code in the tests: shows its version, or starts a session
+# that says who and where it runs, and whether it can read the policy.
+if [ "${1:-}" = "--version" ]; then
+  echo "$(cat /etc/claude-code-mock-version) (Claude Code)"
+  exit 0
+fi
+echo "mock claude as $(id -u) in $(pwd) with: $*"
+if [ -r /etc/claude-code/managed-settings.json ]; then echo "policy readable"; fi
+exec sleep infinity

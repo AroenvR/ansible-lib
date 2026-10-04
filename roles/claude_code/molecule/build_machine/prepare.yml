@@ -1,0 +1,16 @@
+---
+- name: Start from an empty project directory, as a new repository would
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Remove what an earlier run left
+      ansible.builtin.file:
+        path: "{{ claude_code_test_project }}"
+        state: absent
+
+    - name: Create the empty project directory
+      ansible.builtin.file:
+        path: "{{ claude_code_test_project }}"
+        state: directory
+        mode: "0755"

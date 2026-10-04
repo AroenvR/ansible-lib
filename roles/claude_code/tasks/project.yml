@@ -1,0 +1,20 @@
+---
+# Shared by the build (image.yml), the deploy (main.yml) and the removal
+# (remove.yml): checks they run from a Claude Code project's ansible/ directory.
+- name: Check this is the ansible/ directory of a Claude Code project
+  ansible.builtin.assert:
+    that: ((claude_code_ansible_dir | dirname) ~ '/Containerfile') is file
+    fail_msg: >-
+      No Containerfile in {{ claude_code_ansible_dir | dirname }}. Run this from the Claude Code project's
+      ansible/ directory; a new project starts with: ansible-playbook aslib.infra.claude_setup
+    quiet: true
+
+# Facts, not only role variables: podman_service's handlers do not see this
+# role's variables in ansible-core 2.12 and 2.14.
+- name: Note the project's directories and the service's names
+  ansible.builtin.set_fact:
+    __claude_code_root: "{{ claude_code_ansible_dir | dirname }}"
+    __claude_code_images: "{{ claude_code_ansible_dir }}/images"
+    __claude_code_user: "{{ podman_service_user | default('', true) or __claude_code_name }}"
+    __claude_code_service: "{{ __claude_code_name }}"
+    __claude_code_home: "{{ __claude_code_dir }}"

@@ -62,7 +62,174 @@
           and started by itself when the server restarted, with its data (start count
           {{ __node_deploy_test_before.json.starts }}, then {{ __node_deploy_test_after.json.starts }}).
 
-- name: Check the overview shows the service, and the log of a service that does not run
+- name: Check Claude Code runs next to the Node.js service, each as an account of its own, sharing the shared zone
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Look up the accounts
+      ansible.builtin.getent:
+        database: passwd
+
+    - name: Read the subordinate UID ranges
+      ansible.builtin.slurp:
+        src: /etc/subuid
+      register: __node_deploy_test_subuid
+
+    - name: Note the accounts' UIDs and subordinate UID ranges (name:first:count)
+      vars:
+        __node_deploy_test_lines: "{{ (__node_deploy_test_subuid.content | b64decode).splitlines() }}"
+      ansible.builtin.set_fact:
+        __node_deploy_test_uid: "{{ ansible_facts.getent_passwd['deploy-test-app'][1] }}"
+        __node_deploy_test_claude_uid: "{{ ansible_facts.getent_passwd['claude-code'][1] }}"
+        __node_deploy_test_range: "{{ (__node_deploy_test_lines | select('match', '^deploy-test-app:') | first).split(':') }}"
+        __node_deploy_test_claude_range: "{{ (__node_deploy_test_lines | select('match', '^claude-code:') | first).split(':') }}"
+
+    - name: Look up whether both services run, after the restart of the server
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user={{ item.account }}
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ item.uid }}
+          - systemctl
+          - --user
+          - is-active
+          - "{{ item.account }}.service"
+        chdir: /
+      loop:
+        - { account: deploy-test-app, uid: "{{ __node_deploy_test_uid }}" }
+        - { account: claude-code, uid: "{{ __node_deploy_test_claude_uid }}" }
+      register: __node_deploy_test_both
+      changed_when: false
+      failed_when: false
+
+    - name: Write into the shared zone from the Node.js service's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=deploy-test-app
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - podman
+          - exec
+          - deploy-test-app
+          - sh
+          - -c
+          - echo from deploy-test-app > /opt/containers/shared/test.txt && mkdir -p /opt/containers/shared/from-node
+        chdir: /
+      changed_when: true
+
+    - name: Read it from Claude Code's container, and add to it
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - podman
+          - exec
+          - claude-code
+          - sh
+          - -c
+          - >-
+            cat /opt/containers/shared/test.txt && echo from claude-code >> /opt/containers/shared/test.txt
+            && touch /opt/containers/shared/from-node/claude.txt
+        chdir: /
+      register: __node_deploy_test_claude_read
+      changed_when: true
+
+    - name: Read it back from the Node.js service's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=deploy-test-app
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - podman
+          - exec
+          - deploy-test-app
+          - cat
+          - /opt/containers/shared/test.txt
+        chdir: /
+      register: __node_deploy_test_node_read
+      changed_when: false
+
+    - name: Inspect the shared file on the server
+      ansible.builtin.stat:
+        path: /opt/containers/shared/test.txt
+      register: __node_deploy_test_shared_file
+
+    # Open to every account, also those outside the shared zone's group.
+    - name: Inspect /opt/containers
+      ansible.builtin.stat:
+        path: /opt/containers
+      register: __node_deploy_test_containers_dir
+
+    - name: Look up the command that enters Claude Code
+      ansible.builtin.stat:
+        path: /usr/local/sbin/claude-code
+      register: __node_deploy_test_command
+
+    # Each runs claude-code in a terminal of its own, a tmux session, as a root
+    # user at a keyboard would.
+    - name: Enter Claude Code as two root users
+      ansible.builtin.command:
+        argv: [tmux, new-session, -d, -s, "enter-{{ item }}", env, -u, TMUX, "SUDO_USER={{ item }}", /usr/local/sbin/claude-code, --test-arg]
+      loop: [alice, bob]
+      changed_when: true
+
+    - name: Wait until both users' sessions run the stand-in for Claude Code
+      ansible.builtin.command:
+        argv: [tmux, capture-pane, -p, -t, "claude-{{ item }}"]
+      loop: [alice, bob]
+      register: __node_deploy_test_panes
+      until: __node_deploy_test_panes.stdout is search('policy readable')
+      retries: 15
+      delay: 2
+      changed_when: false
+
+    - name: Detach both users, closing their terminals
+      ansible.builtin.command:
+        argv: [tmux, kill-session, -t, "enter-{{ item }}"]
+      loop: [alice, bob]
+      changed_when: true
+
+    - name: List the sessions left
+      ansible.builtin.command:
+        argv: [tmux, list-sessions, -F, "#{session_name}"]
+      register: __node_deploy_test_sessions
+      changed_when: false
+
+    - name: Check both services run as accounts of their own, share the shared zone, and each user has a session
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_both.results | map(attribute='stdout') | list == ['active', 'active']
+          - __node_deploy_test_uid != __node_deploy_test_claude_uid
+          - >-
+            (__node_deploy_test_range[1] | int) + (__node_deploy_test_range[2] | int) <= (__node_deploy_test_claude_range[1] | int)
+            or (__node_deploy_test_claude_range[1] | int) + (__node_deploy_test_claude_range[2] | int) <= (__node_deploy_test_range[1] | int)
+          - __node_deploy_test_claude_read.stdout == 'from deploy-test-app'
+          - __node_deploy_test_node_read.stdout_lines == ['from deploy-test-app', 'from claude-code']
+          - __node_deploy_test_shared_file.stat.gr_name == 'containers-shared'
+          - __node_deploy_test_shared_file.stat.wgrp
+          - __node_deploy_test_containers_dir.stat.mode == '0755'
+          - __node_deploy_test_command.stat.mode == '0750'
+          - __node_deploy_test_command.stat.pw_name == 'root'
+          - __node_deploy_test_panes.results[0].stdout is search('mock claude as 1001 in /opt/claude-code with: --test-arg')
+          - __node_deploy_test_panes.results[1].stdout is search('mock claude as 1001 in /opt/claude-code with: --test-arg')
+          - __node_deploy_test_sessions.stdout_lines | sort == ['claude-alice', 'claude-bob']
+        success_msg: >-
+          PASSED claude_code next to node_deploy: both came back after the restart, as accounts with UIDs
+          {{ __node_deploy_test_uid }} and {{ __node_deploy_test_claude_uid }} and separate subordinate UID ranges;
+          a file one wrote to the shared zone the other read and changed; claude-code gave alice and bob a session
+          each, running Claude as 1001 in /opt/claude-code with the policy, which stayed when they detached.
+
+- name: Check the overview shows both services, and the log of a service that does not run
   hosts: all
   gather_facts: false
   vars_files: [vars/project.yml]
@@ -101,24 +268,33 @@
       retries: 30
       delay: 2
 
-    - name: Check the overview showed the service, then its state and log once stopped
+    - name: Check the overview showed both services, then the Node.js one's state and log once stopped
+      vars:
+        __node_deploy_test_node: "{{ __node_deploy_test_running | selectattr('name', 'equalto', 'deploy-test-app') | first }}"
+        __node_deploy_test_claude: "{{ __node_deploy_test_running | selectattr('name', 'equalto', 'claude-code') | first }}"
+        __node_deploy_test_stopped: "{{ podman_overview_services | selectattr('name', 'equalto', 'deploy-test-app') | first }}"
+        __node_deploy_test_still: "{{ podman_overview_services | selectattr('name', 'equalto', 'claude-code') | first }}"
       ansible.builtin.assert:
         that:
-          - __node_deploy_test_running | length == 1
-          - __node_deploy_test_running[0].name == 'deploy-test-app'
-          - __node_deploy_test_running[0].account == 'deploy-test-app'
-          - __node_deploy_test_running[0].uid == '3001'
-          - __node_deploy_test_running[0].state == 'active'
-          - __node_deploy_test_running[0].substate == 'running'
-          - __node_deploy_test_running[0].image == 'localhost/deploy-test-app:1.0.0'
-          - __node_deploy_test_running[0].ports == ['127.0.0.1:3009:3000']
-          - __node_deploy_test_running[0].log == []
-          - podman_overview_services | length == 1
-          - podman_overview_services[0].state != 'active'
-          - podman_overview_services[0].log is search('deploy-test-app 1.0.0 listens')
+          - __node_deploy_test_running | map(attribute='name') | sort == ['claude-code', 'deploy-test-app']
+          - __node_deploy_test_node.account == 'deploy-test-app'
+          - __node_deploy_test_node.uid == '3001'
+          - __node_deploy_test_node.state == 'active'
+          - __node_deploy_test_node.substate == 'running'
+          - __node_deploy_test_node.image == 'localhost/deploy-test-app:1.0.0'
+          - __node_deploy_test_node.ports == ['127.0.0.1:3009:3000']
+          - __node_deploy_test_node.log == []
+          - __node_deploy_test_claude.account == 'claude-code'
+          - __node_deploy_test_claude.state == 'active'
+          - __node_deploy_test_claude.image == 'localhost/claude-code:0.0.1'
+          - __node_deploy_test_claude.ports == []
+          - __node_deploy_test_stopped.state != 'active'
+          - __node_deploy_test_stopped.log is search('deploy-test-app 1.0.0 listens')
+          - __node_deploy_test_still.state == 'active'
         success_msg: >-
           PASSED podman_overview: it showed deploy-test-app running as its account (UID 3001), with its image
-          and port, then {{ podman_overview_services[0].state }} once stopped, with the app's log lines.
+          and port, and claude-code without a port; then deploy-test-app {{ __node_deploy_test_stopped.state }} once
+          stopped, with the app's log lines, and claude-code still running.
 
 - name: Build a new version of the test project, as a developer would
   hosts: localhost
@@ -205,9 +381,16 @@
       register: __node_deploy_test_images
       changed_when: false
 
+    - name: List the Claude Code sessions, which the Node.js update must leave alone
+      ansible.builtin.command:
+        argv: [tmux, list-sessions, -F, "#{session_name}"]
+      register: __node_deploy_test_sessions_after
+      changed_when: false
+
     - name: Check the new version runs with the old data and the new config, and only the new version is left
       ansible.builtin.assert:
         that:
+          - __node_deploy_test_sessions_after.stdout_lines | sort == ['claude-alice', 'claude-bob']
           - __node_deploy_test_new.json.version == '1.0.1'
           - __node_deploy_test_new.json.config == 'config/production, changed'
           - __node_deploy_test_config.files | map(attribute='path') | list == ['/opt/deploy-test-app/config/app.json']
@@ -217,7 +400,7 @@
         success_msg: >-
           PASSED node_deploy update: version 1.0.1 answers with the data of 1.0.0 (start count
           {{ __node_deploy_test_new.json.starts }}) and the changed config file; the removed config file,
-          the archive and the image of 1.0.0 are gone.
+          the archive and the image of 1.0.0 are gone; the Claude Code sessions kept running.
 
 - name: Check the removal takes away the service and keeps its data
   hosts: all
@@ -269,31 +452,60 @@
     - name: Check the account, the files and the service are gone, and the data is not
       ansible.builtin.assert:
         that:
-          - podman_overview_services == []
+          - podman_overview_services | map(attribute='name') | list == ['claude-code']
+          - (podman_overview_services | first).state == 'active'
           - ansible_facts.getent_passwd['deploy-test-app'] is none
           - __node_deploy_test_leftovers.results | selectattr('stat.exists') | map(attribute='item') | list == []
           - __node_deploy_test_kept.stat.exists
           - __node_deploy_test_gone.status == -1
         success_msg: >-
           PASSED node_deploy remove: the account, its home directory, Quadlet directory, image archive,
-          config files and lingering are gone, nothing answers on port 3009 and podman_overview lists no
-          service, the app's data is still there, and a second run works.
+          config files and lingering are gone, nothing answers on port 3009 and podman_overview lists only
+          claude-code, still running; the app's data is still there, and a second run works.
 
 - name: Check a new deploy, as an account with another UID, takes over the data
+  # Not 3002: claude-code, created after the account with 3001, took that one.
   hosts: all
   gather_facts: false
   vars_files: [vars/project.yml]
   tasks:
-    - name: Run node_deploy with UID 3002
+    # Without the shared zone first, as a service deployed before it existed.
+    - name: Run node_deploy with UID 3005, without the shared zone
       ansible.builtin.include_role:
         name: aslib.infra.node_deploy
       vars:
-        podman_service_uid: "3002"
+        podman_service_uid: "3005"
+        podman_service_shared: false
+
+    - name: Run node_deploy again with the shared zone, as an update would
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy
+      vars:
+        podman_service_uid: "3005"
 
     - name: Query the service
       ansible.builtin.uri:
         url: http://127.0.0.1:3009/
       register: __node_deploy_test_again
+      until: __node_deploy_test_again is succeeded
+      retries: 30
+      delay: 2
+
+    - name: Write into the shared zone from the service's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=deploy-test-app
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/3005
+          - podman
+          - exec
+          - deploy-test-app
+          - touch
+          - /opt/containers/shared/from-node/later.txt
+        chdir: /
+      changed_when: true
 
     - name: Inspect the data the earlier account wrote
       ansible.builtin.stat:
@@ -304,10 +516,11 @@
       ansible.builtin.assert:
         that:
           - __node_deploy_test_again.json.starts > __node_deploy_test_new.json.starts
-          - __node_deploy_test_taken.stat.uid == 3002
+          - __node_deploy_test_taken.stat.uid == 3005
         success_msg: >-
-          PASSED node_deploy took over the data of the removed account as UID 3002 (start count
-          {{ __node_deploy_test_again.json.starts }}).
+          PASSED node_deploy took over the data of the removed account as UID 3005 (start count
+          {{ __node_deploy_test_again.json.starts }}), and a running service that got the shared zone later can
+          write to it.
 
 - name: Check the removal with podman_service_remove_data takes the data as well
   hosts: all
@@ -395,3 +608,50 @@
           - __node_deploy_test_with is superset(['hosts (2):', 'web1', 'web2'])
           - "'localhost' not in __node_deploy_test_with"
         success_msg: PASSED podman_overview's playbook shows this machine without an inventory, and only the servers with one.
+
+- name: Check the removal of Claude Code takes its service, account and command, and keeps its directory and the shared zone
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Remove Claude Code
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+        tasks_from: remove
+
+    - name: Look up Claude Code's account
+      ansible.builtin.getent:
+        database: passwd
+        key: claude-code
+        fail_key: false
+
+    - name: Look for what the deploy created, and what must stay
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /usr/local/sbin/claude-code
+        - /opt/containers/images/claude-code
+        - /opt/claude-code/config
+        - /opt/claude-code
+        - /opt/containers/shared/test.txt
+      register: __node_deploy_test_claude_left
+
+    # The sessions' panes ran Claude in the container, which is gone.
+    - name: Wait until the Claude Code sessions are gone
+      ansible.builtin.command:
+        argv: [tmux, list-sessions, -F, "#{session_name}"]
+      register: __node_deploy_test_sessions_gone
+      until: __node_deploy_test_sessions_gone.stdout_lines | select('match', '^claude-') | list == []
+      retries: 15
+      delay: 2
+      changed_when: false
+      failed_when: false  # tmux exits with 1 once its last session is gone
+
+    - name: Check the service, account, archive, policy and command are gone, and the data and the shared zone stay
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd['claude-code'] is none
+          - __node_deploy_test_claude_left.results | map(attribute='stat.exists') | list == [false, false, false, true, true]
+        success_msg: >-
+          PASSED claude_code remove: the service, its account, archive, policy, command and the users' sessions
+          are gone; /opt/claude-code and the shared zone's files stay.

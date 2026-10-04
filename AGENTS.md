@@ -9,9 +9,10 @@ Instructions for AI coding agents working on this repository. Humans: see
 `aslib.infra` is an Ansible collection: a library of small, tested roles for
 RHEL 9 and Ubuntu 22.04 servers, plus roles and ready-made playbooks that take a
 Node.js backend from project to running service (node_setup, node_image,
-node_deploy). Roles are named by area: `podman_` roles work for any image,
-`node_` roles add what Node.js projects need (node_deploy is a thin layer over
-podman_service). Consumers install a release tarball that holds only runtime
+node_deploy), and an always-on Claude Code agent for root (claude_code). Roles
+are named by area: `podman_` roles work for any image, `node_` roles add what
+Node.js projects need (node_deploy is a thin layer over podman_service), and
+claude_code is the same kind of layer for Claude Code. Consumers install a release tarball that holds only runtime
 files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 
 ## Non-negotiable constraints
@@ -79,7 +80,8 @@ explains the test layout and how releases are made.
 | `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface |
 | `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
-| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service` and `podman_overview`, which need a deployed service |
+| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
+| `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
 | `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
 | `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
@@ -233,6 +235,25 @@ source of truth.
   Quadlet file sets `--log-driver=journald`. Test containers hid this: Podman's
   systemd mode mounts a tmpfs on `/var/log/journal` (persistent, readable), so
   node_deploy's test server sets `Storage=volatile`, as on RHEL.
+- `selectattr('copy', 'defined')` is true for every dict (`dict.copy` is a
+  method), so a marker key must not share a name with a dict method: claude_code's
+  file lists use `as_is`.
+- In 2.12 and 2.14 the handlers of a role brought in with `import_role` do not
+  see the importing role's role variables (2.21 does); they fail with an
+  undefined variable. Pass such values as facts (claude_code's `project.yml`).
+- A rootless container drops the account's supplementary groups unless
+  `--group-add=keep-groups`: without it the shared zone gives "Permission
+  denied". A new group reaches an account's services only after its systemd
+  instance (user@<uid>.service) restarts.
+- The file module gives every parent directory it creates the task's owner,
+  group and mode: creating `/opt/containers/shared` (2770) first made
+  `/opt/containers` 2770 too, locking accounts outside the group out of their
+  image archives. Create parents explicitly.
+- The command module expands `$VAR` and `~` in its arguments itself, also in
+  `argv` (2.12, 2.14; `expand_argument_vars` came in 2.16): `sh -c 'echo $HOME'`
+  prints Ansible's HOME, not the container's. Use `printenv HOME`.
+- YAML flow lists split on commas: an argument like `setfacl --modify=a,b`
+  belongs in a block list.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
 
@@ -245,6 +266,10 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   deployed and ran on their RHEL server. Since then, not yet run in CI: the
   namespace `aslib`, `podman_service` and `podman_overview`, the run_log callback
   and `build-and-deploy.yml` (verified in the agent's sandbox).
+- claude_code: verified in the agent's sandbox with the stand-in only. CI is the
+  first to build the real image (Red Hat's registry, downloads.claude.ai) and to
+  install tmux on the RHEL test server: whether UBI 9's repositories have tmux is
+  unknown. If they lack it, the test server needs it from elsewhere, not the role.
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
@@ -303,8 +328,19 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   - prebuild.yml (playbook aslib.infra.node_prebuild) prepares a project for
     development, each step a task there. More steps will come (an idea of the
     maintainer's: creating a sqlcipher .db file); do not add any unasked.
-  - Next, together with the maintainer: a containerized Claude Code service,
-    which must get an account (and UID) of its own like every service.
+- Claude Code, decided with the maintainer: one always-on agent per server, as
+  an account of its own (`claude-code`, home `/opt/claude-code/`), on UBI 9.
+  Whoever has root has the tool: `claude-code` opens a tmux session per root
+  user (`claude-<SUDO_USER>`) on the host, running `claude` in the container.
+  Claude works only in its home and the shared zone. Anthropic's stable channel;
+  every build is the update. Network restriction is a setting (the sandbox block
+  in the project's README.md), off by default. The image's tools are found out as
+  needed. The project is a repository of its own, written by
+  `aslib.infra.claude_setup`, the only collection playbook for it; everything
+  else is in its `ansible/`. Tests run it next to the Node.js service.
+- The shared zone `/opt/containers/shared/`, decided with the maintainer: every
+  service reads and writes it; a default ACL keeps everything group-writable
+  ("tighten later, once the flows work"). Write coordination is the apps' job.
 - Open: the license (`LICENSE` is a placeholder, decided later); a pinned source
   for aslib.infra in projects' pipelines once the release location is final.
 

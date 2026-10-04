@@ -1,0 +1,30 @@
+---
+- name: Write the Claude Code project and build its image
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Run the setup
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+        tasks_from: setup
+      vars:
+        claude_code_project: "{{ claude_code_test_project }}"
+
+    - name: Replace the Containerfile with the stand-in for Claude Code, where the real one cannot be built
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../mock/{{ item }}"
+        dest: "{{ claude_code_test_project }}/{{ item }}"
+        mode: preserve
+      loop: [Containerfile, claude]
+      when: not claude_code_test_real | bool
+
+    - name: Build the image
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+        tasks_from: image
+      vars:
+        claude_code_ansible_dir: "{{ claude_code_test_project }}/ansible"
+        claude_code_version: "{{ '' if claude_code_test_real | bool else '0.0.1' }}"
+        claude_code_base_image: >-
+          {{ 'registry.access.redhat.com/ubi9/ubi' if claude_code_test_real | bool else claude_code_test_mock_base }}

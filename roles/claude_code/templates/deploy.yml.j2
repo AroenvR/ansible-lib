@@ -1,0 +1,14 @@
+---
+# Deploys the image in images/ to the servers in inventory.yml, as an always-on
+# service with an account of its own: ansible-playbook deploy.yml
+# It works as root on the servers, through sudo.
+- name: Deploy Claude Code
+  hosts: all
+  become: true
+  gather_facts: false
+  # A failed deploy still restarts the service for what it changed before failing.
+  force_handlers: true
+  tasks:
+    - name: Deploy the service and the claude-code command
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_code

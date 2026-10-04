@@ -1,0 +1,27 @@
+#!/bin/sh
+# {{ __claude_code_name }}: enters your own Claude Code session on this server.
+# Installed by aslib.infra.claude_code; the next deploy replaces this file.
+#
+#   claude-code            your session: tmux on this server, running Claude in
+#                          the always-on container {{ __claude_code_name }}, as its account
+#   claude-code ARGS...    ARGS go to claude when your session starts, e.g. --continue
+#
+# Detach with Ctrl-b d: Claude keeps running. Run claude-code again to return.
+# Root only: each root user (sudo) gets a session of their own, claude-<user>.
+set -eu
+
+account={{ __claude_code_user }}
+container={{ __claude_code_name }}
+workdir={{ __claude_code_dir }}
+session="claude-${SUDO_USER:-$(id -un)}"
+
+[ "$(id -u)" -eq 0 ] || { echo "claude-code: run it as root, e.g. sudo -i" >&2; exit 1; }
+command -v tmux >/dev/null || { echo "claude-code: tmux is missing: dnf install tmux" >&2; exit 1; }
+uid=$(id -u "$account")
+
+# The session's pane runs Claude in the container, from /, which the account may
+# enter (runuser keeps the working directory). Attaching to an existing session
+# ignores ARGS.
+exec tmux new-session -A -s "$session" -c / \
+  runuser --user="$account" -- env XDG_RUNTIME_DIR="/run/user/$uid" \
+  podman exec --interactive --tty --env=TERM=xterm-256color --workdir="$workdir" "$container" claude "$@"

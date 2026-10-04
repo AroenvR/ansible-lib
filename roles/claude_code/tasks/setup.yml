@@ -1,0 +1,100 @@
+---
+# Entry point "setup": writes the Claude Code project into claude_code_project,
+# an empty directory or an earlier setup: the project's files once, aslib.infra's
+# (in ansible/) every time, keeping a changed one as <file>.bak. Needs nothing in
+# the directory beforehand.
+- name: Create the project's directories
+  ansible.builtin.file:
+    path: "{{ claude_code_project }}/{{ __claude_code_subdir }}"
+    state: directory
+    mode: "0755"
+  loop: [ansible/group_vars/all, ansible/templates]
+  loop_control:
+    loop_var: __claude_code_subdir
+
+# The project's files: written when missing, never touched afterwards.
+- name: Write the project's files, where missing
+  ansible.builtin.template:
+    src: "{{ role_path }}/{{ __claude_code_file.src }}"
+    dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"
+    mode: "{{ __claude_code_file.mode }}"
+    force: false
+  loop: "{{ __claude_code_theirs | selectattr('src', 'search', 'j2$') | list }}"
+  loop_control:
+    loop_var: __claude_code_file
+    label: "{{ __claude_code_file.dest }}"
+
+- name: Copy the project's files, where missing
+  ansible.builtin.copy:
+    src: "{{ role_path }}/{{ __claude_code_file.src }}"
+    dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"
+    mode: "{{ __claude_code_file.mode }}"
+    force: false
+  loop: "{{ __claude_code_theirs | rejectattr('src', 'search', 'j2$') | list }}"
+  loop_control:
+    loop_var: __claude_code_file
+    label: "{{ __claude_code_file.dest }}"
+
+# aslib.infra's files: every run brings them up to date. A file that changes is
+# kept as <file>.bak first (a single copy, git-ignored), so a local change is not
+# lost; changes that would help every project belong in aslib.infra itself.
+- name: See which of aslib.infra's files change
+  ansible.builtin.template:
+    src: "{{ role_path }}/{{ __claude_code_file.src }}"
+    dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"
+    mode: "0644"
+  loop: "{{ __claude_code_ours | rejectattr('as_is', 'defined') | list }}"
+  loop_control:
+    loop_var: __claude_code_file
+    label: "{{ __claude_code_file.dest }}"
+  check_mode: true
+  register: __claude_code_ours_check
+
+- name: See whether the Quadlet template changes
+  ansible.builtin.copy:
+    src: "{{ role_path }}/{{ __claude_code_file.src }}"
+    dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"
+    mode: "0644"
+  loop: "{{ __claude_code_ours | selectattr('as_is', 'defined') | list }}"
+  loop_control:
+    loop_var: __claude_code_file
+    label: "{{ __claude_code_file.dest }}"
+  check_mode: true
+  register: __claude_code_copies_check
+
+- name: Keep each existing file that changes as <file>.bak
+  ansible.builtin.copy:
+    src: "{{ __claude_code_changed }}"
+    dest: "{{ __claude_code_changed }}.bak"
+    remote_src: true
+    mode: preserve
+  loop: >-
+    {{ (__claude_code_ours_check.results + __claude_code_copies_check.results)
+       | selectattr('changed') | map(attribute='__claude_code_file.dest')
+       | map('regex_replace', '^', claude_code_project ~ '/') | select('file') | list }}
+  loop_control:
+    loop_var: __claude_code_changed
+
+- name: Write aslib.infra's files
+  ansible.builtin.template:
+    src: "{{ role_path }}/{{ __claude_code_file.src }}"
+    dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"
+    mode: "0644"
+  loop: "{{ __claude_code_ours | rejectattr('as_is', 'defined') | list }}"
+  loop_control:
+    loop_var: __claude_code_file
+    label: "{{ __claude_code_file.dest }}"
+
+- name: Write the Quadlet template
+  ansible.builtin.copy:
+    src: "{{ role_path }}/{{ __claude_code_file.src }}"
+    dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"
+    mode: "0644"
+  loop: "{{ __claude_code_ours | selectattr('as_is', 'defined') | list }}"
+  loop_control:
+    loop_var: __claude_code_file
+    label: "{{ __claude_code_file.dest }}"
+
+- name: Show what to do next
+  ansible.builtin.debug:
+    msg: "Wrote {{ claude_code_project }}. Run everything else from {{ claude_code_project }}/ansible; see its README.md."

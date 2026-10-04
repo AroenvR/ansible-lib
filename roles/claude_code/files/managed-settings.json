@@ -1,0 +1,24 @@
+{
+  "env": {
+    "DISABLE_AUTOUPDATER": "1",
+    "DISABLE_TELEMETRY": "1"
+  },
+  "permissions": {
+    "blockReadsOutsideWorkingDirectories": true,
+    "additionalDirectories": ["/opt/containers/shared"],
+    "deny": [
+      "Read(//opt/claude-code/.claude/**)",
+      "Edit(//opt/claude-code/.claude/**)",
+      "Read(//opt/claude-code/.ssh/**)",
+      "Edit(//opt/claude-code/config/**)",
+      "Edit(//etc/claude-code/**)",
+      "Read(.env)",
+      "Edit(**/.claude/settings.json)",
+      "Edit(**/.claude/settings.local.json)",
+      "Edit(**/.claude/hooks/**)",
+      "Edit(**/.mcp.json)",
+      "Edit(**/.git/hooks/**)",
+      "Edit(**/.git/config)"
+    ]
+  }
+}

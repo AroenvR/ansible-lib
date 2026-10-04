@@ -14,13 +14,18 @@ argument_specs:
         data/ in it when missing, manages only config/ in it, and hands it to the account when it belongs to another
         UID (a new account after a removal). The code stays read-only in the image.
       - Starts the service, or restarts it when the image, the environment file, the config files or the Quadlet
-        file changed, then waits until it answers HTTP requests on its port. If it does not, the deploy fails and
-        shows its log. Only the deployed version stays; other versions' archives and the account's other images
-        are removed.
+        file changed, then waits until it answers HTTP requests on its port, or until it runs when it has no port
+        (I(podman_service_port) 0). If it does not, the deploy fails and shows its log. Only the deployed version
+        stays; other versions' archives and the account's other images are removed.
       - The default Quadlet file runs the container as the user of Red Hat's UBI images (1001), mapped to the
         account, with a read-only root filesystem (/tmp is in memory), no capabilities and no privilege
         escalation, and starts it again after a crash or reboot.
-      - Servers need RHEL 9.2 or newer with Podman 4.4 or newer (Quadlet) installed. No network access is needed.
+      - The shared zone, /opt/containers/shared/, is a directory every service with I(podman_service_shared) may
+        read and write, at the same path in its container, through the group containers-shared. Whatever is
+        created in it is writable for the group. The deploy adds the account to the group; an account's running
+        services restart once, the first time, to get it.
+      - Servers need RHEL 9.2 or newer with Podman 4.4 or newer (Quadlet) and setfacl (the acl package, part of a
+        default install). No network access is needed.
     options:
       podman_service_name:
         type: str
@@ -72,7 +77,8 @@ argument_specs:
       podman_service_port:
         type: int
         default: 3000
-        description: The service's port on the server.
+        description: The service's port on the server. 0 publishes no port; the deploy then waits until the service
+          runs instead of until it answers HTTP.
       podman_service_bind_address:
         type: str
         default: 127.0.0.1
@@ -87,6 +93,11 @@ argument_specs:
         default: 512m
         description: Size limit of the app's /tmp, which is in memory and emptied on every restart, e.g. C(2g). For large
           temporary files on disk, the app makes a directory of its own in its working directory.
+      podman_service_shared:
+        type: bool
+        default: true
+        description: Give the service the shared zone, /opt/containers/shared/, which every service with this setting
+          may read and write.
   remove:
     short_description: Remove a service that aslib.infra.podman_service deployed, keeping its data unless asked
     description:

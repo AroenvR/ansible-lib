@@ -1,0 +1,171 @@
+---
+# Entry point "image": builds the project's Containerfile into
+# images/claude-code-<version>.tar, tagged localhost/claude-code:<version>. The
+# version is claude_code_version, or the newest in claude_code_repository: a
+# rebuild makes a new image only when that version (or the Containerfile) changed.
+- name: Check this is a Claude Code project
+  ansible.builtin.import_tasks: project.yml
+
+- name: Look up the Podman version on this machine
+  ansible.builtin.command: podman --version
+  register: __claude_code_podman
+  changed_when: false
+  failed_when: false
+
+- name: Check that Podman 3.4 or newer is installed
+  ansible.builtin.assert:
+    that:
+      - __claude_code_podman.rc == 0
+      - __claude_code_podman.stdout.split()[-1] is version('3.4', '>=')
+    fail_msg: >-
+      Building needs Podman 3.4 or newer (RHEL 9, Ubuntu 22.04); found:
+      {{ __claude_code_podman.stdout | default('none', true) }}.
+    quiet: true
+
+# Pulling refreshes the base image (security fixes). Without access to the
+# registry the cached copy is used, so a failed pull is only a warning.
+- name: Pull the latest base image, {{ claude_code_base_image }}
+  ansible.builtin.command:
+    argv: [podman, pull, --quiet, "{{ claude_code_base_image }}"]
+  register: __claude_code_pull
+  changed_when: false
+  failed_when: false
+
+- name: Warn that the base image could not be pulled
+  ansible.builtin.debug:
+    msg: "Could not pull {{ claude_code_base_image }}; building with the copy this machine has, if any. {{ __claude_code_pull.stderr }}"
+  when: __claude_code_pull.rc != 0
+
+# dnf in a throwaway container of the base image reads the repository's index;
+# the version is the last line that looks like one.
+- name: Look up the newest Claude Code in {{ claude_code_repository }}
+  ansible.builtin.command:
+    argv:
+      - podman
+      - run
+      - --rm
+      - --pull=never
+      - "{{ claude_code_base_image }}"
+      - dnf
+      - --quiet
+      - --disablerepo=*
+      - --repofrompath=claude-code,{{ claude_code_repository }}
+      - repoquery
+      - --latest-limit=1
+      - --queryformat=%{version}
+      - claude-code
+  register: __claude_code_newest
+  when: not claude_code_version
+  changed_when: false
+
+- name: Note the version, the image and its archive
+  vars:
+    __claude_code_found: >-
+      {{ claude_code_version or (__claude_code_newest.stdout_lines | select('match', '^[0-9]+[.][0-9]+[.][0-9]+') | list | last | default('')) }}
+  ansible.builtin.set_fact:
+    __claude_code_version: "{{ __claude_code_found }}"
+    __claude_code_tag: localhost/{{ __claude_code_name }}:{{ __claude_code_found }}
+    __claude_code_archive: "{{ __claude_code_images }}/{{ __claude_code_name }}-{{ __claude_code_found }}.tar"
+
+- name: Check the version, {{ __claude_code_version }}
+  ansible.builtin.assert:
+    that: __claude_code_version is match('^[0-9]+[.][0-9]+[.][0-9]+')
+    fail_msg: >-
+      "{{ __claude_code_version }}" is no Claude Code version: no claude-code package in {{ claude_code_repository }},
+      or claude_code_version is wrong.
+    quiet: true
+
+# Recorded in the image (org.opencontainers.image.revision); empty outside git.
+- name: Look up the project's git commit
+  ansible.builtin.command:
+    argv: [git, -C, "{{ __claude_code_root }}", rev-parse, HEAD]
+  register: __claude_code_commit
+  changed_when: false
+  failed_when: false
+
+- name: Create the images directory
+  ansible.builtin.file:
+    path: "{{ __claude_code_images }}"
+    state: directory
+    mode: "0755"
+
+# The images directory ignores itself, so the project's .gitignore needs no entry.
+- name: Keep the images directory out of git
+  ansible.builtin.copy:
+    content: "*\n"
+    dest: "{{ __claude_code_images }}/.gitignore"
+    mode: "0644"
+
+- name: Look up the current image {{ __claude_code_tag }}
+  ansible.builtin.command:
+    argv: [podman, images, --quiet, --no-trunc, "{{ __claude_code_tag }}"]
+  register: __claude_code_before
+  changed_when: false
+
+- name: Build the image {{ __claude_code_tag }}
+  ansible.builtin.command:
+    argv:
+      - podman
+      - build
+      - --file={{ __claude_code_root }}/Containerfile
+      - --build-arg=BASE_IMAGE={{ claude_code_base_image }}
+      - --build-arg=CLAUDE_CODE_REPOSITORY={{ claude_code_repository }}
+      - --build-arg=CLAUDE_CODE_KEY_URL={{ claude_code_key_url }}
+      - --build-arg=CLAUDE_CODE_VERSION={{ __claude_code_version }}
+      - --label=org.opencontainers.image.title={{ __claude_code_name }}
+      - --label=org.opencontainers.image.version={{ __claude_code_version }}
+      - --label=org.opencontainers.image.revision={{ __claude_code_commit.stdout | default('') }}
+      - --tag={{ __claude_code_tag }}
+      - "{{ __claude_code_root }}"
+  changed_when: false  # The next task decides whether the image changed.
+
+- name: Look up the image after building {{ __claude_code_tag }}
+  ansible.builtin.command:
+    argv: [podman, images, --quiet, --no-trunc, "{{ __claude_code_tag }}"]
+  register: __claude_code_after
+  changed_when: __claude_code_after.stdout != __claude_code_before.stdout
+
+- name: Save the image as an archive {{ __claude_code_archive | basename }}
+  ansible.builtin.command:
+    argv: [podman, save, --format=oci-archive, "--output={{ __claude_code_archive }}", "{{ __claude_code_tag }}"]
+  when: __claude_code_after is changed or __claude_code_archive is not file
+  changed_when: true
+
+# images/ holds the one version the deploy installs.
+- name: Find the archives of other versions
+  ansible.builtin.find:
+    paths: "{{ __claude_code_images }}"
+    patterns: "{{ __claude_code_name }}-*.tar"
+    excludes: "{{ __claude_code_archive | basename }}"
+  register: __claude_code_old_archives
+
+- name: Remove the archives of other versions
+  ansible.builtin.file:
+    path: "{{ __claude_code_old.path }}"
+    state: absent
+  loop: "{{ __claude_code_old_archives.files }}"
+  loop_control:
+    loop_var: __claude_code_old
+    label: "{{ __claude_code_old.path | basename }}"
+
+# Every image of the project carries its name as a label: all but the one just
+# built are older versions and builds. An image still used by a container stays.
+- name: Look up the project's images
+  ansible.builtin.command:
+    argv: [podman, images, --quiet, --no-trunc, "--filter=label=org.opencontainers.image.title={{ __claude_code_name }}"]
+  register: __claude_code_project_images
+  changed_when: false
+
+- name: Remove the project's older images from this machine
+  ansible.builtin.command:
+    argv: [podman, rmi, "{{ __claude_code_old_image }}"]
+  loop: "{{ __claude_code_project_images.stdout_lines | unique | difference([__claude_code_after.stdout]) }}"
+  loop_control:
+    loop_var: __claude_code_old_image
+  register: __claude_code_removed
+  changed_when: __claude_code_removed.rc == 0
+  failed_when: false
+
+- name: Show where the image is
+  ansible.builtin.debug:
+    msg: "Built {{ __claude_code_tag }} into {{ __claude_code_archive }}. Deploy it with: ansible-playbook deploy.yml"

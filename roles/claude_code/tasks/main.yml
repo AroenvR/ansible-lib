@@ -1,0 +1,70 @@
+---
+# Entry point "main": deploys the image in images/ as the always-on service
+# claude-code, with aslib.infra.podman_service, and installs the claude-code command
+# that enters it. Runs as root on the servers.
+- name: Check this is a Claude Code project
+  ansible.builtin.import_tasks: project.yml
+
+# images/ holds the one version the build made (on the Ansible machine).
+- name: Find the image archive in images/
+  ansible.builtin.set_fact:
+    __claude_code_found_archives: "{{ query('fileglob', __claude_code_images ~ '/' ~ __claude_code_name ~ '-*.tar') }}"
+
+- name: Check there is one image archive, and the environment file
+  ansible.builtin.assert:
+    that:
+      - __claude_code_found_archives | length == 1
+      - (claude_code_ansible_dir ~ '/container.env') is file
+    fail_msg: >-
+      The deploy needs one image archive in {{ __claude_code_images }} (build it: ansible-playbook image.yml; found
+      {{ __claude_code_found_archives | length }}) and {{ claude_code_ansible_dir }}/container.env, which holds the
+      container's settings and secrets and is not in git (create it; it may be empty).
+    quiet: true
+
+- name: Note the version to deploy
+  ansible.builtin.set_fact:
+    __claude_code_archive: "{{ __claude_code_found_archives[0] }}"
+    __claude_code_version: >-
+      {{ __claude_code_found_archives[0] | basename
+         | regex_replace('^' ~ __claude_code_name ~ '-', '') | regex_replace('[.]tar$', '') }}
+
+# claude-code opens its sessions in tmux on the server. Installed only when
+# missing: only then does the server need its package repositories.
+- name: Look up the installed packages
+  ansible.builtin.package_facts:
+
+- name: Install tmux when it is missing
+  ansible.builtin.package:
+    name: tmux
+    state: present
+  when: "'tmux' not in ansible_facts.packages"
+
+# The Quadlet template is the project's (ansible/templates/service.container.j2,
+# from the setup, for the project to tune) if it has one, else podman_service's.
+- name: Deploy the service
+  ansible.builtin.import_role:
+    name: aslib.infra.podman_service
+  vars:
+    __claude_code_template: "{{ claude_code_ansible_dir }}/templates/service.container.j2"
+    podman_service_name: "{{ __claude_code_service }}"
+    podman_service_dir: "{{ __claude_code_home }}"
+    podman_service_port: 0
+    podman_service_image: localhost/{{ __claude_code_name }}:{{ __claude_code_version }}
+    podman_service_archive: "{{ __claude_code_archive }}"
+    podman_service_env_file: "{{ claude_code_ansible_dir }}/container.env"
+    podman_service_config_files: ["{{ __claude_code_root }}/managed-settings.json"]
+    podman_service_quadlet_template: "{{ __claude_code_template if __claude_code_template is file else '' }}"
+
+- name: Install the command that enters Claude Code, /usr/local/sbin/{{ __claude_code_name }}
+  ansible.builtin.template:
+    src: claude-code.sh.j2
+    dest: /usr/local/sbin/{{ __claude_code_name }}
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Show how to enter Claude Code
+  ansible.builtin.debug:
+    msg: >-
+      Claude Code {{ __claude_code_version }} runs as the service {{ __claude_code_name }}. Enter your own session as
+      root on the server: sudo -i, then {{ __claude_code_name }}. Detach with Ctrl-b d.

@@ -43,7 +43,11 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   other versions' archives and the account's other images are removed. Its
   `remove` entry point removes the service with its account and files, keeping
   the app's data unless `podman_service_remove_data` is true; a later deploy
-  takes the data over, also as an account with another UID.
+  takes the data over, also as an account with another UID. A service without a
+  port (`podman_service_port: 0`) counts as started once it runs. The shared
+  zone, /opt/containers/shared/ (`podman_service_shared`, on by default): every
+  service reads and writes it at the same path in its container, and a default
+  ACL keeps whatever any of them creates there writable for all.
 - Added role `node_deploy` and playbooks `aslib.infra.node_deploy` and
   `aslib.infra.node_remove`: deploy and remove a Node.js project's image with
   `podman_service`, named after package.json, with the project's
@@ -53,6 +57,16 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   ports) and the latest log lines of those that do not run; read-only. Without
   an inventory, on a server itself, the playbook shows that server. Sets
   `podman_overview_services` for playbooks that check on services.
+- Added role `claude_code` and playbook `aslib.infra.claude_setup`: an
+  always-on Claude Code agent for root. The setup writes a project of its own
+  (a Containerfile with Claude Code from Anthropic's signed dnf repository on
+  Red Hat UBI 9, the policy `managed-settings.json`, and `ansible/` with the
+  playbooks image.yml, deploy.yml, build-and-deploy.yml, remove.yml and
+  update-playbooks.yml); every build takes the repository's newest version
+  unless `claude_code_version` pins one. The deploy runs it with
+  `podman_service`, without a port, as the account `claude-code` with its home
+  in /opt/claude-code/, and installs `claude-code` for root, which opens the
+  calling root user's own tmux session running Claude in the container.
 - Added callback plugin `aslib.infra.run_log`: each playbook run in a log file
   of its own, `logs/<playbook>-<UTC time>.log`, readable by its owner only.
 

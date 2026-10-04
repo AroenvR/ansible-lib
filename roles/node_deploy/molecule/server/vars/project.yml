@@ -6,3 +6,10 @@ node_deploy_test_project: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | de
 node_deploy_ansible_dir: "{{ node_deploy_test_project }}/ansible"
 podman_service_port: 3009  # noqa: var-naming[no-role-prefix]
 podman_service_uid: "3001"  # noqa: var-naming[no-role-prefix]
+
+# The Claude Code project, deployed next to the Node.js one with the stand-in for
+# Claude Code (claude_code/molecule/mock), on the same test server.
+node_deploy_test_claude_project: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/node-deploy-test', true) }}/claude-code"
+claude_code_ansible_dir: "{{ node_deploy_test_claude_project }}/ansible"  # noqa: var-naming[no-role-prefix]
+claude_code_version: "0.0.1"  # noqa: var-naming[no-role-prefix]
+claude_code_base_image: registry.access.redhat.com/ubi9/ubi-minimal  # noqa: var-naming[no-role-prefix]

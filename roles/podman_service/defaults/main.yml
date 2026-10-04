@@ -9,4 +9,5 @@ podman_service_port: 3000
 podman_service_bind_address: 127.0.0.1
 podman_service_container_port: 3000
 podman_service_tmp_size: 512m
+podman_service_shared: true
 podman_service_remove_data: false

@@ -22,12 +22,15 @@ installed copy. `make help` lists all targets.
 
 Every role has one Molecule scenario, named after where the role runs.
 podman_service and podman_overview are tested through node_deploy's, which
-deploys a service with them:
+deploys a service with them, next to Claude Code (claude_code's deploy, with
+the stand-in for Claude Code in `roles/claude_code/molecule/mock/`) on the same
+test server: every service the library provides must run side by side without
+taking another's account, UID or files.
 
 | Scenario | For roles that run on | Runs in | Make target |
 |---|---|---|---|
 | `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
-| `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`) | The machine running the tests | `make test-build-machine-<ansible-core>` |
+| `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code`'s setup and image) | The machine running the tests | `make test-build-machine-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
 one ansible-core version: `2.12` (what Ubuntu 22.04 ships) or `2.14` (what

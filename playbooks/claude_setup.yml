@@ -1,0 +1,16 @@
+---
+# Writes a Claude Code project into the current directory, an empty one for a
+# new git repository, or brings an earlier one up to date:
+#   mkdir claude-code && cd claude-code && git init
+#   ansible-playbook aslib.infra.claude_setup
+# Everything after it runs from the project's ansible/ directory; see its README.md.
+# Options: ansible-doc -t role aslib.infra.claude_code (entry point setup)
+- name: Write the Claude Code project
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Write the project
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_code
+        tasks_from: setup

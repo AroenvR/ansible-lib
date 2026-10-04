@@ -1,0 +1,52 @@
+# Claude Code in an always-on container on Red Hat UBI 9. This file is the
+# project's: add the tools Claude needs to the first RUN. ansible/ builds and
+# deploys it (see ansible/README.md); README.md shows how with plain Podman.
+#
+# The build arguments have defaults, so `podman build .` works; ansible/image.yml
+# passes the settings in ansible/group_vars/all/ instead.
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi
+FROM ${BASE_IMAGE}
+
+# Anthropic's signed dnf repository. Its "stable" channel trails "latest"
+# (.../rpm/latest) by about a week and skips releases with major regressions.
+ARG CLAUDE_CODE_REPOSITORY=https://downloads.claude.ai/claude-code/rpm/stable
+ARG CLAUDE_CODE_KEY_URL=https://downloads.claude.ai/keys/claude-code.asc
+# Empty: the newest version in the repository.
+ARG CLAUDE_CODE_VERSION=
+
+# Tools for Claude's sessions, from Red Hat's UBI repositories. Add what your
+# work needs here (UBI has a subset of RHEL's packages).
+RUN dnf install --assumeyes --setopt=install_weak_deps=False --nodocs \
+        git-core openssh-clients jq less procps-ng findutils which tar gzip diffutils shadow-utils \
+    && dnf clean all
+
+# Claude Code, after checking the repository's key is Anthropic's release key
+# (fingerprint from Anthropic's documentation): a mismatch stops the build. It
+# installs into /usr, owned by root, so Claude cannot replace its own program,
+# and never updates itself: a new version is a new image.
+RUN curl --fail --silent --show-error --location "$CLAUDE_CODE_KEY_URL" --output /etc/pki/rpm-gpg/claude-code.asc \
+    && gpg --show-keys --with-colons /etc/pki/rpm-gpg/claude-code.asc \
+       | awk -F: '$1 == "fpr" { print $10 }' \
+       | grep --quiet --line-regexp 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE \
+    && printf '%s\n' '[claude-code]' 'name=Claude Code' "baseurl=$CLAUDE_CODE_REPOSITORY" \
+         'enabled=1' 'gpgcheck=1' 'gpgkey=file:///etc/pki/rpm-gpg/claude-code.asc' \
+         > /etc/yum.repos.d/claude-code.repo \
+    && dnf install --assumeyes --nodocs "claude-code${CLAUDE_CODE_VERSION:+-$CLAUDE_CODE_VERSION}" \
+    && dnf clean all
+
+# Claude runs as the image's user 1001 (Red Hat's convention), which the service's
+# account becomes in the container. Its home is the service's directory on the
+# server, /opt/claude-code, mounted at the same path: Claude keeps its login and
+# history there. The policy, config/managed-settings.json in it (read-only), is
+# where Claude Code looks for an organisation's policy: /etc/claude-code/.
+RUN groupadd --gid 1001 claude \
+    && useradd --uid 1001 --gid 1001 --home-dir /opt/claude-code --no-create-home --shell /bin/bash claude \
+    && ln -s /opt/claude-code/config /etc/claude-code
+
+USER 1001
+ENV HOME=/opt/claude-code \
+    CLAUDE_CONFIG_DIR=/opt/claude-code/.claude
+WORKDIR /opt/claude-code
+
+# Always on: Claude itself runs in the sessions `podman exec ... claude` opens.
+CMD ["sleep", "infinity"]
