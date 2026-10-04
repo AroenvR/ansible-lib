@@ -58,12 +58,17 @@ it; conversations stay (`claude-code --continue`, `--resume`).
 ## The policy
 
 `config/managed-settings.json` is where Claude Code reads an organisation's
-policy, above every other setting. It keeps Claude to its home and the shared
-zone, away from its login and config (`.claude/`), `.env` files and the files
-that would run code at its next start (hooks, `.mcp.json`, `.git/config`); keeps
-its memory in `/opt/claude-code/memory`; and turns off the self-updater and
-telemetry. The project's README.md shows how to limit its shell commands to an
-allowlist of hosts.
+policy, above every other setting. It makes Claude's home and the shared zone
+its working directories; keeps it away from its login and config (`.claude/`),
+`.env` files, the instruction files in its home (`CLAUDE.md`, `AGENTS.md`) and
+the files that would run code at its next start (hooks, `.mcp.json`,
+`.git/config`); keeps its memory in `/opt/claude-code/memory`; and turns off the
+self-updater and telemetry. Claude may read the rest of the container, which
+holds nothing but the read-only image: Claude Code's
+`blockReadsOutsideWorkingDirectories` would only add prompts for that. The
+project's README.md shows how to limit its shell commands to an allowlist of
+hosts. `config/CLAUDE.md` starts from aslib.infra's template: what Claude needs
+to know about this setup, for the project to adjust.
 
 Deny rules guard Claude's tools, not every program it runs; the container and
 its account are the boundary. Nothing in the container can change `config/`.

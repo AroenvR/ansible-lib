@@ -48,7 +48,8 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   zone, /opt/containers/shared/ (`podman_service_shared`, on by default): every
   service reads and writes it at the same path in its container, and a default
   ACL keeps whatever any of them creates there writable for all (the deploy
-  installs the `acl` package when a server lacks it).
+  installs the `acl` package when a server lacks it). The zone's README.md,
+  root's and rewritten by every deploy, explains how to work there.
 - Added role `node_deploy` and playbooks `aslib.infra.node_deploy` and
   `aslib.infra.node_remove`: deploy and remove a Node.js project's image with
   `podman_service`, named after package.json, with the project's

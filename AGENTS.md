@@ -258,7 +258,10 @@ source of truth.
   a default RHEL install would have.
 - Red Hat's UBI repositories lack tmux (RHEL has it in BaseOS) and shellcheck;
   UBI's unversioned nodejs is 16 (end of life), so enable a module stream
-  (`nodejs:24`). The policy deny `Read(//opt/claude-code/.claude/**)` blocks a
+  (`nodejs:24`). `blockReadsOutsideWorkingDirectories` made Claude Code refuse or
+  prompt for every read of the image (/etc, /usr, /tmp), even in bypass mode, for
+  nothing the container hides: the policy leaves it off. The policy deny
+  `Read(//opt/claude-code/.claude/**)` blocks a
   whole Bash command that touches `.claude/`, and Claude's default memory
   location (`~/.claude/projects/<project>/memory/`) with it: the policy sets
   `autoMemoryDirectory` instead (an allow rule cannot override a deny).
@@ -269,9 +272,21 @@ source of truth.
   service's directory. Not verified in a real session yet.
 - A plain YAML list item containing `: ` is a mapping, not text: an assert's
   `- lookup(...) is search('key: value')` was such a mapping, and assert passed it
-  without checking anything. Quote such conditions (`- "..."`).
+  without checking anything. Quote such conditions (`- "..."`);
+  `dev/check_conditions.py` (part of `make lint`) finds them.
 - YAML flow lists split on commas: an argument like `setfacl --modify=a,b`
   belongs in a block list.
+- A sticky bit on a group-writable directory (tried on the shared zone) also
+  makes `fs.protected_regular=2` (Ubuntu's default, also on CI's runners) refuse
+  O_CREAT opens of another user's file there, so `>>` and most writes fail with
+  Permission denied; RHEL's default is 1. Avoid the sticky bit there.
+- `runuser` keeps the caller's environment, including `DBUS_SESSION_BUS_ADDRESS`.
+  From a root shell entered with `su`, that is another user's bus: Podman as the
+  account then warns "no systemd user session available", falls back to
+  cgroupfs, and `podman exec` fails writing `cgroup.procs` (Permission denied).
+  The claude-code command sets the account's own address
+  (`unix:path=/run/user/<uid>/bus`). Seen on the maintainer's server; the cause is
+  the likeliest one, not yet confirmed there.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
 
@@ -364,7 +379,17 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   Tests run it next to the Node.js service.
 - The shared zone `/opt/containers/shared/`, decided with the maintainer: every
   service reads and writes it; a default ACL keeps everything group-writable
-  ("tighten later, once the flows work"). Write coordination is the apps' job.
+  ("tighten later, once the flows work"). Its README.md
+  (podman_service/files/shared-README.md, root's, rewritten by every deploy) is
+  how humans and agents learn to work there; Claude's CLAUDE.md points to it
+  instead of repeating it. A service can't change it, but could remove it until
+  the next deploy; one directory per service, created by the deploy under a
+  root-owned top level, would close that if it matters.
+- Claude's CLAUDE.md: aslib.infra ships the template (claude_code/files/CLAUDE.md),
+  each project adjusts its copy in config/. Positive, short, facts Claude can't
+  infer; nothing Claude Code's own prompt already covers. The policy denies edits
+  to instruction files in Claude's home (CLAUDE.md, CLAUDE.local.md, AGENTS.md),
+  which would load in every session.
 - Open: the license (`LICENSE` is a placeholder, decided later); a pinned source
   for aslib.infra in projects' pipelines once the release location is final.
 

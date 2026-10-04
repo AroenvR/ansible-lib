@@ -18,7 +18,11 @@ uid=$(id -u "$account")
 tty=
 if [ -t 0 ] && [ -t 1 ]; then tty=--tty; fi
 
-# From /, which the account may enter: runuser keeps the working directory.
+# From /, which the account may enter: runuser keeps the working directory. It
+# keeps the environment too, so the D-Bus address is set to the account's: a root
+# shell entered with su carries its user's, with which Podman cannot reach the
+# account's systemd ("no systemd user session available").
 cd /
-exec runuser --user="$account" -- env XDG_RUNTIME_DIR="/run/user/$uid" \
+exec runuser --user="$account" -- \
+  env XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
   podman exec --interactive $tty --env=TERM="${TERM:-xterm-256color}" --workdir="$workdir" "$container" claude "$@"

@@ -42,7 +42,9 @@ and every check ends with a `PASSED <role>: ...` line saying what it proved.
 Two more checks complete the picture:
 
 - `make lint`: current ansible-lint (production profile), a check that every
-  role documents its interface, and ansible-doc loading every plugin and its
+  role documents its interface, a check that every condition is text (YAML turns
+  an unquoted `- x is search('a: b')` into a mapping, which an assert accepts
+  without checking anything), and ansible-doc loading every plugin and its
   documentation. Lint runs on a modern ansible-core, so it does **not** prove a
   role works on 2.12; the Molecule tests do.
 - `make test-native`: the roles that support Ubuntu 22.04 (`UBUNTU_ROLES` in the

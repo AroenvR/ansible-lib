@@ -2,7 +2,9 @@
 # The shared zone, /opt/containers/shared/: every service with podman_service_shared
 # may read and write it, through the group containers-shared. Its container keeps
 # that group (--group-add=keep-groups in the Quadlet file), and whatever an app
-# creates there is writable for the group, whichever mode the app asks for.
+# creates there is writable for the group, whichever mode the app asks for. No
+# sticky bit: with fs.protected_regular=2 (Ubuntu's default) it also stops a
+# service from opening another's file with O_CREAT, which most writes do.
 - name: Create the shared zone's group, containers-shared
   ansible.builtin.group:
     name: containers-shared
@@ -75,6 +77,17 @@
       - /opt/containers/shared
   when: __podman_service_shared_acl.stdout_lines is not superset(['default:group::rwx', 'default:other::---'])
   changed_when: true
+
+# Root's, so no service can change it, as none is its owner or in its group. One
+# could still remove it from the group-writable directory: every deploy puts it back.
+- name: Write the shared zone's README.md, how services work there
+  ansible.builtin.copy:
+    src: shared-README.md
+    dest: /opt/containers/shared/README.md
+    owner: root
+    group: root
+    mode: "0644"
+    setype: container_file_t
 
 # Untested: no test server runs SELinux in enforcing mode.
 - name: Look up whether SELinux is enabled

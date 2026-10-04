@@ -78,6 +78,7 @@ image-%: ## Build one test container, e.g. make image-rhel9
 lint: $(VENV)/lint ## Lint all content and check every role's documented interface
 	ANSIBLE_COLLECTIONS_PATH="$(abspath $(CURDIR)/../../..)" $(VENV)/lint/bin/ansible-lint
 	$(VENV)/lint/bin/python dev/check_role_docs.py
+	$(VENV)/lint/bin/python dev/check_conditions.py
 	@for plugin in plugins/*/*.py; do \
 	  type=$$(basename $$(dirname $$plugin)); name=$$(basename $$plugin .py); \
 	  echo "ansible-doc -t $$type aslib.infra.$$name"; \

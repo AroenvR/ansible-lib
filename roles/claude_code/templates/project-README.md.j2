@@ -39,10 +39,12 @@ container's home and survives new images.
 
 ## The policy
 
-`config/managed-settings.json` keeps Claude in its home and the shared zone of
-aslib.infra's services (`/opt/containers/shared`), away from its own login and
-config (`.claude/`), from `.env` files, and from the files that would run code at
-its next start (hooks, `.mcp.json`, `.git/config`). Its memory goes to
+`config/managed-settings.json` makes Claude's home and the shared zone of
+aslib.infra's services (`/opt/containers/shared`) its working directories, and
+keeps it away from its own login and config (`.claude/`), from `.env` files, and
+from the files that would run code at its next start (hooks, `.mcp.json`,
+`.git/config`). It may read the rest of the container, which holds only the
+read-only image. Its memory goes to
 `/opt/claude-code/memory`, its plans to `plans/` in the directory a session
 starts in. Its keys are documented in
 [Claude Code's settings reference](https://code.claude.com/docs/en/settings-reference).

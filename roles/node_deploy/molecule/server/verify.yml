@@ -159,6 +159,33 @@
       register: __node_deploy_test_node_read
       changed_when: false
 
+    # The README is root's: no service may change it, though all are in the zone's group.
+    - name: Try to change the zone's README from Claude Code's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - podman
+          - exec
+          - claude-code
+          - sh
+          - -c
+          - >-
+            (echo changed >> /opt/containers/shared/README.md) 2>/dev/null && echo changed;
+            head -n 1 /opt/containers/shared/README.md
+        chdir: /
+      register: __node_deploy_test_readme_tries
+      changed_when: false
+
+    - name: Inspect the shared zone and its README on the server
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/opt/containers/shared, /opt/containers/shared/README.md]
+      register: __node_deploy_test_zone
+
     - name: Inspect the shared file on the server
       ansible.builtin.stat:
         path: /opt/containers/shared/test.txt
@@ -180,10 +207,13 @@
         path: /opt/claude-code/.bashrc
       register: __node_deploy_test_bashrc
 
-    # As a script would, without a terminal; the stand-in reports and exits.
+    # As a script would, without a terminal; the stand-in reports and exits. From
+    # a root shell that still carries another user's D-Bus address, as after su.
     - name: Run Claude Code with claude-code, as root
       ansible.builtin.command:
         argv: [/usr/local/sbin/claude-code, --test-arg]
+      environment:
+        DBUS_SESSION_BUS_ADDRESS: unix:path=/run/user/0/bus
       register: __node_deploy_test_entered
       changed_when: false
 
@@ -206,6 +236,10 @@
           - __node_deploy_test_shared_file.stat.gr_name == 'containers-shared'
           - __node_deploy_test_shared_file.stat.wgrp
           - __node_deploy_test_containers_dir.stat.mode == '0755'
+          - __node_deploy_test_zone.results[0].stat.mode == '2770'
+          - __node_deploy_test_zone.results[1].stat.pw_name == 'root'
+          - __node_deploy_test_zone.results[1].stat.mode == '0644'
+          - "__node_deploy_test_readme_tries.stdout_lines == ['# /opt/containers/shared: the shared zone']"
           - __node_deploy_test_command.stat.mode == '0750'
           - __node_deploy_test_command.stat.pw_name == 'root'
           - __node_deploy_test_bashrc.stat.pw_name == 'claude-code'
@@ -213,8 +247,9 @@
         success_msg: >-
           PASSED claude_code next to node_deploy: both came back after the restart, as accounts with UIDs
           {{ __node_deploy_test_uid }} and {{ __node_deploy_test_claude_uid }} and separate subordinate UID ranges;
-          a file one wrote to the shared zone the other read and changed; claude-code ran Claude as 1001 in
-          /opt/claude-code, which found its policy and instructions in /etc/claude-code and could not change them.
+          a file one wrote to the shared zone the other read and changed, while the zone's README stayed root's
+          and unchangeable; claude-code ran Claude as 1001 in /opt/claude-code, despite a foreign D-Bus address,
+          and Claude found its policy and instructions in /etc/claude-code and could not change them.
 
     - name: Deploy Claude Code again, with claude_code_bypass_permissions
       ansible.builtin.include_role:

@@ -82,7 +82,8 @@ service with `podman_service_shared` (the default) reads and writes it, at the
 same path in its container. Its accounts are members of the group
 `containers-shared`, which owns the directory (mode 2770), and a default ACL makes
 everything created in it writable by the group, whichever service created it.
-Agreeing on who writes what is up to the apps. A service joins with its next
+The zone's [README.md](files/shared-README.md), root's and rewritten by every
+deploy, tells humans and agents how to work there. A service joins with its next
 deploy; one that leaves (`podman_service_shared: false`) keeps the group but no
 longer sees the directory. With SELinux, the directory is labelled for
 containers. The default ACL needs `setfacl`: the deploy installs the `acl`
