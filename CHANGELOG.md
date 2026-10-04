@@ -43,17 +43,19 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   other versions' archives and the account's other images are removed. Its
   `remove` entry point removes the service with its account and files, keeping
   its directory unless `podman_service_remove_workdir` is true; a later deploy
-  takes the data over, also as an account with another UID. A service without a
+  takes the data over, also as an account with another UID. Its `restart` entry
+  point restarts a service and waits until it is ready. A service without a
   port (`podman_service_port: 0`) counts as started once it runs. The shared
   zone, /opt/containers/shared/ (`podman_service_shared`, on by default): every
   service reads and writes it at the same path in its container, and a default
   ACL keeps whatever any of them creates there writable for all (the deploy
   installs the `acl` package when a server lacks it). The zone's README.md,
   root's and rewritten by every deploy, explains how to work there.
-- Added role `node_deploy` and playbooks `aslib.infra.node_deploy` and
-  `aslib.infra.node_remove`: deploy and remove a Node.js project's image with
-  `podman_service`, named after package.json, with the project's
-  `container.env`, `config/production/*.json` and Quadlet template.
+- Added role `node_deploy` and playbooks `aslib.infra.node_deploy`,
+  `aslib.infra.node_restart` and `aslib.infra.node_remove`: deploy, restart and
+  remove a Node.js project's image with `podman_service`, named after
+  package.json, with the project's `container.env`, `config/production/*.json`
+  and Quadlet template. The restart waits until the service answers again.
 - Added role `podman_overview` and playbook `aslib.infra.podman_overview`: show
   root every rootless Podman service on the servers (account, state, image,
   ports) and the latest log lines of those that do not run; read-only. Without
@@ -71,7 +73,7 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   `podman_service`, without a port, as the account `claude-code` with its home
   in /opt/claude-code/, and installs `claude-code` for root, which runs Claude
   in the container, with or without a terminal. `claude_code_bypass_permissions`
-  starts its sessions without permission prompts.
+  starts its sessions without permission prompts. `restart.yml` restarts it.
 - Added callback plugin `aslib.infra.run_log`: each playbook run in a log file
   of its own, `logs/<playbook>-<UTC time>.log`, readable by its owner only.
 

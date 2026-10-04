@@ -45,6 +45,7 @@
           - "lookup('file', __claude_code_test_dir ~ '/deploy.yml') is search('name: aslib.infra.claude_code')"
           - "lookup('file', __claude_code_test_dir ~ '/build-and-deploy.yml') is search('import_playbook: deploy.yml')"
           - "lookup('file', __claude_code_test_dir ~ '/remove.yml') is search('tasks_from: remove')"
+          - "lookup('file', __claude_code_test_dir ~ '/restart.yml') is search('tasks_from: restart')"
           - "lookup('file', __claude_code_test_dir ~ '/update-playbooks.yml') is search('tasks_from: setup')"
           - lookup('file', __claude_code_test_dir ~ '/README.md') is search('sudo journalctl _SYSTEMD_USER_UNIT=claude-code.service')
           - lookup('file', __claude_code_test_dir ~ '/templates/service.container.j2')
@@ -71,7 +72,7 @@
     - name: Check the playbooks it wrote are valid
       ansible.builtin.command:
         argv: [ansible-playbook, --syntax-check, "{{ __claude_code_test_dir }}/{{ item }}"]
-      loop: [image.yml, deploy.yml, build-and-deploy.yml, remove.yml, update-playbooks.yml]
+      loop: [image.yml, deploy.yml, build-and-deploy.yml, restart.yml, remove.yml, update-playbooks.yml]
       changed_when: false
 
     # The image

@@ -1,0 +1,16 @@
+---
+# Restarts the Node.js project's service on every server in the inventory and waits
+# until it answers, e.g. after a change the deploy does not see (a deploy restarts
+# the service itself when it changes something). Run it from the project's ansible/
+# directory (see aslib.infra.node_setup):
+#   ansible-playbook aslib.infra.node_restart
+# It works as root on the servers, through sudo. Options: ansible-doc -t role aslib.infra.node_deploy
+- name: Restart the Node.js project's service
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Restart the service and wait until it answers
+      ansible.builtin.import_role:
+        name: aslib.infra.node_deploy
+        tasks_from: restart

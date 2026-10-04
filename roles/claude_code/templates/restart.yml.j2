@@ -1,0 +1,14 @@
+---
+# Restarts Claude Code on the servers in inventory.yml and waits until it runs:
+#   ansible-playbook restart.yml
+# It ends what runs in the container (sessions, background sessions, servers);
+# conversations stay. A deploy restarts it by itself when it changes something.
+- name: Restart Claude Code
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Restart the service and wait until it runs
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_code
+        tasks_from: restart

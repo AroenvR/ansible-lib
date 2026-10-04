@@ -12,7 +12,7 @@ output to a file of its own in `logs/`, such as `logs/deploy-20261003T081502Z.lo
 | `container.env` | The container's environment variables and secrets, e.g. an API key | Yours | **No** |
 | `../Containerfile`, `../config/` | The image; the policy and Claude's instructions | Yours | Yes |
 | `group_vars/all/defaults.yml` | Every setting at aslib.infra's default; `project.yml` wins | aslib.infra | Yes |
-| `image.yml`, `deploy.yml`, `build-and-deploy.yml`, `remove.yml` | Build, deploy, both in one go, remove | aslib.infra | Yes |
+| `image.yml`, `deploy.yml`, `build-and-deploy.yml`, `restart.yml`, `remove.yml` | Build, deploy, both in one go, restart, remove | aslib.infra | Yes |
 | `templates/service.container.j2` | The Quadlet file: how Podman and systemd run the service | aslib.infra | Yes |
 | `update-playbooks.yml`, `ansible.cfg`, `.gitignore`, this guide | | aslib.infra | Yes |
 | `images/`, `logs/`, `*.bak` | The built image, the log of every run, copies an update keeps | | No |
@@ -85,6 +85,11 @@ ansible-playbook aslib.infra.podman_overview      # every service, Claude Code i
 ```
 
 On the server: `sudo journalctl _SYSTEMD_USER_UNIT={{ __claude_code_name }}.service`.
+
+To restart it, for a change the deploy does not see: `ansible-playbook restart.yml`.
+A deploy restarts it by itself when it changes something (the image, `../config/`,
+`container.env`, the settings or the Quadlet template). Either way, a restart ends
+what runs in the container; conversations stay.
 
 ## 5. Update
 

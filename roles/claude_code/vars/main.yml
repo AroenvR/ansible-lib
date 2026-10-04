@@ -27,6 +27,7 @@ __claude_code_ours:
   - { src: templates/image.yml.j2, dest: ansible/image.yml }
   - { src: templates/deploy.yml.j2, dest: ansible/deploy.yml }
   - { src: templates/build-and-deploy.yml.j2, dest: ansible/build-and-deploy.yml }
+  - { src: templates/restart.yml.j2, dest: ansible/restart.yml }
   - { src: templates/remove.yml.j2, dest: ansible/remove.yml }
   - { src: templates/update-playbooks.yml.j2, dest: ansible/update-playbooks.yml }
   - { src: templates/README.md.j2, dest: ansible/README.md }

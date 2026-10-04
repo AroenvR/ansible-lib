@@ -467,6 +467,57 @@
           {{ __node_deploy_test_new.json.starts }}) and the changed config file; the removed config file,
           the archive and the image of 1.0.0 are gone; Claude Code's container kept running throughout.
 
+- name: Check the restart of both services, which waits until each is ready
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  tasks:
+    - name: Query the Node.js service before the restart
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_before_restart
+
+    - name: Note when Claude Code's container started, before the restart
+      ansible.builtin.command:
+        argv: *node_deploy_test_claude_inspect
+        chdir: /
+      register: __node_deploy_test_claude_started
+      changed_when: false
+
+    - name: Restart the Node.js service, as restart.yml does
+      ansible.builtin.include_role:
+        name: aslib.infra.node_deploy
+        tasks_from: restart
+
+    - name: Restart Claude Code, as its restart.yml does
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+        tasks_from: restart
+
+    # Right away: the restart only returns once the service answers.
+    - name: Query the Node.js service after the restart
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_after_restart
+
+    - name: Note when Claude Code's container started, after the restart
+      ansible.builtin.command:
+        argv: *node_deploy_test_claude_inspect
+        chdir: /
+      register: __node_deploy_test_claude_restarted
+      changed_when: false
+
+    - name: Check both services started again, and the Node.js one answered once its restart returned
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_after_restart.json.starts == __node_deploy_test_before_restart.json.starts + 1
+          - (__node_deploy_test_claude_restarted.stdout | from_json)[0].State.StartedAt
+            != (__node_deploy_test_claude_started.stdout | from_json)[0].State.StartedAt
+          - (__node_deploy_test_claude_restarted.stdout | from_json)[0].State.Running
+        success_msg: >-
+          PASSED restart: node_deploy's restarted the Node.js service and returned once it answered (start count
+          {{ __node_deploy_test_after_restart.json.starts }}); claude_code's started a new container that runs.
+
 - name: Check the removal takes away the service and keeps its directory as it is
   hosts: all
   gather_facts: false

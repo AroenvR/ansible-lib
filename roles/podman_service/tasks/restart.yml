@@ -1,0 +1,38 @@
+---
+# Entry point "restart": restarts a deployed service and waits until it is ready,
+# as the deploy does. For when nothing the deploy installs changed (the deploy
+# restarts the service itself then), e.g. a file the app reads at start. Changes
+# nothing else.
+- name: Work out the service's account and directories, and check Ansible acts as root
+  ansible.builtin.import_tasks: common.yml
+
+- name: Look up the service's account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ __podman_service_user }}"
+    fail_key: false
+
+- name: Check the service is deployed
+  ansible.builtin.assert:
+    that: ansible_facts.getent_passwd.get(__podman_service_user) is not none
+    fail_msg: "{{ podman_service_name }} is not deployed on {{ inventory_hostname }}: there is no account {{ __podman_service_user }}."
+    quiet: true
+
+# As in the deploy (see "Prepare running commands as the account" in main.yml).
+- name: Prepare running commands as the account
+  ansible.builtin.set_fact:
+    __podman_service_as_account:
+      - runuser
+      - --user={{ __podman_service_user }}
+      - --
+      - env
+      - XDG_RUNTIME_DIR=/run/user/{{ ansible_facts.getent_passwd[__podman_service_user][1] }}
+
+- name: Restart the service, {{ podman_service_name }}
+  ansible.builtin.command:
+    argv: "{{ __podman_service_as_account + ['systemctl', '--user', 'restart', podman_service_name ~ '.service'] }}"
+    chdir: /
+  changed_when: true
+
+- name: Wait until the service is ready, showing its log if it is not
+  ansible.builtin.import_tasks: ready.yml

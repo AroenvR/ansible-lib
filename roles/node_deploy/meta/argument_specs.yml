@@ -29,6 +29,18 @@ argument_specs:
             them into config/ in the service's directory, removes files the project no longer has, and restarts the
             service when they change.
           - The app finds them read-only in config/ in its working directory.
+  restart:
+    short_description: Restart a Node.js project's service and wait until it answers
+    description:
+      - Restarts the service with aslib.infra.podman_service (entry point restart) and waits until it answers on
+        its port, as the deploy does. For a restart without a change the deploy would see.
+      - Runs from the project's ansible/ directory, as root on the server, like the deploy.
+    options:
+      node_deploy_ansible_dir:
+        type: str
+        default: "{{ lookup('env', 'PWD') }}"
+        description: The project's ansible/ directory, on the Ansible machine. Its parent holds package.json,
+          which names the service.
   remove:
     short_description: Remove a Node.js project's service, keeping its data unless asked
     description:

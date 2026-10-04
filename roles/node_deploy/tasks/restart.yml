@@ -1,0 +1,12 @@
+---
+# Entry point "restart": restarts the project's service with aslib.infra.podman_service
+# and waits until it answers, e.g. after a change the deploy does not see.
+- name: Work out the service from package.json
+  ansible.builtin.import_tasks: service.yml
+
+- name: Restart the service
+  ansible.builtin.import_role:
+    name: aslib.infra.podman_service
+    tasks_from: restart
+  vars:
+    podman_service_name: "{{ __node_deploy_service }}"

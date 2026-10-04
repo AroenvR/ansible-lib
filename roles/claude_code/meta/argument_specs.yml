@@ -38,9 +38,9 @@ argument_specs:
         with plain Podman); in ansible/, inventory.yml, group_vars/all/project.yml (every setting at its default) and
         container.env (git-ignored).
       - aslib.infra's files in ansible/, brought up to date by every run - ansible.cfg, .gitignore, the guide
-        README.md, group_vars/all/defaults.yml, the playbooks image.yml, deploy.yml, build-and-deploy.yml, remove.yml
-        and update-playbooks.yml, and the Quadlet template templates/service.container.j2. A file that changes is kept
-        as <file>.bak first (one copy).
+        README.md, group_vars/all/defaults.yml, the playbooks image.yml, deploy.yml, build-and-deploy.yml, restart.yml,
+        remove.yml and update-playbooks.yml, and the Quadlet template templates/service.container.j2. A file that
+        changes is kept as <file>.bak first (one copy).
       - Runs on any machine with ansible-core. Needs no network access.
     options:
       claude_code_project:
@@ -81,6 +81,17 @@ argument_specs:
         type: str
         default: ""
         description: The Claude Code version to build, e.g. C(2.1.211). Empty means the repository's newest.
+  restart:
+    short_description: Restart Claude Code's service and wait until it runs
+    description:
+      - Restarts the service with aslib.infra.podman_service (entry point restart), which ends what runs in the
+        container; conversations stay. For a restart without a change the deploy would see.
+      - Runs from the project's ansible/ directory, as root on the server, like the deploy.
+    options:
+      claude_code_ansible_dir:
+        type: str
+        default: "{{ lookup('env', 'PWD') }}"
+        description: The project's ansible/ directory. Defaults to the current directory.
   remove:
     short_description: Remove Claude Code from the servers, keeping its directory unless asked
     description:

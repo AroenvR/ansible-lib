@@ -124,6 +124,23 @@ copy of this one, which lists the variables it can use.
 | `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |
 | `podman_service_quadlet_template` | the role's | A Quadlet template of your own |
 
+## Restart a service
+
+```yaml
+    - name: Restart the service and wait until it is ready
+      ansible.builtin.import_role:
+        name: aslib.infra.podman_service
+        tasks_from: restart
+      vars:
+        podman_service_name: orders-api
+        podman_service_port: 8080
+```
+
+Restarts the service as its account and waits until it is ready, as the deploy
+does: it answers on its port, or, without one, runs. For a restart the deploy
+would not do; the deploy restarts the service itself when the image, the
+environment file, the config files or the Quadlet file changed.
+
 ## Remove a service
 
 ```yaml

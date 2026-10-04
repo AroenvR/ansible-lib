@@ -28,14 +28,19 @@
 
 - name: Remove the service, its Quadlet file and the account's images
   when: __podman_service_account_uid | length > 0
-  vars:
-    __podman_service_as_account:
-      - runuser
-      - --user={{ __podman_service_user }}
-      - --
-      - env
-      - XDG_RUNTIME_DIR=/run/user/{{ __podman_service_account_uid }}
   block:
+    # A fact, as in the deploy: a variable of the block would lose to the fact an
+    # earlier deploy or restart of another service set in the same run, and these
+    # commands would then run as that service's account.
+    - name: Prepare running commands as the account
+      ansible.builtin.set_fact:
+        __podman_service_as_account:
+          - runuser
+          - --user={{ __podman_service_user }}
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __podman_service_account_uid }}
+
     - name: Stop the service, {{ podman_service_name }}
       ansible.builtin.command:
         argv: "{{ __podman_service_as_account + ['systemctl', '--user', 'stop', podman_service_name ~ '.service'] }}"

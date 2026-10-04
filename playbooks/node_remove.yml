@@ -10,7 +10,7 @@
   become: true
   gather_facts: false
   tasks:
-    - name: Remove the service, its account, images, Quadlet file and config files
+    - name: Remove the service, its account, images and Quadlet file
       ansible.builtin.import_role:
         name: aslib.infra.node_deploy
         tasks_from: remove

@@ -24,6 +24,7 @@
           - "lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: aslib.infra.node_deploy')"
           - "lookup('file', __node_setup_test_dir ~ '/build-and-deploy.yml') is search('import_playbook: image.yml')"
           - "lookup('file', __node_setup_test_dir ~ '/remove.yml') is search('import_playbook: aslib.infra.node_remove')"
+          - "lookup('file', __node_setup_test_dir ~ '/restart.yml') is search('import_playbook: aslib.infra.node_restart')"
           - "lookup('file', __node_setup_test_dir ~ '/update-playbooks.yml') is search('import_playbook: aslib.infra.node_update')"
           - lookup('file', __node_setup_test_dir ~ '/.gitignore').splitlines() is superset(['container.env', '*.bak', 'logs/'])
           - lookup('file', __node_setup_test_dir ~ '/templates/service.container.j2')
@@ -64,7 +65,7 @@
     - name: Check the playbooks it wrote are valid
       ansible.builtin.command:
         argv: [ansible-playbook, --syntax-check, "{{ __node_setup_test_dir }}/{{ item }}"]
-      loop: [prebuild.yml, image.yml, deploy.yml, build-and-deploy.yml, remove.yml, update-playbooks.yml]
+      loop: [prebuild.yml, image.yml, deploy.yml, build-and-deploy.yml, restart.yml, remove.yml, update-playbooks.yml]
       changed_when: false
 
     # As a developer would, from the project's ansible/ directory: with its ansible.cfg

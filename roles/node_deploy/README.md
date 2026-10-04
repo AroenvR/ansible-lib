@@ -75,6 +75,15 @@ directory: `ansible-playbook build-and-deploy.yml` does both. The deploy replace
 restarts the service and removes the previous version.
 To go back, check out the previous version of the project and deploy that.
 
+## Restart the service
+
+```sh
+ansible-playbook restart.yml                                       # or: ansible-playbook aslib.infra.node_restart
+```
+
+Restarts the service and waits until it answers, for a change the deploy does
+not see. A deploy restarts it by itself when it changes something.
+
 ## Remove a service
 
 ```sh

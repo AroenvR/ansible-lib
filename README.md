@@ -76,6 +76,7 @@ cd ansible
 ansible-playbook prebuild.yml                   # node_modules for development, from a throwaway container
 ansible-playbook build-and-deploy.yml           # build the image, then install and start it on the servers
 ansible-playbook aslib.infra.podman_overview    # what runs on the servers
+ansible-playbook restart.yml                    # restart it, for a change the deploy does not see
 ansible-playbook update-playbooks.yml           # after installing a newer aslib.infra
 ansible-playbook remove.yml                     # remove it from the servers, keeping its data
 ```
@@ -184,6 +185,7 @@ needed. The playbooks node_setup writes import them.
 | `ansible-playbook aslib.infra.node_prebuild` | `ansible/` | Prepares the project for development: node_modules from a throwaway container, see [node_image](roles/node_image/README.md#node_modules-for-development) |
 | `ansible-playbook aslib.infra.node_image` | `ansible/` | Builds the project into an image archive, see [node_image](roles/node_image/README.md) |
 | `ansible-playbook aslib.infra.node_deploy` | `ansible/` | Deploys that image to the servers, or a newer version over the old one, see [node_deploy](roles/node_deploy/README.md) |
+| `ansible-playbook aslib.infra.node_restart` | `ansible/` | Restarts the service on the servers and waits until it answers, see [node_deploy](roles/node_deploy/README.md) |
 | `ansible-playbook aslib.infra.node_remove` | `ansible/` | Removes the service from the servers, keeping its data unless asked, see [node_deploy](roles/node_deploy/README.md#remove-a-service) |
 | `ansible-playbook aslib.infra.podman_overview` | A server itself, or any directory with an inventory, such as `ansible/` | Shows the rootless Podman services on that server, or on the inventory's servers, see [podman_overview](roles/podman_overview/README.md) |
 | `ansible-playbook aslib.infra.claude_setup` | An empty directory, or the root of an earlier setup | Writes a Claude Code project; its `ansible/` holds every other playbook it needs, see [claude_code](roles/claude_code/README.md) |

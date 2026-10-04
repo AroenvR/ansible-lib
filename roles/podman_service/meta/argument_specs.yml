@@ -100,6 +100,31 @@ argument_specs:
         default: true
         description: Give the service the shared zone, /opt/containers/shared/, which every service with this setting
           may read and write.
+  restart:
+    short_description: Restart a service that aslib.infra.podman_service deployed, and wait until it is ready
+    description:
+      - Restarts the service as its account and waits until it is ready, as the deploy does - it answers HTTP on its
+        port, or, without a port, runs. Shows its log and fails if it is not ready within a minute.
+      - For a restart without a change the deploy would see; the deploy restarts the service itself when the image,
+        the environment file, the config files or the Quadlet file changed. Changes nothing else.
+      - Works as root on the server, like the deploy.
+    options:
+      podman_service_name:
+        type: str
+        required: true
+        description: The service's name.
+      podman_service_user:
+        type: str
+        default: ""
+        description: The service's account. Empty means the service's name.
+      podman_service_port:
+        type: int
+        default: 3000
+        description: The service's port on the server, where it answers once ready; C(0) for a service without one.
+      podman_service_bind_address:
+        type: str
+        default: 127.0.0.1
+        description: The address the service's port is published on.
   remove:
     short_description: Remove a service that aslib.infra.podman_service deployed, keeping its directory unless asked
     description:

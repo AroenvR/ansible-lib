@@ -25,7 +25,7 @@ claude-code             # Claude, in the container; arguments go to claude
 | `.containerignore`, `README.md` | What stays out of the image; running it with plain Podman | The project's |
 | `ansible/inventory.yml`, `ansible/group_vars/all/project.yml`, `ansible/container.env` | The servers, the settings, the container's environment (git-ignored) | The project's |
 | `ansible/group_vars/all/defaults.yml` | Every setting at its default; `project.yml` wins | aslib.infra's |
-| `ansible/image.yml`, `deploy.yml`, `build-and-deploy.yml`, `remove.yml`, `update-playbooks.yml` | Build, deploy, both, remove, update these files | aslib.infra's |
+| `ansible/image.yml`, `deploy.yml`, `build-and-deploy.yml`, `restart.yml`, `remove.yml`, `update-playbooks.yml` | Build, deploy, both, restart, remove, update these files | aslib.infra's |
 | `ansible/templates/service.container.j2`, `ansible.cfg`, `.gitignore`, `README.md` | The Quadlet file, Ansible's settings, git rules, the guide | aslib.infra's |
 
 As with [node_setup](../node_setup/README.md): the project's files are written

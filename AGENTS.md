@@ -270,6 +270,12 @@ source of truth.
   writes RHEL's default `.bashrc` (which loads /etc/bashrc and profile.d) into
   Claude's home when it has none: useradd never did, as the home is the
   service's directory. Not verified in a real session yet.
+- A fact (set_fact, register) beats a block's or task's `vars:` of the same name,
+  for the rest of the run. podman_service's removal kept its account command in
+  a block variable; after a restart of Claude Code in the same run, the removal of
+  the Node.js service ran `podman system reset --force` as claude-code and wiped
+  its images. A role that runs for several services in one play sets such
+  per-service values with set_fact every time.
 - A plain YAML list item containing `: ` is a mapping, not text: an assert's
   `- lookup(...) is search('key: value')` was such a mapping, and assert passed it
   without checking anything. Quote such conditions (`- "..."`);
