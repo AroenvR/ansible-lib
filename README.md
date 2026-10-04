@@ -135,14 +135,14 @@ A project that writes its own playbooks pins aslib.infra in a `requirements.yml`
 collections:
   # A release on GitHub. From GitLab's package registry it is:
   # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.2.0/aslib-infra-0.2.0.tar.gz
-  - name: https://github.com/AroenvR/ansible-lib/releases/download/v0.2.0/aslib-infra-0.2.0.tar.gz
+  - name: /releases/download/v0.2.0/aslib-infra-0.2.0.tar.gz
     type: url
 ```
 
 `ansible-galaxy collection install -r requirements.yml` installs it. To use a
 tarball file instead, such as a branch build or your own build, or a release
 downloaded from a private repository (`gh release download v0.2.0 --repo
-AroenvR/ansible-lib`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
+REPO_URL`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
 
 ```yaml
 collections:

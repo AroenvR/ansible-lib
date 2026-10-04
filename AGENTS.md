@@ -95,7 +95,7 @@ explains the test layout and how releases are made.
 ## Working with the maintainer
 
 The maintainer and the agent work in **separate environments**. The
-maintainer's repositories (GitHub `AroenvR/ansible-lib`, later GitLab) are the
+maintainer's repositories are the
 source of truth.
 
 - **Never lose the maintainer's edits.** Before changing a file, use the latest

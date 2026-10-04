@@ -9,7 +9,7 @@ Your machine needs `git`, `make`, Podman, Python 3.9 or 3.10 (the default
 `python3` on RHEL 9 and Ubuntu 22.04) and Python 3.10+ for linting.
 
 ```sh
-git clone https://github.com/AroenvR/ansible-lib.git ~/src/ansible_collections/aslib/infra
+git clone REPOSITORY_URL ~/src/ansible_collections/aslib/infra
 cd ~/src/ansible_collections/aslib/infra
 make setup images   # on RHEL 9: dnf install python3.12 first; on Ubuntu 22.04: make setup PYTHON_LINT=python3
 ```
