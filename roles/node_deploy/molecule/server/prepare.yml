@@ -8,6 +8,18 @@
         name: [podman, systemd-pam, acl]
         state: present
 
+    # claude_code installs tmux when a server lacks it. RHEL has it in BaseOS;
+    # Red Hat's UBI repositories do not ("No package tmux available"). AlmaLinux
+    # 9's BaseOS, built from the same sources, stands in, for tmux alone.
+    - name: Add a repository that has tmux, as RHEL's BaseOS does
+      ansible.builtin.yum_repository:
+        name: test-tmux
+        description: AlmaLinux 9 BaseOS, for tmux only (test server)
+        baseurl: https://repo.almalinux.org/almalinux/9/BaseOS/$basearch/os/
+        gpgcheck: true
+        gpgkey: https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-9
+        includepkgs: [tmux, libevent]
+
     # Two gaps of Red Hat's ubi-init image that a real RHEL server does not have,
     # which keep an account's systemd instance (user@.service) from starting:
     # systemd-logind is masked, and the PAM stack of user@.service fails in it.

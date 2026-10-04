@@ -69,14 +69,15 @@ an allowlist of hosts.
 
 - The Ansible machine: ansible-core; Podman 3.4 or newer to build.
 - The servers: what podman_service needs (RHEL 9.2 or newer with Podman), and
-  tmux or a repository that has it.
+  tmux or a repository that has it: RHEL's BaseOS does, Red Hat's UBI
+  repositories do not.
 
 ## Limitations
 
-- The real image is built only in CI: the tests deploy a stand-in for Claude Code
-  ([molecule/mock](molecule/mock/)), next to a Node.js service, in
-  [node_deploy](../node_deploy/README.md)'s scenario.
-- Not tested: whether the UBI 9 repositories of a server's test image have tmux.
+- The tests build the real image (this role's build_machine scenario), but
+  deploy a stand-in for Claude Code ([molecule/mock](molecule/mock/)), next to a
+  Node.js service, in [node_deploy](../node_deploy/README.md)'s scenario. Its
+  RHEL test server gets tmux from AlmaLinux 9's BaseOS, as UBI lacks it.
 
 ## Options
 

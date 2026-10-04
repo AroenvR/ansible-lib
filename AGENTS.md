@@ -252,6 +252,8 @@ source of truth.
 - The command module expands `$VAR` and `~` in its arguments itself, also in
   `argv` (2.12, 2.14; `expand_argument_vars` came in 2.16): `sh -c 'echo $HOME'`
   prints Ansible's HOME, not the container's. Use `printenv HOME`.
+- Red Hat's UBI repositories lack tmux (RHEL has it in BaseOS), so the RHEL test
+  server adds AlmaLinux 9's BaseOS, limited to tmux and libevent.
 - YAML flow lists split on commas: an argument like `setfacl --modify=a,b`
   belongs in a block list.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
@@ -266,10 +268,10 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   deployed and ran on their RHEL server. Since then, not yet run in CI: the
   namespace `aslib`, `podman_service` and `podman_overview`, the run_log callback
   and `build-and-deploy.yml` (verified in the agent's sandbox).
-- claude_code: verified in the agent's sandbox with the stand-in only. CI is the
-  first to build the real image (Red Hat's registry, downloads.claude.ai) and to
-  install tmux on the RHEL test server: whether UBI 9's repositories have tmux is
-  unknown. If they lack it, the test server needs it from elsewhere, not the role.
+- claude_code: CI run #32 built the real image (build-machine and native jobs
+  green). Red Hat's UBI repositories lack tmux ("No package tmux available"), so
+  node_deploy's test server adds AlmaLinux 9's BaseOS for tmux and libevent only
+  (prepare.yml); not yet run in CI.
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
