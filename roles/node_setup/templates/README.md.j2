@@ -166,14 +166,14 @@ Review the changes before committing them.
 ## 6. Remove it
 
 ```sh
-ansible-playbook remove.yml                                     # keeps the app's data
-ansible-playbook remove.yml -e podman_service_remove_data=true  # removes it as well
+ansible-playbook remove.yml                                        # keeps the service's directory
+ansible-playbook remove.yml -e podman_service_remove_workdir=true  # removes it as well
 ```
 
 This removes what the deploy created on each server: the service, its account
-(with its home directory and images), the Quadlet and environment files, the
-image archives and the config files. `/opt/{{ __node_setup_service }}/`, with everything
-the app wrote, stays unless you ask; a later deploy hands it to the new account.
+(with its home directory and images), the Quadlet and environment files and the
+image archives. `/opt/{{ __node_setup_service }}/`, with everything the app wrote and its
+config files, stays as it is unless you ask; a later deploy hands it to the new account.
 
 ## Download sources
 

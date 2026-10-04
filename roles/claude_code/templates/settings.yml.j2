@@ -19,6 +19,7 @@ claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc
 claude_code_version: ""                # empty: the repository's newest, so every build updates; or e.g. "2.1.211"
 
 # Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
+claude_code_bypass_permissions: false  # true: sessions start in bypassPermissions mode; also -e claude_code_bypass_permissions=true
 podman_service_tmp_size: 512m          # Claude's /tmp, in memory
 podman_service_shared: true            # the shared zone /opt/containers/shared/, shared with the other services
 podman_service_user: ""                # the account Claude runs as; empty: claude-code

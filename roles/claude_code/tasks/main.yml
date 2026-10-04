@@ -10,15 +10,17 @@
   ansible.builtin.set_fact:
     __claude_code_found_archives: "{{ query('fileglob', __claude_code_images ~ '/' ~ __claude_code_name ~ '-*.tar') }}"
 
-- name: Check there is one image archive, and the environment file
+- name: Check there is one image archive, the environment file and the policy
   ansible.builtin.assert:
     that:
       - __claude_code_found_archives | length == 1
       - (claude_code_ansible_dir ~ '/container.env') is file
+      - (__claude_code_root ~ '/config/managed-settings.json') is file
     fail_msg: >-
       The deploy needs one image archive in {{ __claude_code_images }} (build it: ansible-playbook image.yml; found
-      {{ __claude_code_found_archives | length }}) and {{ claude_code_ansible_dir }}/container.env, which holds the
-      container's settings and secrets and is not in git (create it; it may be empty).
+      {{ __claude_code_found_archives | length }}), {{ claude_code_ansible_dir }}/container.env, which holds the
+      container's settings and secrets and is not in git (create it; it may be empty), and the policy,
+      {{ __claude_code_root }}/config/managed-settings.json.
     quiet: true
 
 - name: Note the version to deploy
@@ -28,18 +30,19 @@
       {{ __claude_code_found_archives[0] | basename
          | regex_replace('^' ~ __claude_code_name ~ '-', '') | regex_replace('[.]tar$', '') }}
 
-# claude-code opens its sessions in tmux on the server. Installed only when
-# missing: only then does the server need its package repositories.
-- name: Look up tmux
-  ansible.builtin.stat:
-    path: /usr/bin/tmux
-  register: __claude_code_tmux
-
-- name: Install tmux when it is missing
-  ansible.builtin.package:
-    name: tmux
-    state: present
-  when: not __claude_code_tmux.stat.exists
+# config/ becomes /etc/claude-code/ in the container: the policy, Claude's
+# instructions (CLAUDE.md) and any other file Claude Code reads there. The policy
+# is read here, which also checks it is valid JSON, and gets the starting
+# permission mode bypassPermissions when claude_code_bypass_permissions is true.
+- name: Note the files of /etc/claude-code
+  vars:
+    __claude_code_policy: "{{ lookup('file', __claude_code_root ~ '/config/managed-settings.json') | from_json }}"
+    __claude_code_bypass: "{{ {'permissions': {'defaultMode': 'bypassPermissions'}} if claude_code_bypass_permissions | bool else {} }}"
+  ansible.builtin.set_fact:
+    __claude_code_config_files: >-
+      {{ query('fileglob', __claude_code_root ~ '/config/*') | reject('search', '/managed-settings[.]json$') | list
+         + [{'name': 'managed-settings.json',
+             'content': (__claude_code_policy | combine(__claude_code_bypass, recursive=True)) | to_nice_json(indent=2, sort_keys=False)}] }}
 
 # The Quadlet template is the project's (ansible/templates/service.container.j2,
 # from the setup, for the project to tune) if it has one, else podman_service's.
@@ -54,8 +57,25 @@
     podman_service_image: localhost/{{ __claude_code_name }}:{{ __claude_code_version }}
     podman_service_archive: "{{ __claude_code_archive }}"
     podman_service_env_file: "{{ claude_code_ansible_dir }}/container.env"
-    podman_service_config_files: ["{{ __claude_code_root }}/managed-settings.json"]
+    podman_service_config_files: "{{ __claude_code_config_files }}"
     podman_service_quadlet_template: "{{ __claude_code_template if __claude_code_template is file else '' }}"
+
+# Claude Code reads ~/.bashrc when it starts a session's shell. RHEL's default
+# one loads /etc/bashrc and with it /etc/profile.d/, where the image's nvm is.
+# Written once, as useradd would from /etc/skel; it is Claude's from then on.
+- name: Give Claude's home RHEL's default .bashrc, if it has none
+  ansible.builtin.copy:
+    content: |
+      # .bashrc, as RHEL's /etc/skel has it: loads /etc/bashrc, which loads
+      # /etc/profile.d/*.sh (nvm among them). Written once by the deploy; yours to change.
+      if [ -f /etc/bashrc ]; then
+        . /etc/bashrc
+      fi
+    dest: "{{ __claude_code_dir }}/.bashrc"
+    owner: "{{ __claude_code_user }}"
+    group: "{{ __claude_code_user }}"
+    mode: "0644"
+    force: false
 
 - name: Install the command that enters Claude Code, /usr/local/sbin/{{ __claude_code_name }}
   ansible.builtin.template:
@@ -68,5 +88,6 @@
 - name: Show how to enter Claude Code
   ansible.builtin.debug:
     msg: >-
-      Claude Code {{ __claude_code_version }} runs as the service {{ __claude_code_name }}. Enter your own session as
-      root on the server: sudo -i, then {{ __claude_code_name }}. Detach with Ctrl-b d.
+      Claude Code {{ __claude_code_version }} runs as the service {{ __claude_code_name }}{{ ', starting its sessions
+      in bypassPermissions mode' if claude_code_bypass_permissions | bool else '' }}. Enter it as root on the server:
+      sudo -i, then {{ __claude_code_name }}.

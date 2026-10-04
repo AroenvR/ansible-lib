@@ -94,21 +94,23 @@ servers.
 ## Claude Code: an always-on agent for root
 
 An always-on Claude Code agent on a server, in a rootless container on Red Hat's
-UBI 9, which every root user enters for a tmux session of their own. One command
-writes the project, a repository of its own, into an empty directory:
+UBI 9, which root reaches from a terminal. One command writes the project, a
+repository of its own, into an empty directory:
 
 ```sh
 ansible-playbook aslib.infra.claude_setup
 cd ansible
 ansible-playbook build-and-deploy.yml           # build the image with the newest Claude Code, deploy it
 sudo -i                                         # then, on the server:
-claude-code                                     # your own session; detach with Ctrl-b d
+claude-code                                     # Claude, in the container; arguments go to claude
 ```
 
-The project holds the Containerfile, the policy (`managed-settings.json`) and,
-in `ansible/`, the same kind of playbooks and guide as a Node.js project. Claude
-works in its home, `/opt/claude-code/`, and the shared zone. Every build is also
-the update to Claude Code's newest version. See [claude_code](roles/claude_code/README.md).
+The project holds the Containerfile, `config/` (the policy and Claude's
+instructions, `CLAUDE.md`) and, in `ansible/`, the same kind of playbooks and
+guide as a Node.js project. Claude works in its home, `/opt/claude-code/`, and the
+shared zone. Every build is also the update to Claude Code's newest version;
+`-e claude_code_bypass_permissions=true` deploys it without permission prompts.
+See [claude_code](roles/claude_code/README.md).
 
 ## What runs on a server
 
@@ -165,7 +167,7 @@ role's README says so.
 | [node_deploy](roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot, with podman_service | Servers (RHEL 9.2+) | No |
 | [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | Only if the `acl` package is missing |
 | [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with the log of those that do not run | Servers (RHEL 9.2+) | No |
-| [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.2+) | To build: Red Hat's registry and Anthropic's repository. To deploy: only if tmux or acl is missing |
+| [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.2+) | To build: Red Hat's registry, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
 
 Every role documents its variables; read them offline with
 `ansible-doc -t role aslib.infra.<role>`.
@@ -203,7 +205,7 @@ Tested on every change, in CI:
 - a service's deploy, update, overview, removal and redeploy as another
   account, on a RHEL 9 test container, next to Claude Code (with a stand-in for
   it) on the same server: separate accounts and UIDs, the shared zone both ways,
-  a session per root user, and Claude Code's removal;
+  root running Claude Code, its read-only policy, and its removal;
 - the Claude Code project's setup, update and real image build.
 
 Not tested yet:

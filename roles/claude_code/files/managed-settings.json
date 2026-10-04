@@ -3,9 +3,11 @@
     "DISABLE_AUTOUPDATER": "1",
     "DISABLE_TELEMETRY": "1"
   },
+  "autoMemoryDirectory": "/opt/claude-code/memory",
+  "plansDirectory": "./plans",
   "permissions": {
     "blockReadsOutsideWorkingDirectories": true,
-    "additionalDirectories": ["/opt/containers/shared"],
+    "additionalDirectories": ["/opt/claude-code", "/opt/containers/shared"],
     "deny": [
       "Read(//opt/claude-code/.claude/**)",
       "Edit(//opt/claude-code/.claude/**)",

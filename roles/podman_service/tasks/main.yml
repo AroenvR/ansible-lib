@@ -155,23 +155,31 @@
 
 # config/ mirrors podman_service_config_files and is mounted read-only. The files
 # belong to the account, as Podman can only relabel its own files for SELinux.
+# An entry is a file's path, or a mapping with its name and content.
 - name: Copy the config files
   ansible.builtin.copy:
-    src: "{{ __podman_service_config_file }}"
-    dest: "{{ __podman_service_dir }}/config/"
+    src: "{{ __podman_service_config_file if __podman_service_config_file is string else omit }}"
+    content: "{{ omit if __podman_service_config_file is string else __podman_service_config_file.content }}"
+    dest: "{{ __podman_service_dir }}/config/{{ __podman_service_config_name }}"
     owner: "{{ __podman_service_user }}"
     group: "{{ __podman_service_user }}"
     mode: "0644"
   loop: "{{ podman_service_config_files }}"
   loop_control:
     loop_var: __podman_service_config_file
-    label: "{{ __podman_service_config_file | basename }}"
+    label: "{{ __podman_service_config_name }}"
+  vars:
+    __podman_service_config_name: >-
+      {{ __podman_service_config_file | basename if __podman_service_config_file is string
+         else __podman_service_config_file.name }}
   notify: Restart the service
 
 - name: Find config files that are no longer in podman_service_config_files
   ansible.builtin.find:
     paths: "{{ __podman_service_dir }}/config"
-    excludes: "{{ podman_service_config_files | map('basename') | list }}"
+    excludes: >-
+      {{ podman_service_config_files | select('string') | map('basename') | list
+         + podman_service_config_files | reject('string') | map(attribute='name') | list }}
   register: __podman_service_stale_config
 
 - name: Remove config files that are no longer in podman_service_config_files

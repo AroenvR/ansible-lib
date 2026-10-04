@@ -175,37 +175,25 @@
         path: /usr/local/sbin/claude-code
       register: __node_deploy_test_command
 
-    # Each runs claude-code in a terminal of its own, a tmux session, as a root
-    # user at a keyboard would.
-    - name: Enter Claude Code as two root users
-      ansible.builtin.command:
-        argv: [tmux, new-session, -d, -s, "enter-{{ item }}", env, -u, TMUX, "SUDO_USER={{ item }}", /usr/local/sbin/claude-code, --test-arg]
-      loop: [alice, bob]
-      changed_when: true
+    - name: Look up the .bashrc the deploy gave Claude's home
+      ansible.builtin.stat:
+        path: /opt/claude-code/.bashrc
+      register: __node_deploy_test_bashrc
 
-    - name: Wait until both users' sessions run the stand-in for Claude Code
+    # As a script would, without a terminal; the stand-in reports and exits.
+    - name: Run Claude Code with claude-code, as root
       ansible.builtin.command:
-        argv: [tmux, capture-pane, -p, -t, "claude-{{ item }}"]
-      loop: [alice, bob]
-      register: __node_deploy_test_panes
-      until: __node_deploy_test_panes.stdout is search('policy readable')
-      retries: 15
-      delay: 2
+        argv: [/usr/local/sbin/claude-code, --test-arg]
+      register: __node_deploy_test_entered
       changed_when: false
 
-    - name: Detach both users, closing their terminals
-      ansible.builtin.command:
-        argv: [tmux, kill-session, -t, "enter-{{ item }}"]
-      loop: [alice, bob]
-      changed_when: true
-
-    - name: List the sessions left
-      ansible.builtin.command:
-        argv: [tmux, list-sessions, -F, "#{session_name}"]
-      register: __node_deploy_test_sessions
-      changed_when: false
-
-    - name: Check both services run as accounts of their own, share the shared zone, and each user has a session
+    - name: Check both services run as accounts of their own, share the shared zone, and root can run Claude Code
+      vars:
+        __node_deploy_test_claude_says:
+          - "mock claude as 1001 in /opt/claude-code with: --test-arg"
+          - policy readable
+          - instructions readable
+          - policy read-only
       ansible.builtin.assert:
         that:
           - __node_deploy_test_both.results | map(attribute='stdout') | list == ['active', 'active']
@@ -220,14 +208,38 @@
           - __node_deploy_test_containers_dir.stat.mode == '0755'
           - __node_deploy_test_command.stat.mode == '0750'
           - __node_deploy_test_command.stat.pw_name == 'root'
-          - __node_deploy_test_panes.results[0].stdout is search('mock claude as 1001 in /opt/claude-code with: --test-arg')
-          - __node_deploy_test_panes.results[1].stdout is search('mock claude as 1001 in /opt/claude-code with: --test-arg')
-          - __node_deploy_test_sessions.stdout_lines | sort == ['claude-alice', 'claude-bob']
+          - __node_deploy_test_bashrc.stat.pw_name == 'claude-code'
+          - __node_deploy_test_entered.stdout_lines == __node_deploy_test_claude_says
         success_msg: >-
           PASSED claude_code next to node_deploy: both came back after the restart, as accounts with UIDs
           {{ __node_deploy_test_uid }} and {{ __node_deploy_test_claude_uid }} and separate subordinate UID ranges;
-          a file one wrote to the shared zone the other read and changed; claude-code gave alice and bob a session
-          each, running Claude as 1001 in /opt/claude-code with the policy, which stayed when they detached.
+          a file one wrote to the shared zone the other read and changed; claude-code ran Claude as 1001 in
+          /opt/claude-code, which found its policy and instructions in /etc/claude-code and could not change them.
+
+    - name: Deploy Claude Code again, with claude_code_bypass_permissions
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code
+      vars:
+        podman_service_uid: ""
+        claude_code_bypass_permissions: "true"   # as -e claude_code_bypass_permissions=true passes it
+
+    - name: Read the policy the deploy installed
+      ansible.builtin.slurp:
+        src: /opt/claude-code/config/managed-settings.json
+      register: __node_deploy_test_policy
+
+    - name: Check the policy starts sessions in bypassPermissions mode and keeps the project's rules
+      vars:
+        __node_deploy_test_installed: "{{ __node_deploy_test_policy.content | b64decode | from_json }}"
+        __node_deploy_test_project_policy: "{{ lookup('file', node_deploy_test_claude_project ~ '/config/managed-settings.json') | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_installed.permissions.defaultMode == 'bypassPermissions'
+          - __node_deploy_test_installed.permissions.deny == __node_deploy_test_project_policy.permissions.deny
+          - __node_deploy_test_installed.autoMemoryDirectory == '/opt/claude-code/memory'
+        success_msg: >-
+          PASSED claude_code with claude_code_bypass_permissions installed the project's policy with
+          permissions.defaultMode bypassPermissions, its deny rules unchanged.
 
 - name: Check the overview shows both services, and the log of a service that does not run
   hosts: all
@@ -347,6 +359,22 @@
         url: http://127.0.0.1:3009/
       register: __node_deploy_test_old
 
+    - name: Note when Claude Code's container started, before the update
+      ansible.builtin.command:
+        argv: &node_deploy_test_claude_inspect
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - podman
+          - inspect
+          - --format=json
+          - claude-code
+        chdir: /
+      register: __node_deploy_test_claude_before
+      changed_when: false
+
     - name: Run node_deploy with the new version
       ansible.builtin.include_role:
         name: aslib.infra.node_deploy
@@ -381,16 +409,18 @@
       register: __node_deploy_test_images
       changed_when: false
 
-    - name: List the Claude Code sessions, which the Node.js update must leave alone
+    - name: Note when Claude Code's container started, after the update
       ansible.builtin.command:
-        argv: [tmux, list-sessions, -F, "#{session_name}"]
-      register: __node_deploy_test_sessions_after
+        argv: *node_deploy_test_claude_inspect
+        chdir: /
+      register: __node_deploy_test_claude_after
       changed_when: false
 
     - name: Check the new version runs with the old data and the new config, and only the new version is left
       ansible.builtin.assert:
         that:
-          - __node_deploy_test_sessions_after.stdout_lines | sort == ['claude-alice', 'claude-bob']
+          - (__node_deploy_test_claude_after.stdout | from_json)[0].State.StartedAt
+            == (__node_deploy_test_claude_before.stdout | from_json)[0].State.StartedAt
           - __node_deploy_test_new.json.version == '1.0.1'
           - __node_deploy_test_new.json.config == 'config/production, changed'
           - __node_deploy_test_config.files | map(attribute='path') | list == ['/opt/deploy-test-app/config/app.json']
@@ -400,9 +430,9 @@
         success_msg: >-
           PASSED node_deploy update: version 1.0.1 answers with the data of 1.0.0 (start count
           {{ __node_deploy_test_new.json.starts }}) and the changed config file; the removed config file,
-          the archive and the image of 1.0.0 are gone; the Claude Code sessions kept running.
+          the archive and the image of 1.0.0 are gone; Claude Code's container kept running throughout.
 
-- name: Check the removal takes away the service and keeps its data
+- name: Check the removal takes away the service and keeps its directory as it is
   hosts: all
   gather_facts: false
   vars_files: [vars/project.yml]
@@ -433,14 +463,18 @@
       loop:
         - /etc/containers/systemd/users/3001
         - /opt/containers/images/deploy-test-app
-        - /opt/deploy-test-app/config
         - /home/deploy-test-app
         - /var/lib/systemd/linger/deploy-test-app
       register: __node_deploy_test_leftovers
 
-    - name: Look for the app's data
+    # What the app wrote, in data/ and at the top (like a .db file), and its config.
+    - name: Look for what the service's directory holds
       ansible.builtin.stat:
-        path: /opt/deploy-test-app/data/starts
+        path: "{{ item }}"
+      loop:
+        - /opt/deploy-test-app/data/starts
+        - /opt/deploy-test-app/app.state
+        - /opt/deploy-test-app/config/app.json
       register: __node_deploy_test_kept
 
     - name: Query the service's port
@@ -456,12 +490,12 @@
           - (podman_overview_services | first).state == 'active'
           - ansible_facts.getent_passwd['deploy-test-app'] is none
           - __node_deploy_test_leftovers.results | selectattr('stat.exists') | map(attribute='item') | list == []
-          - __node_deploy_test_kept.stat.exists
+          - __node_deploy_test_kept.results | rejectattr('stat.exists') | map(attribute='item') | list == []
           - __node_deploy_test_gone.status == -1
         success_msg: >-
-          PASSED node_deploy remove: the account, its home directory, Quadlet directory, image archive,
-          config files and lingering are gone, nothing answers on port 3009 and podman_overview lists only
-          claude-code, still running; the app's data is still there, and a second run works.
+          PASSED node_deploy remove: the account, its home directory, Quadlet directory, image archive and
+          lingering are gone, nothing answers on port 3009 and podman_overview lists only claude-code, still
+          running; /opt/deploy-test-app is as it was (data/, app.state, config/), and a second run works.
 
 - name: Check a new deploy, as an account with another UID, takes over the data
   # Not 3002: claude-code, created after the account with 3001, took that one.
@@ -522,27 +556,54 @@
           {{ __node_deploy_test_again.json.starts }}), and a running service that got the shared zone later can
           write to it.
 
-- name: Check the removal with podman_service_remove_data takes the data as well
+- name: Check the removal with podman_service_remove_workdir takes the service's directory as well
   hosts: all
   gather_facts: false
   vars_files: [vars/project.yml]
   tasks:
-    - name: Remove the service and its data
+    - name: Remove the service with the setting's earlier name, podman_service_remove_data
+      block:
+        - name: Run node_deploy's removal with podman_service_remove_data
+          ansible.builtin.include_role:
+            name: aslib.infra.node_deploy
+            tasks_from: remove
+          vars:
+            podman_service_remove_data: "true"
+
+        - name: Fail, as the removal accepted the earlier name
+          ansible.builtin.fail:
+            msg: the removal accepted podman_service_remove_data
+      rescue:
+        - name: Note the message of the removal that stopped
+          ansible.builtin.set_fact:
+            __node_deploy_test_old_name: "{{ ansible_failed_result.msg }}"
+
+    - name: Look for the service's directory after the removal that stopped
+      ansible.builtin.stat:
+        path: /opt/deploy-test-app
+      register: __node_deploy_test_dir_kept
+
+    - name: Remove the service and its directory
       ansible.builtin.include_role:
         name: aslib.infra.node_deploy
         tasks_from: remove
       vars:
-        podman_service_remove_data: "true"   # as -e podman_service_remove_data=true passes it
+        podman_service_remove_workdir: "true"   # as -e podman_service_remove_workdir=true passes it
 
     - name: Look for the service's directory
       ansible.builtin.stat:
         path: /opt/deploy-test-app
       register: __node_deploy_test_dir
 
-    - name: Check the service's directory is gone
+    - name: Check the earlier name stopped the removal, and the current one removed the directory
       ansible.builtin.assert:
-        that: not __node_deploy_test_dir.stat.exists
-        success_msg: PASSED node_deploy remove with podman_service_remove_data=true removed /opt/deploy-test-app too.
+        that:
+          - __node_deploy_test_old_name is search('called podman_service_remove_workdir now')
+          - __node_deploy_test_dir_kept.stat.exists
+          - not __node_deploy_test_dir.stat.exists
+        success_msg: >-
+          PASSED podman_service remove stopped at podman_service_remove_data, naming podman_service_remove_workdir,
+          which then removed /opt/deploy-test-app too.
 
 - name: Check the deploy stops when the project still uses a setting's name from before 0.1.0
   hosts: all
@@ -609,7 +670,7 @@
           - "'localhost' not in __node_deploy_test_with"
         success_msg: PASSED podman_overview's playbook shows this machine without an inventory, and only the servers with one.
 
-- name: Check the removal of Claude Code takes its service, account and command, and keeps its directory and the shared zone
+- name: Check the removal of Claude Code takes its service, account and command, and keeps its directory as it is
   hosts: all
   gather_facts: false
   vars_files: [vars/project.yml]
@@ -636,22 +697,11 @@
         - /opt/containers/shared/test.txt
       register: __node_deploy_test_claude_left
 
-    # The sessions' panes ran Claude in the container, which is gone.
-    - name: Wait until the Claude Code sessions are gone
-      ansible.builtin.command:
-        argv: [tmux, list-sessions, -F, "#{session_name}"]
-      register: __node_deploy_test_sessions_gone
-      until: __node_deploy_test_sessions_gone.stdout_lines | select('match', '^claude-') | list == []
-      retries: 15
-      delay: 2
-      changed_when: false
-      failed_when: false  # tmux exits with 1 once its last session is gone
-
-    - name: Check the service, account, archive, policy and command are gone, and the data and the shared zone stay
+    - name: Check the service, account, archive and command are gone, and its directory and the shared zone stay
       ansible.builtin.assert:
         that:
           - ansible_facts.getent_passwd['claude-code'] is none
-          - __node_deploy_test_claude_left.results | map(attribute='stat.exists') | list == [false, false, false, true, true]
+          - __node_deploy_test_claude_left.results | map(attribute='stat.exists') | list == [false, false, true, true, true]
         success_msg: >-
-          PASSED claude_code remove: the service, its account, archive, policy, command and the users' sessions
-          are gone; /opt/claude-code and the shared zone's files stay.
+          PASSED claude_code remove: the service, its account, archive and command are gone; /opt/claude-code,
+          its config/ included, and the shared zone's files stay.

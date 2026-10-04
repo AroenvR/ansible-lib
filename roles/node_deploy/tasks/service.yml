@@ -11,7 +11,7 @@
 # that still sets one would silently get the default instead.
 - name: Check the project uses the current names of the service's settings
   vars:
-    __node_deploy_old_settings: "{{ query('varnames', '^node_deploy_(user|uid|dir|port|bind_address|container_port|tmp_size|remove_data)$') }}"
+    __node_deploy_old_settings: "{{ query('varnames', '^node_deploy_(user|uid|dir|port|bind_address|container_port|tmp_size)$') }}"
   ansible.builtin.assert:
     that: __node_deploy_old_settings | length == 0
     fail_msg: >-

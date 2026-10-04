@@ -13,11 +13,25 @@ ARG CLAUDE_CODE_REPOSITORY=https://downloads.claude.ai/claude-code/rpm/stable
 ARG CLAUDE_CODE_KEY_URL=https://downloads.claude.ai/keys/claude-code.asc
 # Empty: the newest version in the repository.
 ARG CLAUDE_CODE_VERSION=
+# nvm, the Node.js version manager: one script of a release, checked against its
+# SHA-256. A newer release needs both lines changed.
+ARG NVM_URL=https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh
+ARG NVM_SHA256=a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
 
-# Tools for Claude's sessions, from Red Hat's UBI repositories. Add what your
-# work needs here (UBI has a subset of RHEL's packages).
-RUN dnf install --assumeyes --setopt=install_weak_deps=False --nodocs \
-        git-core openssh-clients jq less procps-ng findutils which tar gzip diffutils shadow-utils \
+# Tools for Claude's sessions, all from Red Hat's UBI repositories (a subset of
+# RHEL's). Add what your work needs here:
+# - everyday tools: git, ssh, jq, archives, rsync, file, patch, ps, ip, vi;
+# - Python 3.12 with pip and headers (python3 stays 3.9, which RHEL's own tools
+#   use), and a compiler for native modules;
+# - Node.js 24 with npm (UBI's unversioned nodejs is 16, end of life);
+# - the clients of SQLite, MariaDB and PostgreSQL, with their headers.
+RUN dnf module enable --assumeyes nodejs:24 \
+    && dnf install --assumeyes --setopt=install_weak_deps=False --nodocs \
+        git-core openssh-clients jq less which findutils diffutils patch file procps-ng iproute vim-minimal \
+        tar gzip unzip xz zstd rsync shadow-utils \
+        python3.12 python3.12-pip python3.12-devel gcc gcc-c++ make pkgconf libffi-devel openssl-devel \
+        nodejs npm \
+        sqlite mariadb mariadb-connector-c-devel postgresql libpq-devel \
     && dnf clean all
 
 # Claude Code, after checking the repository's key is Anthropic's release key
@@ -34,18 +48,29 @@ RUN curl --fail --silent --show-error --location "$CLAUDE_CODE_KEY_URL" --output
     && dnf install --assumeyes --nodocs "claude-code${CLAUDE_CODE_VERSION:+-$CLAUDE_CODE_VERSION}" \
     && dnf clean all
 
+# nvm in the image, the Node.js versions it installs in the home (NVM_DIR, below).
+# Login shells load it; any other shell with `. /etc/profile.d/nvm.sh`.
+RUN mkdir -p /usr/local/share/nvm \
+    && curl --fail --silent --show-error --location "$NVM_URL" --output /usr/local/share/nvm/nvm.sh \
+    && echo "$NVM_SHA256  /usr/local/share/nvm/nvm.sh" | sha256sum --check --quiet \
+    && printf '%s\n' '# nvm, the Node.js version manager, from the Containerfile.' \
+         '[ -s /usr/local/share/nvm/nvm.sh ] && . /usr/local/share/nvm/nvm.sh' > /etc/profile.d/nvm.sh
+
 # Claude runs as the image's user 1001 (Red Hat's convention), which the service's
 # account becomes in the container. Its home is the service's directory on the
-# server, /opt/claude-code, mounted at the same path: Claude keeps its login and
-# history there. The policy, config/managed-settings.json in it (read-only), is
-# where Claude Code looks for an organisation's policy: /etc/claude-code/.
+# server, /opt/claude-code, mounted at the same path: Claude keeps its login,
+# history, memory and Node.js versions there. The project's config/ directory is
+# mounted read-only in it, as config/: /etc/claude-code/, where Claude Code reads
+# its policy and instructions.
 RUN groupadd --gid 1001 claude \
     && useradd --uid 1001 --gid 1001 --home-dir /opt/claude-code --no-create-home --shell /bin/bash claude \
     && ln -s /opt/claude-code/config /etc/claude-code
 
 USER 1001
 ENV HOME=/opt/claude-code \
-    CLAUDE_CONFIG_DIR=/opt/claude-code/.claude
+    CLAUDE_CONFIG_DIR=/opt/claude-code/.claude \
+    NVM_DIR=/opt/claude-code/.nvm \
+    PATH=/opt/claude-code/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WORKDIR /opt/claude-code
 
 # Always on: Claude itself runs in the sessions `podman exec ... claude` opens.

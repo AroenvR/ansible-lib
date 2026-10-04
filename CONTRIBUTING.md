@@ -62,9 +62,8 @@ Test containers (`dev/images/`) mimic default server installs. The RHEL one is
 based on UBI, whose repositories hold a subset of RHEL. On a subscribed RHEL
 host Podman gives it the full RHEL repositories. A test that needs more than a
 default install (`node_deploy` needs Podman) installs it in its `prepare.yml`,
-the way an administrator would. A package RHEL has but UBI lacks (tmux) comes
-from AlmaLinux 9's BaseOS, built from the same sources, limited to that package
-(`includepkgs`).
+the way an administrator would, and only what a default RHEL install has: what a
+role needs beyond it (acl), the role installs when missing.
 
 ## Workflow (test first)
 

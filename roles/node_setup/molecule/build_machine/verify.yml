@@ -19,12 +19,12 @@
           - lookup('file', __node_setup_test_dir ~ '/ansible.cfg') is search('^inventory = inventory\.yml$', multiline=True)
           - lookup('file', __node_setup_test_dir ~ '/ansible.cfg') is search('^callbacks_enabled = aslib\.infra\.run_log$', multiline=True)
           - (lookup('file', __node_setup_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
-          - lookup('file', __node_setup_test_dir ~ '/prebuild.yml') is search('import_playbook: aslib.infra.node_prebuild')
-          - lookup('file', __node_setup_test_dir ~ '/image.yml') is search('import_playbook: aslib.infra.node_image')
-          - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: aslib.infra.node_deploy')
-          - lookup('file', __node_setup_test_dir ~ '/build-and-deploy.yml') is search('import_playbook: image.yml')
-          - lookup('file', __node_setup_test_dir ~ '/remove.yml') is search('import_playbook: aslib.infra.node_remove')
-          - lookup('file', __node_setup_test_dir ~ '/update-playbooks.yml') is search('import_playbook: aslib.infra.node_update')
+          - "lookup('file', __node_setup_test_dir ~ '/prebuild.yml') is search('import_playbook: aslib.infra.node_prebuild')"
+          - "lookup('file', __node_setup_test_dir ~ '/image.yml') is search('import_playbook: aslib.infra.node_image')"
+          - "lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: aslib.infra.node_deploy')"
+          - "lookup('file', __node_setup_test_dir ~ '/build-and-deploy.yml') is search('import_playbook: image.yml')"
+          - "lookup('file', __node_setup_test_dir ~ '/remove.yml') is search('import_playbook: aslib.infra.node_remove')"
+          - "lookup('file', __node_setup_test_dir ~ '/update-playbooks.yml') is search('import_playbook: aslib.infra.node_update')"
           - lookup('file', __node_setup_test_dir ~ '/.gitignore').splitlines() is superset(['container.env', '*.bak', 'logs/'])
           - lookup('file', __node_setup_test_dir ~ '/templates/service.container.j2')
             == lookup('file', __node_setup_test_roles ~ '/podman_service/templates/service.container.j2')
@@ -118,8 +118,8 @@
       ansible.builtin.assert:
         that:
           - lookup('file', __node_setup_test_dir ~ '/container.env') == 'GREETING=kept'
-          - lookup('file', __node_setup_test_dir ~ '/group_vars/all/project.yml') == 'podman_service_port: 3009'
-          - lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: aslib.infra.node_deploy')
+          - "lookup('file', __node_setup_test_dir ~ '/group_vars/all/project.yml') == 'podman_service_port: 3009'"
+          - "lookup('file', __node_setup_test_dir ~ '/deploy.yml') is search('import_playbook: aslib.infra.node_deploy')"
           - lookup('file', __node_setup_test_dir ~ '/deploy.yml.bak') == '# changed locally'
           - (__node_setup_test_dir ~ '/image.yml.bak') is not exists
         success_msg: PASSED an update kept the project's files, restored deploy.yml and kept the local change in deploy.yml.bak.
@@ -146,7 +146,7 @@
       ansible.builtin.assert:
         that:
           - (__node_setup_test_dir ~ '/group_vars/all.yml') is not exists
-          - lookup('file', __node_setup_test_dir ~ '/group_vars/all/project.yml') == 'podman_service_port: 3009'
+          - "lookup('file', __node_setup_test_dir ~ '/group_vars/all/project.yml') == 'podman_service_port: 3009'"
           - (__node_setup_test_inventory.stdout | from_json).podman_service_port == 3009
           - (__node_setup_test_inventory.stdout | from_json).podman_service_tmp_size == '512m'
         success_msg: PASSED an older setup's group_vars/all.yml became group_vars/all/project.yml; its settings win, defaults.yml fills the rest.

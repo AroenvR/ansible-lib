@@ -42,7 +42,7 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   account cannot read it (RHEL's default). Only the deployed version stays:
   other versions' archives and the account's other images are removed. Its
   `remove` entry point removes the service with its account and files, keeping
-  the app's data unless `podman_service_remove_data` is true; a later deploy
+  its directory unless `podman_service_remove_workdir` is true; a later deploy
   takes the data over, also as an account with another UID. A service without a
   port (`podman_service_port: 0`) counts as started once it runs. The shared
   zone, /opt/containers/shared/ (`podman_service_shared`, on by default): every
@@ -61,13 +61,16 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Added role `claude_code` and playbook `aslib.infra.claude_setup`: an
   always-on Claude Code agent for root. The setup writes a project of its own
   (a Containerfile with Claude Code from Anthropic's signed dnf repository on
-  Red Hat UBI 9, the policy `managed-settings.json`, and `ansible/` with the
-  playbooks image.yml, deploy.yml, build-and-deploy.yml, remove.yml and
-  update-playbooks.yml); every build takes the repository's newest version
-  unless `claude_code_version` pins one. The deploy runs it with
+  Red Hat UBI 9, with Python 3.12, Node.js 24 and nvm, compilers and database
+  clients; `config/` with the policy `managed-settings.json` and the
+  instructions `CLAUDE.md`, installed read-only as /etc/claude-code; and
+  `ansible/` with the playbooks image.yml, deploy.yml, build-and-deploy.yml,
+  remove.yml and update-playbooks.yml). Every build takes the repository's newest
+  version unless `claude_code_version` pins one. The deploy runs it with
   `podman_service`, without a port, as the account `claude-code` with its home
-  in /opt/claude-code/, and installs `claude-code` for root, which opens the
-  calling root user's own tmux session running Claude in the container.
+  in /opt/claude-code/, and installs `claude-code` for root, which runs Claude
+  in the container, with or without a terminal. `claude_code_bypass_permissions`
+  starts its sessions without permission prompts.
 - Added callback plugin `aslib.infra.run_log`: each playbook run in a log file
   of its own, `logs/<playbook>-<UTC time>.log`, readable by its owner only.
 

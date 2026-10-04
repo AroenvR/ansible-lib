@@ -33,8 +33,8 @@ argument_specs:
     short_description: Remove a Node.js project's service, keeping its data unless asked
     description:
       - Removes what the deploy created, with aslib.infra.podman_service (entry point remove). The service's
-        directory, with the app's data, stays unless podman_service_remove_data is true, as in
-        C(ansible-playbook remove.yml -e podman_service_remove_data=true).
+        directory, with everything the app wrote, stays unless podman_service_remove_workdir is true, as in
+        C(ansible-playbook remove.yml -e podman_service_remove_workdir=true).
       - Runs from the project's ansible/ directory, as root on the server, like the deploy.
     options:
       node_deploy_ansible_dir:

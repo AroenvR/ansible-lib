@@ -8,7 +8,7 @@
     path: "{{ claude_code_project }}/{{ __claude_code_subdir }}"
     state: directory
     mode: "0755"
-  loop: [ansible/group_vars/all, ansible/templates]
+  loop: [config, ansible/group_vars/all, ansible/templates]
   loop_control:
     loop_var: __claude_code_subdir
 

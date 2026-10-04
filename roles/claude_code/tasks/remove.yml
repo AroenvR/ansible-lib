@@ -1,7 +1,7 @@
 ---
 # Entry point "remove": removes the service with aslib.infra.podman_service
 # (keeping its directory, with Claude's login and what it wrote, unless
-# podman_service_remove_data is true) and the claude-code command.
+# podman_service_remove_workdir is true) and the claude-code command.
 - name: Check this is a Claude Code project
   ansible.builtin.import_tasks: project.yml
 

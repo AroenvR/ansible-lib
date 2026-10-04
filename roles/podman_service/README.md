@@ -120,7 +120,7 @@ copy of this one, which lists the variables it can use.
 | `podman_service_uid` | (any free UID) | Fix the account's UID, e.g. the same on every server |
 | `podman_service_tmp_size` | `512m` | Size limit of the app's `/tmp`, which is in memory |
 | `podman_service_shared` | `true` | Give the service the shared zone, `/opt/containers/shared/` |
-| `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/` |
+| `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |
 | `podman_service_quadlet_template` | the role's | A Quadlet template of your own |
 
 ## Remove a service
@@ -135,10 +135,10 @@ copy of this one, which lists the variables it can use.
 ```
 
 Takes away what the deploy created: the service, its account (home directory,
-Podman storage and images included), the Quadlet and environment files, the
-image archives and the config files. The service's directory, with everything
-the app wrote, stays unless `podman_service_remove_data` is true; a later deploy
-uses it again. Running it again changes nothing. The shared directories
+Podman storage and images included), the Quadlet and environment files and the
+image archives. The service's directory, with everything the app wrote and its
+config files, stays as it is unless `podman_service_remove_workdir` is true; a
+later deploy uses it again. Running it again changes nothing. The shared directories
 (`/opt/containers/images/`, `/etc/containers/systemd/users/`, the shared zone with
 what the service wrote there) stay.
 

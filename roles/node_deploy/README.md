@@ -78,15 +78,15 @@ To go back, check out the previous version of the project and deploy that.
 ## Remove a service
 
 ```sh
-ansible-playbook remove.yml                                     # or: ansible-playbook aslib.infra.node_remove
-ansible-playbook remove.yml -e podman_service_remove_data=true  # the app's data too
+ansible-playbook remove.yml                                        # or: ansible-playbook aslib.infra.node_remove
+ansible-playbook remove.yml -e podman_service_remove_workdir=true  # the service's directory too
 ```
 
 Takes away what the deploy created: the service, its account (home directory,
-Podman storage and images included), the Quadlet and environment files, the
-image archives and the config files. The service's directory, with everything
-the app wrote, stays unless `podman_service_remove_data` is true; a later deploy
-uses it again. Running it again changes nothing.
+Podman storage and images included), the Quadlet and environment files and the
+image archives. The service's directory, with everything the app wrote and its
+config files, stays as it is unless `podman_service_remove_workdir` is true; a
+later deploy uses it again. Running it again changes nothing.
 
 ## What a server needs
 

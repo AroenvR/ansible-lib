@@ -49,11 +49,12 @@ argument_specs:
           quotes. It may hold secrets, never shows in Ansible's output, and is readable by root and the account only.
       podman_service_config_files:
         type: list
-        elements: path
+        elements: raw
         default: []
         description:
-          - Config files on the Ansible machine. The deploy copies them into config/ in the service's directory,
-            removes files that are no longer listed, and restarts the service when they change.
+          - Config files on the Ansible machine, or for a file made from a variable, a mapping with its name (C(name))
+            and text (C(content)). The deploy copies them into config/ in the service's directory, removes files that
+            are no longer listed, and restarts the service when they change.
           - The app finds them read-only in config/ in its working directory.
       podman_service_quadlet_template:
         type: str
@@ -100,12 +101,12 @@ argument_specs:
         description: Give the service the shared zone, /opt/containers/shared/, which every service with this setting
           may read and write.
   remove:
-    short_description: Remove a service that aslib.infra.podman_service deployed, keeping its data unless asked
+    short_description: Remove a service that aslib.infra.podman_service deployed, keeping its directory unless asked
     description:
       - Stops the service and removes its account (with the account's home directory, Podman storage and
-        images), its Quadlet and environment files, its image archives and its config files. The service's
-        directory, with the app's data, stays unless I(podman_service_remove_data) is true; a later deploy uses it
-        again. Running it again changes nothing.
+        images), its Quadlet and environment files and its image archives. The service's directory, its working
+        directory with everything the app wrote and its config files, stays as it is unless
+        I(podman_service_remove_workdir) is true; a later deploy uses it again. Running it again changes nothing.
       - Works as root on the server, like the deploy.
     options:
       podman_service_name:
@@ -120,7 +121,7 @@ argument_specs:
         type: str
         default: ""
         description: The service's own directory on the server. Empty means /opt/<service>.
-      podman_service_remove_data:
+      podman_service_remove_workdir:
         type: bool
         default: false
-        description: Also remove the service's directory, B(with the app's data).
+        description: Also remove the service's directory, B(with everything the app wrote there).

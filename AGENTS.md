@@ -256,8 +256,20 @@ source of truth.
   while the test server had it from prepare.yml, so the tests missed it.
   Roles install what they need when it is missing; prepare.yml installs only what
   a default RHEL install would have.
-- Red Hat's UBI repositories lack tmux (RHEL has it in BaseOS), so the RHEL test
-  server adds AlmaLinux 9's BaseOS, limited to tmux and libevent.
+- Red Hat's UBI repositories lack tmux (RHEL has it in BaseOS) and shellcheck;
+  UBI's unversioned nodejs is 16 (end of life), so enable a module stream
+  (`nodejs:24`). The policy deny `Read(//opt/claude-code/.claude/**)` blocks a
+  whole Bash command that touches `.claude/`, and Claude's default memory
+  location (`~/.claude/projects/<project>/memory/`) with it: the policy sets
+  `autoMemoryDirectory` instead (an allow rule cannot override a deny).
+- Claude Code sources `~/.bashrc` when it starts a session's shell (documented)
+  and keeps its functions. The image's nvm is in /etc/profile.d, so the deploy
+  writes RHEL's default `.bashrc` (which loads /etc/bashrc and profile.d) into
+  Claude's home when it has none: useradd never did, as the home is the
+  service's directory. Not verified in a real session yet.
+- A plain YAML list item containing `: ` is a mapping, not text: an assert's
+  `- lookup(...) is search('key: value')` was such a mapping, and assert passed it
+  without checking anything. Quote such conditions (`- "..."`).
 - YAML flow lists split on commas: an argument like `setfacl --modify=a,b`
   belongs in a block list.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
@@ -272,10 +284,10 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   deployed and ran on their RHEL server. Since then, not yet run in CI: the
   namespace `aslib`, `podman_service` and `podman_overview`, the run_log callback
   and `build-and-deploy.yml` (verified in the agent's sandbox).
-- claude_code: CI run #32 built the real image (build-machine and native jobs
-  green). Red Hat's UBI repositories lack tmux ("No package tmux available"), so
-  node_deploy's test server adds AlmaLinux 9's BaseOS for tmux and libevent only
-  (prepare.yml); not yet run in CI.
+- claude_code: CI run #34 passed everything; the maintainer's server runs it.
+  Since then, not yet in CI: config/ with CLAUDE.md, the bypass setting, the
+  command without tmux, and the Containerfile's new tools (Python 3.12, Node.js 24,
+  nvm, database clients), which only CI's real build checks.
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
@@ -305,7 +317,8 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
     locally. Only the guide names the project; it follows a project's life: set
     up, prebuild, build and deploy, check on it, update aslib.infra, remove.
     A new version is a new build and deploy (build-and-deploy.yml); remove.yml
-    keeps the app's data unless `-e podman_service_remove_data=true`.
+    keeps the service's directory, `/opt/<service>/` with all the app wrote,
+    unless `-e podman_service_remove_workdir=true`.
   - Config: the app reads `config/<file>.json` relative to where it runs. The
     deploy mirrors the project's `config/production/*.json` (not secret, no
     development files) into `/opt/<service>/config/`, read-only for the app.
@@ -336,14 +349,19 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
     maintainer's: creating a sqlcipher .db file); do not add any unasked.
 - Claude Code, decided with the maintainer: one always-on agent per server, as
   an account of its own (`claude-code`, home `/opt/claude-code/`), on UBI 9.
-  Whoever has root has the tool: `claude-code` opens a tmux session per root
-  user (`claude-<SUDO_USER>`) on the host, running `claude` in the container.
-  Claude works only in its home and the shared zone. Anthropic's stable channel;
-  every build is the update. Network restriction is a setting (the sandbox block
-  in the project's README.md), off by default. The image's tools are found out as
-  needed. The project is a repository of its own, written by
-  `aslib.infra.claude_setup`, the only collection playbook for it; everything
-  else is in its `ansible/`. Tests run it next to the Node.js service.
+  Whoever has root has the tool: `claude-code` runs `claude` in the container,
+  nothing more. Sessions (background ones, resuming, remote) are Claude Code's
+  own, and root users keep their terminals with tmux themselves: never manage
+  sessions for them. Claude works only in its home and the shared zone.
+  Anthropic's stable channel; every build is the update. Network restriction is
+  a setting (the sandbox block in the project's README.md), off by default. No
+  Podman in the container for now (later, if needed: nested rootless as an
+  opt-in setting, never the host's socket). The project is a repository of its
+  own, written by `aslib.infra.claude_setup`, the only collection playbook for
+  it; everything else is in its `ansible/`. Until it is handed over, its files
+  (Containerfile, config/) are aslib.infra's to change; config/CLAUDE.md is the
+  maintainer's. `claude_code_bypass_permissions` is the POC's way to autonomy.
+  Tests run it next to the Node.js service.
 - The shared zone `/opt/containers/shared/`, decided with the maintainer: every
   service reads and writes it; a default ACL keeps everything group-writable
   ("tighten later, once the flows work"). Write coordination is the apps' job.

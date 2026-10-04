@@ -1,10 +1,10 @@
 # aslib.infra.claude_code
 
-An always-on Claude Code agent on RHEL 9 servers, which root enters for an
-interactive session. Claude Code runs in a rootless Podman container on Red Hat's
-UBI 9, as an account of its own, through [podman_service](../podman_service/README.md).
-Each root user gets a tmux session of their own on the server: if you have root,
-you have the tool.
+An always-on Claude Code agent on RHEL 9 servers, which root reaches from a
+terminal. Claude Code runs in a rootless Podman container on Red Hat's UBI 9, as
+an account of its own, through [podman_service](../podman_service/README.md): if
+you have root, you have the tool. Sessions, background sessions and resuming
+them are Claude Code's own (`claude --help`).
 
 Start a project, a repository of its own, from an empty directory:
 
@@ -13,15 +13,15 @@ mkdir claude-code && cd claude-code && git init
 ansible-playbook aslib.infra.claude_setup
 cd ansible && ansible-playbook build-and-deploy.yml
 sudo -i                 # on the server
-claude-code             # your session; detach with Ctrl-b d
+claude-code             # Claude, in the container; arguments go to claude
 ```
 
 ## The project
 
 | File | What it is | Whose |
 |---|---|---|
-| `Containerfile` | UBI 9, the tools Claude needs, and Claude Code from Anthropic's signed dnf repository | The project's |
-| `managed-settings.json` | The policy (below), mounted read-only, never in the image | The project's |
+| `Containerfile` | UBI 9, the tools Claude needs (Python 3.12, Node.js 24 with nvm, compilers, database clients), and Claude Code from Anthropic's signed dnf repository | The project's |
+| `config/` | Claude Code's `/etc/claude-code/`: the policy `managed-settings.json` (below) and the instructions `CLAUDE.md` (a template). Mounted read-only, never in the image | The project's |
 | `.containerignore`, `README.md` | What stays out of the image; running it with plain Podman | The project's |
 | `ansible/inventory.yml`, `ansible/group_vars/all/project.yml`, `ansible/container.env` | The servers, the settings, the container's environment (git-ignored) | The project's |
 | `ansible/group_vars/all/defaults.yml` | Every setting at its default; `project.yml` wins | aslib.infra's |
@@ -40,44 +40,51 @@ README.md shows how).
 Without `claude_code_version`, the version is the newest in the repository
 (`stable` by default), so every build is also the update; the image only changes
 when that version or the Containerfile did. Needs Podman 3.4 or newer, Red Hat's
-registry and Anthropic's repository (or mirrors).
+registry, Anthropic's repository and GitHub (nvm), or mirrors of them.
 
 ## On the server
 
 | What | Where |
 |---|---|
 | The service and its account | `claude-code` (`podman_service_user`), no port |
-| Its home, with Claude's login and history | `/opt/claude-code/`, the same path in the container |
-| The policy | `/opt/claude-code/config/managed-settings.json`, read-only, seen as `/etc/claude-code/` |
+| Its home, with Claude's login, history, memory and notes | `/opt/claude-code/`, the same path in the container; a removal keeps it |
+| The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/` |
 | The shared zone | `/opt/containers/shared/`, with every other service of aslib.infra |
-| The command | `/usr/local/sbin/claude-code`, for root: `tmux new-session -A -s claude-<you>`, running `claude` in the container |
+| The command | `/usr/local/sbin/claude-code`, for root: runs `claude` in the container, with a terminal or without one (`claude-code -p "..."` in a script) |
 
-tmux runs on the server, not in the container, and is installed when missing.
-A new image or policy restarts the service, which ends the running sessions; the
-conversations stay (`claude-code --continue`).
+A new image, policy or `CLAUDE.md` restarts the service, which ends what runs in
+it; conversations stay (`claude-code --continue`, `--resume`).
 
 ## The policy
 
-`managed-settings.json` is where Claude Code reads an organisation's policy,
-above every other setting. It keeps Claude to its home and the shared zone, away
-from its login and config, `.env` files and the files that would run code at its
-next start (hooks, `.mcp.json`, `.git/config`), and turns off the self-updater
-and telemetry. The project's README.md shows how to limit its shell commands to
-an allowlist of hosts.
+`config/managed-settings.json` is where Claude Code reads an organisation's
+policy, above every other setting. It keeps Claude to its home and the shared
+zone, away from its login and config (`.claude/`), `.env` files and the files
+that would run code at its next start (hooks, `.mcp.json`, `.git/config`); keeps
+its memory in `/opt/claude-code/memory`; and turns off the self-updater and
+telemetry. The project's README.md shows how to limit its shell commands to an
+allowlist of hosts.
+
+Deny rules guard Claude's tools, not every program it runs; the container and
+its account are the boundary. Nothing in the container can change `config/`.
+
+**Without permission prompts:** `ansible-playbook deploy.yml -e
+claude_code_bypass_permissions=true` (or the setting in `project.yml`) installs
+the policy with `permissions.defaultMode: bypassPermissions`. The deny rules
+still apply. Claude Code asks once, in the first interactive session, to accept
+the mode; background sessions start only after that.
 
 ## Requirements
 
 - The Ansible machine: ansible-core; Podman 3.4 or newer to build.
-- The servers: what podman_service needs (RHEL 9.2 or newer with Podman), and
-  tmux or a repository that has it: RHEL's BaseOS does, Red Hat's UBI
-  repositories do not.
+- The servers: what podman_service needs (RHEL 9.2 or newer with Podman).
 
 ## Limitations
 
 - The tests build the real image (this role's build_machine scenario), but
   deploy a stand-in for Claude Code ([molecule/mock](molecule/mock/)), next to a
-  Node.js service, in [node_deploy](../node_deploy/README.md)'s scenario. Its
-  RHEL test server gets tmux from AlmaLinux 9's BaseOS, as UBI lacks it.
+  Node.js service, in [node_deploy](../node_deploy/README.md)'s scenario.
+- No Podman inside the container, on purpose for now.
 
 ## Options
 

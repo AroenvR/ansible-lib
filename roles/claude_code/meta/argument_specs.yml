@@ -6,27 +6,37 @@ argument_specs:
       - Deploys the image that the entry point image built (ansible/images/claude-code-<version>.tar) to the servers
         as the always-on service claude-code, with aslib.infra.podman_service, as an account of its own whose home is
         /opt/claude-code. Runs from the project's ansible/ directory (see the entry point setup).
-      - The container holds Claude Code and its tools, without a port. Its policy is the project's
-        managed-settings.json, mounted read-only where Claude Code reads an organisation's policy. Its environment
-        variables come from ansible/container.env. With podman_service_shared, Claude also works in the shared zone,
-        /opt/containers/shared/.
-      - Installs /usr/local/sbin/claude-code, for root, which opens the calling root user's own tmux session on the
-        server (claude-<user>), running Claude in the container. Installs tmux when it is missing.
-      - Servers need what aslib.infra.podman_service needs, and tmux or access to a repository that has it.
+      - The container holds Claude Code and its tools, without a port. The project's config/ directory, with the
+        policy managed-settings.json and Claude's instructions CLAUDE.md, is mounted read-only as /etc/claude-code,
+        where Claude Code reads them. The container's environment variables come from ansible/container.env. With
+        podman_service_shared, Claude also works in the shared zone, /opt/containers/shared/.
+      - Installs /usr/local/sbin/claude-code, for root, which runs Claude in the container, with or without a
+        terminal; its arguments go to claude.
+      - Servers need what aslib.infra.podman_service needs.
     options:
       claude_code_ansible_dir:
         type: str
         default: "{{ lookup('env', 'PWD') }}"
         description: The project's ansible/ directory, on the Ansible machine. Defaults to the current directory.
+      claude_code_bypass_permissions:
+        type: bool
+        default: false
+        description:
+          - Start Claude's sessions in bypassPermissions mode, without permission prompts. The deploy adds
+            C(permissions.defaultMode) to the policy it installs; the policy's deny rules still apply. Changing it
+            restarts the service.
+          - Claude Code asks once, in the first interactive session, to accept the mode; background sessions start
+            only after that.
   setup:
     short_description: Write a Claude Code project, ready to build and deploy with aslib.infra
     description:
       - Writes the project into an empty directory, for a git repository of its own, or brings an earlier one up to
         date. Needs nothing in the directory beforehand.
       - The project's files, written once and never touched again - Containerfile (Claude Code on Red Hat UBI 9 from
-        Anthropic's signed dnf repository, plus the tools Claude needs), .containerignore, managed-settings.json (the
-        policy) and README.md (building and running it with plain Podman); in ansible/, inventory.yml,
-        group_vars/all/project.yml (every setting at its default) and container.env (git-ignored).
+        Anthropic's signed dnf repository, plus the tools Claude needs), .containerignore, config/managed-settings.json
+        (the policy), config/CLAUDE.md (Claude's instructions, a template) and README.md (building and running it
+        with plain Podman); in ansible/, inventory.yml, group_vars/all/project.yml (every setting at its default) and
+        container.env (git-ignored).
       - aslib.infra's files in ansible/, brought up to date by every run - ansible.cfg, .gitignore, the guide
         README.md, group_vars/all/defaults.yml, the playbooks image.yml, deploy.yml, build-and-deploy.yml, remove.yml
         and update-playbooks.yml, and the Quadlet template templates/service.container.j2. A file that changes is kept
@@ -45,8 +55,8 @@ argument_specs:
         I(claude_code_repository), which a throwaway container of the base image looks up; a rebuild makes a new
         image only when that version or the Containerfile changed, so every build is also the update.
       - Keeps only that archive in images/, and only that image of the project on this machine.
-      - Needs Podman 3.4 or newer (RHEL 9, Ubuntu 22.04) and access to the base image's registry and to Anthropic's
-        repository, or to mirrors of them.
+      - Needs Podman 3.4 or newer (RHEL 9, Ubuntu 22.04) and access to the base image's registry, Anthropic's
+        repository and GitHub (nvm, see the Containerfile), or to mirrors of them.
     options:
       claude_code_ansible_dir:
         type: str
@@ -76,7 +86,7 @@ argument_specs:
     description:
       - Removes the service with aslib.infra.podman_service (entry point remove) and the claude-code command. The
         service's directory, /opt/claude-code with Claude's login and what it wrote, stays unless
-        podman_service_remove_data is true.
+        podman_service_remove_workdir is true.
       - Runs from the project's ansible/ directory, as root on the server, like the deploy.
     options:
       claude_code_ansible_dir:

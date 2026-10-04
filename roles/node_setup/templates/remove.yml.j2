@@ -1,7 +1,8 @@
 ---
 # Removes the service from the servers in inventory.yml: its account, images,
-# Quadlet file and config files. The app's data stays unless you ask:
+# Quadlet file and image archives. The service's directory, with the app's data and
+# config files, stays unless you ask:
 #   ansible-playbook remove.yml
-#   ansible-playbook remove.yml -e podman_service_remove_data=true
+#   ansible-playbook remove.yml -e podman_service_remove_workdir=true
 - name: Remove the service
   ansible.builtin.import_playbook: aslib.infra.node_remove
