@@ -1,8 +1,8 @@
 ---
 # Entry point "setup": writes the Claude Code project into claude_code_project,
 # an empty directory or an earlier setup: the project's files once, aslib.infra's
-# (in ansible/) every time, keeping a changed one as <file>.bak. Needs nothing in
-# the directory beforehand.
+# (the image's files and ansible/) every time, keeping a changed one as
+# <file>.bak. Needs nothing in the directory beforehand.
 - name: Create the project's directories
   ansible.builtin.file:
     path: "{{ claude_code_project }}/{{ __claude_code_subdir }}"
@@ -50,7 +50,7 @@
   check_mode: true
   register: __claude_code_ours_check
 
-- name: See whether the Quadlet template changes
+- name: See which of aslib.infra's plain files change
   ansible.builtin.copy:
     src: "{{ role_path }}/{{ __claude_code_file.src }}"
     dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"
@@ -85,7 +85,7 @@
     loop_var: __claude_code_file
     label: "{{ __claude_code_file.dest }}"
 
-- name: Write the Quadlet template
+- name: Copy aslib.infra's plain files
   ansible.builtin.copy:
     src: "{{ role_path }}/{{ __claude_code_file.src }}"
     dest: "{{ claude_code_project }}/{{ __claude_code_file.dest }}"

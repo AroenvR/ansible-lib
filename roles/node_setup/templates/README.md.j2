@@ -136,12 +136,12 @@ removed. To go back, check out the previous version of the project and deploy th
 ## 4. Check on it
 
 ```sh
-ansible-playbook aslib.infra.podman_overview      # add --ask-become-pass if sudo asks for a password
+ansible-playbook aslib.infra.overview      # add --ask-become-pass if sudo asks for a password
 ```
 
 Shows every service on the servers in `inventory.yml`, this one and others: its
-account, state, image and ports, and the latest log lines of each service that
-does not run. It changes nothing. On a server itself, the same command from any
+account, state, image, ports and the command that shows its log, and the latest
+log lines of each service that does not run. It changes nothing. On a server itself, the same command from any
 directory shows that server, or by hand:
 
 ```sh

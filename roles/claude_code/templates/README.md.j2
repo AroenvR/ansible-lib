@@ -10,7 +10,8 @@ output to a file of its own in `logs/`, such as `logs/deploy-20261003T081502Z.lo
 | `inventory.yml` | The servers to deploy to | Yours | Yes |
 | `group_vars/all/project.yml` | The project's settings: written with every default, then yours | Yours | Yes |
 | `container.env` | The container's environment variables and secrets, e.g. an API key | Yours | **No** |
-| `../Containerfile`, `../config/` | The image; the policy and Claude's instructions | Yours | Yes |
+| `../config/` | The policy and Claude's instructions | Yours | Yes |
+| `../Containerfile`, `../.containerignore`, `../README.md` | The image, what stays out of its build, running it with plain Podman | aslib.infra | Yes |
 | `group_vars/all/defaults.yml` | Every setting at aslib.infra's default; `project.yml` wins | aslib.infra | Yes |
 | `image.yml`, `deploy.yml`, `build-and-deploy.yml`, `restart.yml`, `remove.yml` | Build, deploy, both in one go, restart, remove | aslib.infra | Yes |
 | `templates/service.container.j2` | The Quadlet file: how Podman and systemd run the service | aslib.infra | Yes |
@@ -18,12 +19,14 @@ output to a file of its own in `logs/`, such as `logs/deploy-20261003T081502Z.lo
 | `images/`, `logs/`, `*.bak` | The built image, the log of every run, copies an update keeps | | No |
 
 Your files are never overwritten. aslib.infra's are brought up to date by every
-update (step 5), which keeps the old version of each changed file as `<file>.bak`.
+update (step 5), which keeps the old version of each changed file as `<file>.bak`:
+merge what you need from it, then remove it. At the project's root, a `.bak` is
+not git-ignored, so it shows until then.
 
 ## 1. Set up
 
 `ansible-playbook aslib.infra.claude_setup` wrote this project. Before the first
-deploy, look at what is yours: the tools in `../Containerfile`, the policy in
+deploy, look at what is yours: the policy in
 `../config/managed-settings.json` (see `../README.md`), Claude's instructions in
 `../config/CLAUDE.md`, the servers in `inventory.yml` (this machine by default)
 and the settings in `group_vars/all/project.yml`.
@@ -81,7 +84,7 @@ it; the conversations stay, so `{{ __claude_code_name }} --continue` resumes the
 ## 4. Check on it
 
 ```sh
-ansible-playbook aslib.infra.podman_overview      # every service, Claude Code included
+ansible-playbook aslib.infra.overview      # every service, Claude Code included, with how to read its log
 ```
 
 On the server: `sudo journalctl _SYSTEMD_USER_UNIT={{ __claude_code_name }}.service`.

@@ -1,6 +1,8 @@
 # Never sent to the image build: the deployment (with the built images and the
-# container's secrets in container.env), git's history, and config/ (the policy
-# and instructions), which the deploy mounts instead of baking it in.
+# container's secrets in container.env), git's history, config/ (the policy and
+# instructions), which the deploy mounts instead of baking it in, and the copies
+# an update keeps of the files it changes.
 ansible
 .git
 config
+*.bak

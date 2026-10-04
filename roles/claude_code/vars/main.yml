@@ -9,18 +9,20 @@ __claude_code_dir: /opt/claude-code
 #
 # The project's files, written when missing and never touched afterwards.
 __claude_code_theirs:
-  - { src: files/Containerfile, dest: Containerfile, mode: "0644" }
-  - { src: files/containerignore, dest: .containerignore, mode: "0644" }
   - { src: files/managed-settings.json, dest: config/managed-settings.json, mode: "0644" }
   - { src: files/CLAUDE.md, dest: config/CLAUDE.md, mode: "0644" }
-  - { src: templates/project-README.md.j2, dest: README.md, mode: "0644" }
   - { src: ../node_setup/templates/inventory.yml.j2, dest: ansible/inventory.yml, mode: "0644" }
   - { src: templates/settings.yml.j2, dest: ansible/group_vars/all/project.yml, mode: "0644" }
   - { src: templates/container.env.j2, dest: ansible/container.env, mode: "0600" }
 
 # aslib.infra's files, which every setup and update rewrites, keeping a changed
-# one as <file>.bak first. The Quadlet template is copied: the deploy renders it.
+# one as <file>.bak first. Those marked as_is are copied as they are: the build
+# reads the Containerfile, the deploy renders the Quadlet template. The image's
+# files are aslib.infra's while it builds the agent up; config/ is the project's.
 __claude_code_ours:
+  - { src: files/Containerfile, dest: Containerfile, as_is: true }
+  - { src: files/containerignore, dest: .containerignore, as_is: true }
+  - { src: templates/project-README.md.j2, dest: README.md }
   - { src: ../node_setup/templates/ansible.cfg.j2, dest: ansible/ansible.cfg }
   - { src: templates/gitignore.j2, dest: ansible/.gitignore }
   - { src: templates/settings.yml.j2, dest: ansible/group_vars/all/defaults.yml }

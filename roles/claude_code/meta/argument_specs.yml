@@ -32,15 +32,15 @@ argument_specs:
     description:
       - Writes the project into an empty directory, for a git repository of its own, or brings an earlier one up to
         date. Needs nothing in the directory beforehand.
-      - The project's files, written once and never touched again - Containerfile (Claude Code on Red Hat UBI 9 from
-        Anthropic's signed dnf repository, plus the tools Claude needs), .containerignore, config/managed-settings.json
-        (the policy), config/CLAUDE.md (Claude's instructions, a template) and README.md (building and running it
-        with plain Podman); in ansible/, inventory.yml, group_vars/all/project.yml (every setting at its default) and
-        container.env (git-ignored).
-      - aslib.infra's files in ansible/, brought up to date by every run - ansible.cfg, .gitignore, the guide
-        README.md, group_vars/all/defaults.yml, the playbooks image.yml, deploy.yml, build-and-deploy.yml, restart.yml,
-        remove.yml and update-playbooks.yml, and the Quadlet template templates/service.container.j2. A file that
-        changes is kept as <file>.bak first (one copy).
+      - The project's files, written once and never touched again - config/managed-settings.json (the policy),
+        config/CLAUDE.md (Claude's instructions, a template); in ansible/, inventory.yml, group_vars/all/project.yml
+        (every setting at its default) and container.env (git-ignored).
+      - aslib.infra's files, brought up to date by every run - the Containerfile (Claude Code on Red Hat UBI 9 from
+        Anthropic's signed dnf repository, plus the tools Claude needs), .containerignore and README.md (building and
+        running it with plain Podman); in ansible/, ansible.cfg, .gitignore, the guide README.md,
+        group_vars/all/defaults.yml, the playbooks image.yml, deploy.yml, build-and-deploy.yml, restart.yml, remove.yml
+        and update-playbooks.yml, and the Quadlet template templates/service.container.j2. A file that changes is kept
+        as <file>.bak first (one copy), for the project to merge from.
       - Runs on any machine with ansible-core. Needs no network access.
     options:
       claude_code_project:

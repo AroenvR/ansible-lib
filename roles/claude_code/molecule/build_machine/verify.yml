@@ -32,7 +32,7 @@
           - (lookup('file', __claude_code_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
           - __claude_code_test_env.stat.mode == '0600'
         success_msg: >-
-          PASSED claude_code wrote the project's Containerfile, policy and instructions in config/, guide, inventory
+          PASSED claude_code wrote the Containerfile, the policy and instructions in config/, the guide, the inventory
           and a private environment file.
 
     - name: Check aslib.infra's files are there, with their contents
@@ -153,31 +153,52 @@
             claude_code_base_image: {{ claude_code_test_mock_base }}
             {% endif %}
         - { file: ansible/container.env, content: "ANTHROPIC_API_KEY=kept\n" }
+        - { file: config/CLAUDE.md, content: "# changed locally\n" }
         - { file: ansible/deploy.yml, content: "# changed locally\n" }
       loop_control:
         loop_var: __claude_code_test_change
         label: "{{ __claude_code_test_change.file }}"
 
-    - name: Run update-playbooks.yml, then image.yml, from the project's ansible/ directory
+    - name: Run update-playbooks.yml from the project's ansible/ directory
       ansible.builtin.command:
-        argv: [ansible-playbook, "{{ item }}"]
+        argv: [ansible-playbook, update-playbooks.yml]
         chdir: "{{ __claude_code_test_dir }}"
       environment:
         ANSIBLE_CONFIG: "{{ __claude_code_test_dir }}/ansible.cfg"
         PWD: "{{ __claude_code_test_dir }}"
-      loop: [update-playbooks.yml, image.yml]
       changed_when: false
 
-    - name: Check the update kept the project's files and restored aslib.infra's, keeping the changed one as .bak
+    - name: Check the update kept the project's files and restored aslib.infra's, keeping each changed one as .bak
       ansible.builtin.assert:
         that:
-          - lookup('file', claude_code_test_project ~ '/Containerfile') is search('LABEL org.example.test=changed$')
+          - lookup('file', claude_code_test_project ~ '/Containerfile') == lookup('file', __claude_code_test_roles ~ '/claude_code/files/Containerfile')
+          - lookup('file', claude_code_test_project ~ '/Containerfile.bak') is search('LABEL org.example.test=changed$')
           - "lookup('file', __claude_code_test_dir ~ '/group_vars/all/project.yml') is match('podman_service_uid: 3100')"
           - lookup('file', __claude_code_test_dir ~ '/container.env') == 'ANTHROPIC_API_KEY=kept'
+          - lookup('file', claude_code_test_project ~ '/config/CLAUDE.md') == '# changed locally'
           - "lookup('file', __claude_code_test_dir ~ '/deploy.yml') is search('name: aslib.infra.claude_code')"
           - lookup('file', __claude_code_test_dir ~ '/deploy.yml.bak') == '# changed locally'
           - (__claude_code_test_dir ~ '/image.yml.bak') is not exists
-        success_msg: PASSED an update kept the project's files, restored deploy.yml and kept the local change in deploy.yml.bak.
+          - (claude_code_test_project ~ '/README.md.bak') is not exists
+        success_msg: >-
+          PASSED an update kept the project's settings, environment and config/, restored the Containerfile and
+          deploy.yml, and kept each local change as .bak.
+
+    # A project that wants its change keeps it from the .bak, as a developer would.
+    - name: Take the Containerfile's change back from Containerfile.bak
+      ansible.builtin.command:
+        argv: [mv, Containerfile.bak, Containerfile]
+        chdir: "{{ claude_code_test_project }}"
+      changed_when: true
+
+    - name: Run image.yml from the project's ansible/ directory
+      ansible.builtin.command:
+        argv: [ansible-playbook, image.yml]
+        chdir: "{{ __claude_code_test_dir }}"
+      environment:
+        ANSIBLE_CONFIG: "{{ __claude_code_test_dir }}/ansible.cfg"
+        PWD: "{{ __claude_code_test_dir }}"
+      changed_when: false
 
     - name: Find the image archive after the rebuild
       ansible.builtin.find:

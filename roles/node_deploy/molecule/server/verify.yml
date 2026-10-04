@@ -287,9 +287,10 @@
       ansible.builtin.include_role:
         name: aslib.infra.podman_overview
 
-    - name: Note the overview of the running service
+    - name: Note the overview of the running service, and what it showed root
       ansible.builtin.set_fact:
         __node_deploy_test_running: "{{ podman_overview_services }}"
+        __node_deploy_test_report: "{{ __podman_overview_report }}"
 
     - name: Stop the service
       ansible.builtin.command:
@@ -331,6 +332,8 @@
           - __node_deploy_test_node.image == 'localhost/deploy-test-app:1.0.0'
           - __node_deploy_test_node.ports == ['127.0.0.1:3009:3000']
           - __node_deploy_test_node.log == []
+          - __node_deploy_test_node.log_command == 'sudo journalctl _SYSTEMD_USER_UNIT=deploy-test-app.service -f'
+          - "__node_deploy_test_report is contains('  log: sudo journalctl _SYSTEMD_USER_UNIT=claude-code.service -f')"
           - __node_deploy_test_claude.account == 'claude-code'
           - __node_deploy_test_claude.state == 'active'
           - __node_deploy_test_claude.image == 'localhost/claude-code:0.0.1'
@@ -339,8 +342,8 @@
           - __node_deploy_test_stopped.log is search('deploy-test-app 1.0.0 listens')
           - __node_deploy_test_still.state == 'active'
         success_msg: >-
-          PASSED podman_overview: it showed deploy-test-app running as its account (UID 3001), with its image
-          and port, and claude-code without a port; then deploy-test-app {{ __node_deploy_test_stopped.state }} once
+          PASSED podman_overview: it showed deploy-test-app running as its account (UID 3001), with its image,
+          port and log command, and claude-code without a port; then deploy-test-app {{ __node_deploy_test_stopped.state }} once
           stopped, with the app's log lines, and claude-code still running.
 
 - name: Build a new version of the test project, as a developer would
@@ -713,7 +716,7 @@
             that: ansible_failed_result.msg is search('rename node_deploy_port to podman_service_port')
             success_msg: PASSED node_deploy stopped at node_deploy_port and named podman_service_port instead.
 
-- name: Check the overview playbook shows this machine without an inventory, and every server with one
+- name: Check the overview playbooks show this machine without an inventory, and every server with one
   hosts: localhost
   gather_facts: false
   tasks:
@@ -733,10 +736,10 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: List the hosts the overview playbook runs on
+    - name: List the hosts the overview playbooks run on
       ansible.builtin.command:
-        argv: [ansible-playbook, aslib.infra.podman_overview, --list-hosts, "--inventory={{ __node_deploy_test_inventories.path }}/{{ item }}"]
-      loop: [empty.yml, servers.yml]
+        argv: [ansible-playbook, "{{ item.0 }}", --list-hosts, "--inventory={{ __node_deploy_test_inventories.path }}/{{ item.1 }}"]
+      loop: "{{ ['aslib.infra.overview', 'aslib.infra.podman_overview'] | product(['empty.yml', 'servers.yml']) | list }}"
       register: __node_deploy_test_overview_hosts
       changed_when: false
 
@@ -745,16 +748,19 @@
         path: "{{ __node_deploy_test_inventories.path }}"
         state: absent
 
-    - name: Check the overview runs on this machine without servers, and on the servers otherwise
+    - name: Check each overview runs on this machine without servers, and on the servers otherwise
       vars:
-        __node_deploy_test_without: "{{ __node_deploy_test_overview_hosts.results[0].stdout_lines | map('trim') | list }}"
-        __node_deploy_test_with: "{{ __node_deploy_test_overview_hosts.results[1].stdout_lines | map('trim') | list }}"
+        __node_deploy_test_without: "{{ __node_deploy_test_overview_hosts.results[item * 2].stdout_lines | map('trim') | list }}"
+        __node_deploy_test_with: "{{ __node_deploy_test_overview_hosts.results[item * 2 + 1].stdout_lines | map('trim') | list }}"
       ansible.builtin.assert:
         that:
           - __node_deploy_test_without is superset(['hosts (1):', 'localhost'])
           - __node_deploy_test_with is superset(['hosts (2):', 'web1', 'web2'])
           - "'localhost' not in __node_deploy_test_with"
-        success_msg: PASSED podman_overview's playbook shows this machine without an inventory, and only the servers with one.
+        success_msg: >-
+          PASSED {{ __node_deploy_test_overview_hosts.results[item * 2].item.0 }} shows this machine without an
+          inventory, and only the servers with one.
+      loop: [0, 1]
 
 - name: Check the removal of Claude Code takes its service, account and command, and keeps its directory as it is
   hosts: all

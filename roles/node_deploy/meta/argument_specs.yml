@@ -42,7 +42,7 @@ argument_specs:
         description: The project's ansible/ directory, on the Ansible machine. Its parent holds package.json,
           which names the service.
   remove:
-    short_description: Remove a Node.js project's service, keeping its data unless asked
+    short_description: Remove a Node.js project's service, keeping its directory unless asked
     description:
       - Removes what the deploy created, with aslib.infra.podman_service (entry point remove). The service's
         directory, with everything the app wrote, stays unless podman_service_remove_workdir is true, as in

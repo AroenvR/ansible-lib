@@ -2,13 +2,15 @@
 
 Shows root what runs on a server: every rootless Podman service in
 `/etc/containers/systemd/users/<UID>/` (the convention of
-[podman_service](../podman_service/README.md)), with its account, state, image
-and ports, and the latest log lines of each service that does not run. It
-changes nothing.
+[podman_service](../podman_service/README.md)), with its account, state, image,
+ports and the command that shows its log, and the latest log lines of each
+service that does not run. It changes nothing. The playbook
+`aslib.infra.overview` runs it, as part of everything aslib.infra runs on the
+servers; `aslib.infra.podman_overview` runs it alone.
 
 ```sh
-ansible-playbook aslib.infra.podman_overview                  # this server, or every server in the inventory
-ansible-playbook aslib.infra.podman_overview --limit web1     # one of them
+ansible-playbook aslib.infra.overview                  # this server, or every server in the inventory
+ansible-playbook aslib.infra.overview --limit web1     # one of them
 ```
 
 On a server itself it needs no inventory: it then shows that server. From a
@@ -20,17 +22,19 @@ output, per server:
 ok: [web1] => {
     "msg": [
         "orders-api | active (running) since Sat 2026-10-03 08:15:02 UTC, 0 restarts | localhost/orders-api:1.4.0 | ports 127.0.0.1:3000:3000 | account orders-api (UID 3001)",
+        "  log: sudo journalctl _SYSTEMD_USER_UNIT=orders-api.service -f",
         "invoices | activating (auto-restart) since Sat 2026-10-03 09:01:44 UTC, 7 restarts | localhost/invoices:2.0.1 | ports 127.0.0.1:3001:3000 | account invoices (UID 3002)",
+        "  log: sudo journalctl _SYSTEMD_USER_UNIT=invoices.service -f",
         "    Oct 03 09:01:43 web1 invoices[2817]: Error: Cannot find module 'fs-extra'",
         "    ..."
     ]
 }
 ```
 
-A service that is not `active` gets its latest log lines (`podman_overview_log_lines`,
-20 by default), indented below it; a running service's output is one
-`journalctl` away (below). A service stopped by hand shows as `inactive`
-or `failed`, depending on how the app ends when it is told to stop.
+Below each service, the command that follows its log. A service that is not
+`active` also gets its latest log lines (`podman_overview_log_lines`, 20 by
+default). A service stopped by hand shows as `inactive` or `failed`, depending
+on how the app ends when it is told to stop.
 
 ## Why root needs this
 
@@ -68,8 +72,8 @@ playbooks that check on services:
 
 Each dictionary has `name`, `account`, `uid`, `state` and `substate` (systemd's
 ActiveState and SubState; `unknown` and `-` when the account or its systemd is gone),
-`since`, `restarts`, `image`, `ports` (a list) and `log` (a list of lines; empty
-for a service that runs). All options: `ansible-doc -t role aslib.infra.podman_overview`.
+`since`, `restarts`, `image`, `ports` (a list), `log` (a list of lines; empty
+for a service that runs) and `log_command`. All options: `ansible-doc -t role aslib.infra.podman_overview`.
 
 ## What a server needs
 

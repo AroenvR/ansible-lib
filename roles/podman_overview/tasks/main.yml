@@ -82,7 +82,8 @@
     loop_var: __podman_overview_quadlet
   register: __podman_overview_files
 
-# systemctl show prints Property=value lines.
+# systemctl show prints Property=value lines. Below each service: how to read its
+# log, then the latest lines of one that does not run.
 - name: Put the overview together
   ansible.builtin.set_fact:
     podman_overview_services: "{{ podman_overview_services + [__podman_overview_service] }}"
@@ -91,7 +92,8 @@
          + ['%s | %s | %s | ports %s | account %s (UID %s)' | format(
               __podman_overview_service.name, __podman_overview_status, __podman_overview_service.image,
               __podman_overview_service.ports | join(', ') or '-', __podman_overview_service.account or 'missing',
-              __podman_overview_service.uid)]
+              __podman_overview_service.uid),
+            '  log: ' ~ __podman_overview_service.log_command]
          + __podman_overview_service.log | map('regex_replace', '^', '    ') | list }}
   vars:
     __podman_overview_lines: "{{ __podman_overview_states.results[__podman_overview_i].stdout_lines }}"
@@ -115,12 +117,13 @@
       image: "{{ __podman_overview_file | regex_findall('^Image=(.*)$', multiline=True) | first | default('?') }}"
       ports: "{{ __podman_overview_file | regex_findall('^PublishPort=(.*)$', multiline=True) }}"
       log: "{{ __podman_overview_logs.results[__podman_overview_i].stdout_lines | default([]) }}"
+      log_command: "sudo journalctl _SYSTEMD_USER_UNIT={{ __podman_overview_quadlet | basename | regex_replace('[.]container$', '') }}.service -f"
   loop: "{{ __podman_overview_found }}"
   loop_control:
     loop_var: __podman_overview_quadlet
     index_var: __podman_overview_i
     label: "{{ __podman_overview_quadlet }}"
 
-- name: Show the services, with the latest log lines of those that do not run
+- name: Show the services, how to read their logs, and the latest log lines of those that do not run
   ansible.builtin.debug:
     msg: "{{ __podman_overview_report or ['No services in /etc/containers/systemd/users/.'] }}"

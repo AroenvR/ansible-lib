@@ -1,13 +1,16 @@
 # Claude Code, always on
 
 An always-on Claude Code agent in a rootless Podman container on Red Hat UBI 9,
-which root reaches from a terminal. This file and the project's other
-files at this level are yours; `ansible/` builds and deploys it with aslib.infra
-(see [ansible/README.md](ansible/README.md)).
+which root reaches from a terminal. `ansible/` builds and deploys it with
+aslib.infra (see [ansible/README.md](ansible/README.md)).
+
+`config/` is yours. The `Containerfile`, `.containerignore` and this README are
+aslib.infra's: `ansible/update-playbooks.yml` replaces them, keeping a changed
+one as `<file>.bak` to merge from.
 
 | File | What it is |
 |---|---|
-| `Containerfile` | The image: UBI 9, the tools Claude needs (add yours), and Claude Code from Anthropic's signed dnf repository |
+| `Containerfile` | The image: UBI 9, the tools Claude needs, and Claude Code from Anthropic's signed dnf repository |
 | `config/` | Claude Code's `/etc/claude-code/`, mounted read-only, never in the image: `managed-settings.json`, the policy Claude Code reads as an organisation's, above every other setting; `CLAUDE.md`, the instructions it reads in every session (a template: make it yours) |
 | `.containerignore` | What never goes into the image build |
 | `ansible/` | Building, deploying and entering it on servers, with aslib.infra |

@@ -144,7 +144,7 @@ environment file, the config files or the Quadlet file changed.
 ## Remove a service
 
 ```yaml
-    - name: Remove the service, keeping its data
+    - name: Remove the service, keeping its directory
       ansible.builtin.import_role:
         name: aslib.infra.podman_service
         tasks_from: remove
@@ -182,11 +182,12 @@ server's repositories (RHEL's BaseOS) when it is missing.
 
 ## Check a service
 
-Every service on the servers in the inventory, with the log of those that do
-not run ([podman_overview](../podman_overview/README.md)):
+Every service on the servers in the inventory, with the command that shows its
+log, and the latest log lines of those that do not run
+([podman_overview](../podman_overview/README.md)):
 
 ```sh
-ansible-playbook aslib.infra.podman_overview
+ansible-playbook aslib.infra.overview
 ```
 
 One service, on its server:

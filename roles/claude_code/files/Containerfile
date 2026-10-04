@@ -1,6 +1,7 @@
-# Claude Code in an always-on container on Red Hat UBI 9. This file is the
-# project's: add the tools Claude needs to the first RUN. ansible/ builds and
-# deploys it (see ansible/README.md); README.md shows how with plain Podman.
+# Claude Code in an always-on container on Red Hat UBI 9. This file is
+# aslib.infra's: ansible/update-playbooks.yml replaces it, keeping a changed one
+# as Containerfile.bak. ansible/ builds and deploys it (see ansible/README.md);
+# README.md shows how with plain Podman.
 #
 # The build arguments have defaults, so `podman build .` works; ansible/image.yml
 # passes the settings in ansible/group_vars/all/ instead.

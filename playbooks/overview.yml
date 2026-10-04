@@ -1,0 +1,17 @@
+---
+# Shows what aslib.infra runs on the servers, each with the command that shows its
+# log, and the latest log lines of what does not run. Changes nothing. Each kind
+# of service aslib.infra deploys adds its overview here; so far there is one,
+# rootless Podman services (podman_overview). On a server itself, without an
+# inventory, it shows that server; from a directory with an inventory, such as a
+# project's ansible/ directory, every server in it:
+#   ansible-playbook aslib.infra.overview
+#   ansible-playbook aslib.infra.overview --limit <server>
+# It works as root, through sudo.
+- name: Show what aslib.infra runs on the servers
+  # Without an inventory Ansible only knows this machine, which "all" leaves out.
+  hosts: "{{ 'all' if groups['all'] else 'localhost' }}"
+  become: true
+  gather_facts: false
+  roles:
+    - role: aslib.infra.podman_overview

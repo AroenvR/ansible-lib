@@ -20,9 +20,9 @@ claude-code             # Claude, in the container; arguments go to claude
 
 | File | What it is | Whose |
 |---|---|---|
-| `Containerfile` | UBI 9, the tools Claude needs (Python 3.12, Node.js 24 with nvm, compilers, database clients), and Claude Code from Anthropic's signed dnf repository | The project's |
 | `config/` | Claude Code's `/etc/claude-code/`: the policy `managed-settings.json` (below) and the instructions `CLAUDE.md` (a template). Mounted read-only, never in the image | The project's |
-| `.containerignore`, `README.md` | What stays out of the image; running it with plain Podman | The project's |
+| `Containerfile` | UBI 9, the tools Claude needs (Python 3.12, Node.js 24 with nvm, compilers, database clients), and Claude Code from Anthropic's signed dnf repository | aslib.infra's |
+| `.containerignore`, `README.md` | What stays out of the image; running it with plain Podman | aslib.infra's |
 | `ansible/inventory.yml`, `ansible/group_vars/all/project.yml`, `ansible/container.env` | The servers, the settings, the container's environment (git-ignored) | The project's |
 | `ansible/group_vars/all/defaults.yml` | Every setting at its default; `project.yml` wins | aslib.infra's |
 | `ansible/image.yml`, `deploy.yml`, `build-and-deploy.yml`, `restart.yml`, `remove.yml`, `update-playbooks.yml` | Build, deploy, both, restart, remove, update these files | aslib.infra's |
@@ -30,9 +30,10 @@ claude-code             # Claude, in the container; arguments go to claude
 
 As with [node_setup](../node_setup/README.md): the project's files are written
 once and never touched again; aslib.infra's are brought up to date by every
-setup and `update-playbooks.yml`, each changed one kept as `<file>.bak`. The
-project needs nothing beforehand, and builds without aslib.infra too (its
-README.md shows how).
+setup and `update-playbooks.yml`, each changed one kept as `<file>.bak` for the
+project to merge from. The image's files are aslib.infra's while it builds the
+agent up, so every project gets the same tools. The project needs nothing
+beforehand, and builds without aslib.infra too (its README.md shows how).
 
 ## Building
 
@@ -94,4 +95,5 @@ the mode; background sessions start only after that.
 ## Options
 
 `ansible-doc -t role aslib.infra.claude_code` (entry points `setup`, `image`,
-`main` and `remove`); the service's settings are podman_service's.
+`main`, `restart` and `remove`); the service's settings are
+[podman_service's](../podman_service/README.md#settings).

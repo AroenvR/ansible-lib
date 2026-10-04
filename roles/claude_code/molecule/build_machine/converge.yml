@@ -4,12 +4,15 @@
   gather_facts: false
   vars_files: [vars/project.yml]
   tasks:
+    # The stand-in replaces aslib.infra's Containerfile, which every setup puts
+    # back: with the stand-in, the setup runs once (verify.yml runs it again).
     - name: Run the setup
       ansible.builtin.include_role:
         name: aslib.infra.claude_code
         tasks_from: setup
       vars:
         claude_code_project: "{{ claude_code_test_project }}"
+      when: claude_code_test_real | bool or not (claude_code_test_project ~ '/Containerfile') is file
 
     - name: Replace the Containerfile with the stand-in for Claude Code, where the real one cannot be built
       ansible.builtin.copy:

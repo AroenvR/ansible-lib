@@ -38,8 +38,8 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   systemd with `systemctl --user -M <user>@ ...`; roles use the same `runuser`
   prefix as for Podman (see Known pitfalls). A service's own directory is
   `/opt/<service>/`: the app's, its working directory at the same path inside
-  the container, never touched by a deploy except `config/` in it; its data
-  survives a removal unless asked. `podman_service` implements this; build every
+  the container, never touched by a deploy except `config/` in it; it
+  survives a removal unless asked (`podman_service_remove_workdir`). `podman_service` implements this; build every
   container-based role on it.
 - **Dependencies.** Development tools may be current but are pinned in
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
@@ -48,7 +48,10 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   complexity for a 1% case. SOLID applies at role level (see CONTRIBUTING.md).
 - **Documentation and linting are mandatory.** Every public role variable is
   documented in `meta/argument_specs.yml` with the same default as
-  `defaults/main.yml`; `make lint` enforces it.
+  `defaults/main.yml`; `make lint` enforces it. Each option and mechanism is
+  described once, by the role that owns it (podman_service for every service's
+  settings); other READMEs link to that section and name the option only where
+  a reader uses it. A new option then changes its own role, not every README.
 
 ## Commands
 
@@ -97,13 +100,19 @@ source of truth.
 
 - **Never lose the maintainer's edits.** Before changing a file, use the latest
   version the maintainer provided. Files they have edited so far:
-  `.gitignore` and the `on:` block of `.github/workflows/ci.yml` (including its
-  TODO comments; its push trigger was changed to every branch at their request).
-  Their repository may be ahead of the agent's copy: ask for the current
-  version of a file they may have changed before replacing it. Only change their
-  lines when they ask; suggest changes in chat instead.
-  They also keep private directories that are not in the zip and restore them
-  after overwriting; ignore them unless told otherwise.
+  `.gitignore`, the `on:` block of `.github/workflows/ci.yml` (including its
+  TODO comments; its push trigger was changed to every branch at their request)
+  and `.github/workflows/test.yml` (the starter workflow, fixed for lint with
+  `branches: ["main"]`). Their repository may be ahead of the agent's copy: ask
+  for the current version of a file they may have changed before replacing it.
+  Only change their lines when they ask; suggest changes in chat instead.
+- **The maintainer's own tooling.** `.env.example` and `.tools/archive_git.sh`
+  are in the repository and every zip exactly as they gave them; never change
+  them. `libs/bash/` is their Bash library (which `archive_git.sh` sources), a
+  git subtree they maintain: it is not in the agent's copy, so the zip lacks it,
+  and their copy stays as it is. The release tarball leaves all three out
+  (`build_ignore`). They also keep private directories that are not in the zip
+  and restore them after overwriting; ignore them unless told otherwise.
 - **Deliver every change as a complete zip** of the repository root (the zip
   root is the repository root), excluding `.git/`, `.venv/`, `dist/` and tool
   caches. The maintainer overwrites their checkout with it, so every file in the
@@ -296,19 +305,37 @@ source of truth.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
 
+## Looking inside a running service (field notes)
+
+Gathered while writing Claude's CLAUDE.md with the maintainer, as root on their
+server. Not a design yet: candidates for a later feature (one command or
+playbook for every podman_service service, a smoke test after a deploy).
+
+- A command in a service's container, as podman_service itself reaches it:
+  `cx() { (cd / && runuser -u <account> -- env XDG_RUNTIME_DIR=/run/user/<uid>
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus podman exec -i <service> "$@"); }`.
+  `cd /` because runuser keeps the working directory, which the account usually
+  cannot enter; `-i` so a script can come from a heredoc (`cx bash <<'EOF'`); the
+  bus address for the reason in Known pitfalls. It is `claude-code` without its
+  terminal handling.
+- Claude itself, without a terminal: `claude-code -p "<question>"
+  --permission-prompts none --allowedTools <tools>` shows what Claude's own shell
+  and permissions see, which differs from `cx` (its `.bashrc` snapshot, working
+  directories, deny rules). `--allowedTools` takes several values and swallows a
+  prompt that follows it: the prompt goes right after `-p`. `claude-code doctor`
+  checks Claude Code's own settings and installation.
+- The service's state on the host: `/opt/<service>/` as root.
+
 ## Status
 
-Last updated 2026-10-03, preparing release 0.1.0 from main (the first; no v*
-tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
+Last updated 2026-10-04, preparing release 0.2.0 on the development branch
+(v0.1.0 is tagged on main; `dev/ci/next-version.sh` gives galaxy.yml's 0.2.0).
 
-- GitHub Actions: run #25 passed everything; the maintainer's NestJS project then
-  deployed and ran on their RHEL server. Since then, not yet run in CI: the
-  namespace `aslib`, `podman_service` and `podman_overview`, the run_log callback
-  and `build-and-deploy.yml` (verified in the agent's sandbox).
-- claude_code: CI run #34 passed everything; the maintainer's server runs it.
-  Since then, not yet in CI: config/ with CLAUDE.md, the bypass setting, the
-  command without tmux, and the Containerfile's new tools (Python 3.12, Node.js 24,
-  nvm, database clients), which only CI's real build checks.
+- GitHub Actions: run #35 passed everything, and the maintainer's regression
+  tests on their RHEL server pass: the NestJS project and Claude Code side by
+  side. Since then, not yet in CI (verified in the agent's sandbox): the image's
+  files as aslib.infra's, `aslib.infra.overview` with each service's log
+  command, and the docs pass.
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
@@ -379,9 +406,11 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   Podman in the container for now (later, if needed: nested rootless as an
   opt-in setting, never the host's socket). The project is a repository of its
   own, written by `aslib.infra.claude_setup`, the only collection playbook for
-  it; everything else is in its `ansible/`. Until it is handed over, its files
-  (Containerfile, config/) are aslib.infra's to change; config/CLAUDE.md is the
-  maintainer's. `claude_code_bypass_permissions` is the POC's way to autonomy.
+  it; everything else is in its `ansible/`. Until it is handed over, its image
+  files (Containerfile, .containerignore, README.md) are aslib.infra's: every
+  update rewrites them, keeping a changed one as `.bak`, and merging is the
+  project maintainer's. config/ (the policy, CLAUDE.md) is the project's,
+  written once from aslib.infra's templates. `claude_code_bypass_permissions` is the POC's way to autonomy.
   Tests run it next to the Node.js service.
 - The shared zone `/opt/containers/shared/`, decided with the maintainer: every
   service reads and writes it; a default ACL keeps everything group-writable
@@ -396,6 +425,11 @@ tag exists, so `dev/ci/next-version.sh` gives galaxy.yml's 0.1.0).
   infer; nothing Claude Code's own prompt already covers. The policy denies edits
   to instruction files in Claude's home (CLAUDE.md, CLAUDE.local.md, AGENTS.md),
   which would load in every session.
+- Later, decided with the maintainer (SOLID at role level): node_setup and
+  claude_code each write their project with the same mechanism (theirs/ours
+  lists, `.bak`), and node_deploy and claude_code each wrap podman_service's
+  deploy, restart and remove. Extract a shared setup mechanism when a third kind
+  of project arrives, and generic lifecycle playbooks after that; not before.
 - Open: the license (`LICENSE` is a placeholder, decided later); a pinned source
   for aslib.infra in projects' pipelines once the release location is final.
 
