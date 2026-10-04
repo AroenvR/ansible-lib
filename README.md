@@ -163,9 +163,9 @@ role's README says so.
 | [node_setup](roles/node_setup/README.md) | Prepares a Node.js project: its `ansible/` directory with settings, inventory, playbooks and guide | The project's machine | No |
 | [node_image](roles/node_image/README.md) | Production container image of a Node.js project, and its node_modules for development, built in containers | The build machine | Yes, from sources you choose |
 | [node_deploy](roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot, with podman_service | Servers (RHEL 9.2+) | No |
-| [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | No |
+| [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | Only if the `acl` package is missing |
 | [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with the log of those that do not run | Servers (RHEL 9.2+) | No |
-| [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.2+) | To build: Red Hat's registry and Anthropic's repository. To deploy: only if tmux is missing |
+| [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.2+) | To build: Red Hat's registry and Anthropic's repository. To deploy: only if tmux or acl is missing |
 
 Every role documents its variables; read them offline with
 `ansible-doc -t role aslib.infra.<role>`.

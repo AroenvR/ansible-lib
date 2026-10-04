@@ -99,7 +99,8 @@ ansible-playbook remove.yml -e podman_service_remove_data=true  # removes it as 
 
 ## Download sources
 
-`image.yml` downloads; `deploy.yml` does not (but installs tmux when missing).
+`image.yml` downloads; `deploy.yml` does not, but installs tmux and acl (for the
+shared zone) from the server's repositories when they are missing.
 
 | What | Set in the project | Set on the machine that builds |
 |---|---|---|

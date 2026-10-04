@@ -3,9 +3,11 @@
   hosts: all
   gather_facts: false
   tasks:
-    - name: Install Podman, the PAM module that starts an account's systemd instance, and setfacl
+    # Not acl (setfacl) or tmux: podman_service and claude_code install them when
+    # missing, as on a minimal RHEL install.
+    - name: Install Podman, and the PAM module that starts an account's systemd instance
       ansible.builtin.dnf:
-        name: [podman, systemd-pam, acl]
+        name: [podman, systemd-pam]
         state: present
 
     # claude_code installs tmux when a server lacks it. RHEL has it in BaseOS;

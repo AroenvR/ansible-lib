@@ -85,7 +85,8 @@ everything created in it writable by the group, whichever service created it.
 Agreeing on who writes what is up to the apps. A service joins with its next
 deploy; one that leaves (`podman_service_shared: false`) keeps the group but no
 longer sees the directory. With SELinux, the directory is labelled for
-containers. Needs `setfacl` (the `acl` package, part of every RHEL 9 install).
+containers. The default ACL needs `setfacl`: the deploy installs the `acl`
+package when a server lacks it, as a minimal RHEL install does.
 
 ## The Quadlet file
 
@@ -147,7 +148,9 @@ what the service wrote there) stay.
 - SSH access for Ansible as root or as an account that may use sudo
   (not needed when deploying to `localhost`).
 
-No network access: the image comes from the archive, not from a registry.
+No network access: the image comes from the archive, not from a registry. The
+one exception is the `acl` package for the shared zone, installed from the
+server's repositories (RHEL's BaseOS) when it is missing.
 
 ## Limitations
 

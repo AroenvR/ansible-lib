@@ -252,6 +252,10 @@ source of truth.
 - The command module expands `$VAR` and `~` in its arguments itself, also in
   `argv` (2.12, 2.14; `expand_argument_vars` came in 2.16): `sh -c 'echo $HOME'`
   prints Ansible's HOME, not the container's. Use `printenv HOME`.
+- The maintainer's RHEL 9 server lacked the `acl` package (getfacl, setfacl),
+  while the test server had it from prepare.yml, so the tests missed it.
+  Roles install what they need when it is missing; prepare.yml installs only what
+  a default RHEL install would have.
 - Red Hat's UBI repositories lack tmux (RHEL has it in BaseOS), so the RHEL test
   server adds AlmaLinux 9's BaseOS, limited to tmux and libevent.
 - YAML flow lists split on commas: an argument like `setfacl --modify=a,b`

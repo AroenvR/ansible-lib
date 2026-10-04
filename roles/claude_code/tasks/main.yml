@@ -30,14 +30,16 @@
 
 # claude-code opens its sessions in tmux on the server. Installed only when
 # missing: only then does the server need its package repositories.
-- name: Look up the installed packages
-  ansible.builtin.package_facts:
+- name: Look up tmux
+  ansible.builtin.stat:
+    path: /usr/bin/tmux
+  register: __claude_code_tmux
 
 - name: Install tmux when it is missing
   ansible.builtin.package:
     name: tmux
     state: present
-  when: "'tmux' not in ansible_facts.packages"
+  when: not __claude_code_tmux.stat.exists
 
 # The Quadlet template is the project's (ansible/templates/service.container.j2,
 # from the setup, for the project to tune) if it has one, else podman_service's.
