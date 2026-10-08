@@ -66,6 +66,7 @@ build-machine:
       - ANSIBLE: ["2.12", "2.14"]
   script:
     - make test-build-machine-$ANSIBLE PYTHON_COMPAT=python3.10
+    - make test-dist-$ANSIBLE PYTHON_COMPAT=python3.10
 
 native:
   stage: test

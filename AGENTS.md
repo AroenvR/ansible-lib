@@ -64,6 +64,7 @@ make setup images                          # once: venvs, test-only collections,
 make lint                                  # ansible-lint (production profile) + interface check
 make test-servers-2.12 ROLES=<role>        # roles that run on servers, in the test containers
 make test-build-machine-2.12 ROLES=<role>  # roles that run where Ansible runs
+make test-dist-2.12                        # build.yml, in a git checkout and without git
 make build                                 # everything CI runs: lint, 2.12 and 2.14, native test
 make dist                                  # tarball to try out in dist/ (runs build.yml)
 ```

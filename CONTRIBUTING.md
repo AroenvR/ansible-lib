@@ -39,7 +39,7 @@ The log has a banner per role (`##### node_image: build_machine tests,
 ansible-core 2.12 #####`); task names end with the test case they belong to,
 and every check ends with a `PASSED <role>: ...` line saying what it proved.
 
-Two more checks complete the picture:
+Three more checks complete the picture:
 
 - `make lint`: current ansible-lint (production profile), a check that every
   role documents its interface, a check that every condition is text (YAML turns
@@ -47,6 +47,11 @@ Two more checks complete the picture:
   without checking anything), and ansible-doc loading every plugin and its
   documentation. Lint runs on a modern ansible-core, so it does **not** prove a
   role works on 2.12; the Molecule tests do.
+- `make test-dist-<ansible-core>`: `build.yml` (`dev/test-build.yml`), on
+  copies of the checkout: in a git repository of its own, outside one, inside
+  another repository, and without git installed. Each must build a tarball,
+  named after the branch, commit and time in a checkout and after the time only
+  elsewhere, with a matching checksum.
 - `make test-native`: the roles that support Ubuntu 22.04 (`UBUNTU_ROLES` in the
   Makefile), run with Ubuntu's own `ansible-core` (2.12.0) and Podman (3.4)
   packages, after installing the release tarball the way a consumer does. The
@@ -190,4 +195,6 @@ and installs with `ansible-galaxy collection install --force <file>`.
 
 To try your work elsewhere before CI has published it, for example with a
 backend project, build it yourself: `ansible-playbook build.yml` (or `make dist`)
-writes the same kind of tarball as a branch build into `dist/`.
+writes the same kind of tarball as a branch build into `dist/`. Outside a git
+checkout, such as an exported copy, it is named after the time only:
+`aslib-infra.<UTC time>.tgz`.

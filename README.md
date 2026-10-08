@@ -31,6 +31,8 @@ Each tarball holds only what runs: no tests, no dev tooling.
   ansible-playbook build.yml   # writes dist/aslib-infra.<branch>.<commit>.<time>.tgz
   ```
 
+  A copy without git (an exported archive) builds too, as `dist/aslib-infra.<time>.tgz`.
+
   CI uses the same playbook for branch builds and releases; its header explains both.
 
 Install it on the control node, the machine that runs Ansible. `--force`

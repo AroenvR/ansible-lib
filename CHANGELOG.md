@@ -4,6 +4,13 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.2.2
+
+- Fixed: `build.yml` stopped when its directory was not a git checkout, such as
+  an exported copy, or when git was not installed. Such a build is now named
+  after the time only, `dist/aslib-infra.<UTC time>.tgz`. A copy inside another
+  checkout no longer takes that checkout's branch and commit.
+
 ## 0.2.0
 
 - Added role `claude_code` and playbook `aslib.infra.claude_setup`: an
