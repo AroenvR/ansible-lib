@@ -1,7 +1,8 @@
 {
   "env": {
     "DISABLE_AUTOUPDATER": "1",
-    "DISABLE_TELEMETRY": "1"
+    "DISABLE_TELEMETRY": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "autoMemoryDirectory": "/opt/claude-code/memory",
   "plansDirectory": "./plans",
