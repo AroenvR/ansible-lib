@@ -69,6 +69,8 @@ jobs:
           python-version: "3.10"
       # Roles such as node_image run on the build machine itself (here: the runner).
       - run: sudo make test-build-machine-${{ matrix.ansible }} PYTHON_COMPAT="$(command -v python3.10)"
+      # build.yml, which builds the tarballs, also runs where Ansible runs.
+      - run: sudo make test-dist-${{ matrix.ansible }} PYTHON_COMPAT="$(command -v python3.10)"
 
   native:
     name: Ubuntu 22.04's own ansible-core and Podman

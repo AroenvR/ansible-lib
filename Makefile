@@ -85,13 +85,17 @@ lint: $(VENV)/lint ## Lint all content and check every role's documented interfa
 	  ANSIBLE_COLLECTIONS_PATH="$(abspath $(CURDIR)/../../..)" $(VENV)/lint/bin/ansible-doc -t $$type aslib.infra.$$name >/dev/null || exit 1; \
 	done
 
-test: $(foreach v,$(ANSIBLE_VERSIONS),test-servers-$(v) test-build-machine-$(v)) ## Run every Molecule test with every ansible-core version
+test: $(foreach v,$(ANSIBLE_VERSIONS),test-servers-$(v) test-build-machine-$(v) test-dist-$(v)) ## Run every test with every ansible-core version
 
 test-servers-%: $(VENV)/ansible-% $(VENV)/collections ## Test the server roles on the test servers, e.g. make test-servers-2.12 ROLES=sudoers
 	$(call molecule,$*,server)
 
 test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections ## Test the build-machine roles on this machine, e.g. make test-build-machine-2.14
 	$(call molecule,$*,build_machine)
+
+# build.yml on copies of this checkout: in a git repository, and outside one.
+test-dist-%: $(VENV)/ansible-% ## Test build.yml, in a git checkout and without git, e.g. make test-dist-2.12
+	PATH="$(CURDIR)/$(VENV)/ansible-$*/bin:$$PATH" ansible-playbook dev/test-build.yml
 
 test-native: dist image-ubuntu2204 image-ubuntu2204-native ## Test with the ansible-core and Podman packages Ubuntu 22.04 itself ships
 	dev/native-test.sh localhost/aslib-test/ubuntu2204-native $(TARBALL) $(filter $(UBUNTU_ROLES),$(ROLES))

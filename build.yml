@@ -5,7 +5,9 @@
 #   ansible-playbook build.yml
 #     A build to try out, named after the branch, the commit and the time:
 #     dist/aslib-infra.<branch>.<commit>.<UTC yyyymmddHHMM>.tgz. CI publishes the
-#     same as a branch build. Install it where you want to use it:
+#     same as a branch build. Outside a git checkout, such as an exported copy,
+#     it is named after the time only: dist/aslib-infra.<UTC yyyymmddHHMM>.tgz.
+#     Install it where you want to use it:
 #       ansible-galaxy collection install --force dist/aslib-infra.<...>.tgz
 #
 #   ansible-playbook build.yml -e release=true
@@ -18,8 +20,13 @@
   gather_facts: false
   vars:
     release: false
+    # Whether this directory is a git checkout's root. Not when git is missing, or
+    # for a copy without .git, also one inside another checkout.
+    __build_git: >-
+      {{ lookup('pipe', 'git -C ' ~ (playbook_dir | quote) ~ ' rev-parse --show-toplevel 2>/dev/null || true')
+         == playbook_dir | realpath }}
     # CI passes the branch it builds (-e branch=...), as its checkout may not be on one.
-    branch: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
+    branch: "{{ lookup('pipe', 'git -C ' ~ (playbook_dir | quote) ~ ' rev-parse --abbrev-ref HEAD') if __build_git | bool else '' }}"
     __build_tarball: "{{ playbook_dir }}/dist/aslib-infra-{{ (lookup('file', playbook_dir ~ '/galaxy.yml') | from_yaml).version }}.tar.gz"
   tasks:
     - name: Work out the next release version
@@ -44,13 +51,14 @@
         chdir: "{{ playbook_dir }}"
       changed_when: true
 
+    # Outside a git checkout, the time only.
     - name: Name the build after the branch, the commit and the time
       ansible.builtin.copy:
         src: "{{ __build_tarball }}"
-        dest: "{{ playbook_dir }}/dist/aslib-infra.{{ branch | replace('/', '.') }}.{{ __build_commit }}.{{ __build_time }}.tgz"
+        dest: "{{ playbook_dir }}/dist/aslib-infra.{{ [branch | replace('/', '.'), __build_commit, __build_time] | select | join('.') }}.tgz"
         mode: "0644"
       vars:
-        __build_commit: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse HEAD') }}"
+        __build_commit: "{{ lookup('pipe', 'git -C ' ~ (playbook_dir | quote) ~ ' rev-parse HEAD') if __build_git | bool else '' }}"
         __build_time: "{{ now(utc=true, fmt='%Y%m%d%H%M') }}"
       register: __build_named
       when: not release | bool

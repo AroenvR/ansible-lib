@@ -1,0 +1,156 @@
+---
+# Tests build.yml on copies of this checkout (its files as they are now, without
+# git's history): one in a git repository of its own, one outside any, one inside
+# another repository (as an archive extracted into a directory of a checkout
+# would be), and one on a machine without git. Run from the repository root with
+# the ansible-core to test:
+#   make test-dist-2.12
+- name: Test build.yml in a git checkout and outside one
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    __test_build_repo: "{{ playbook_dir | dirname }}"
+    __test_build_playbook: "{{ ansible_playbook_python | dirname }}/ansible-playbook"
+    # git refuses to commit without a name; it never leaves the test's copy.
+    __test_build_git: [git, -c, user.name=test, -c, user.email=test@example.com]
+    __test_build_copies: [checkout, export, outer/export, without-git]
+  tasks:
+    - name: Create a directory for the copies
+      ansible.builtin.tempfile:
+        state: directory
+      register: __test_build_tmp
+
+    - name: Create the copies' directories; outer/ becomes another repository
+      ansible.builtin.file:
+        path: "{{ __test_build_tmp.path }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ __test_build_copies + ['bin'] }}"
+
+    # First on the PATH of the copy without-git, as if git were not installed.
+    - name: Write a git command that is not there
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          echo "sh: git: not found" >&2
+          exit 127
+        dest: "{{ __test_build_tmp.path }}/bin/git"
+        mode: "0755"
+
+    # The checkout's files as they are, without .git, the venvs, builds and private files.
+    - name: Pack this checkout's files
+      ansible.builtin.command:
+        argv:
+          - tar
+          - --create
+          - --file={{ __test_build_tmp.path }}/files.tar
+          - --directory={{ __test_build_repo }}
+          - --exclude=./.git
+          - --exclude=./.venv
+          - --exclude=./dist
+          - --exclude=./tmp
+          - .
+      changed_when: true
+
+    - name: Unpack them into each copy
+      ansible.builtin.command:
+        argv: [tar, --extract, "--file={{ __test_build_tmp.path }}/files.tar", "--directory={{ __test_build_tmp.path }}/{{ item }}"]
+      loop: "{{ __test_build_copies }}"
+      changed_when: true
+
+    # A branch with a slash: the build's name has a dot there.
+    - name: Make checkout/ a git repository on the branch hotfix/test, with its files committed
+      ansible.builtin.command:
+        argv: "{{ item }}"
+        chdir: "{{ __test_build_tmp.path }}/checkout"
+      loop:
+        - [git, init, --quiet]
+        - [git, checkout, --quiet, -b, hotfix/test]
+        - [git, add, --all]
+        - "{{ __test_build_git + ['commit', '--quiet', '--message=test'] }}"
+      changed_when: true
+
+    - name: Make outer/ a git repository with a commit, which export/ in it is not part of
+      ansible.builtin.command:
+        argv: "{{ item }}"
+        chdir: "{{ __test_build_tmp.path }}/outer"
+      loop:
+        - [git, init, --quiet]
+        - "{{ __test_build_git + ['commit', '--quiet', '--allow-empty', '--message=outer'] }}"
+      changed_when: true
+
+    - name: Look up the commit of checkout/
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ __test_build_tmp.path }}/checkout"
+      register: __test_build_commit
+      changed_when: false
+
+    # git must not look above the copies, whatever repository the test runs in.
+    - name: Run build.yml in each copy
+      ansible.builtin.command:
+        argv: ["{{ __test_build_playbook }}", build.yml]
+        chdir: "{{ __test_build_tmp.path }}/{{ item }}"
+      environment:
+        GIT_CEILING_DIRECTORIES: "{{ __test_build_tmp.path }}"
+        PATH: "{{ __test_build_tmp.path ~ '/bin:' if item == 'without-git' else '' }}{{ lookup('env', 'PATH') }}"
+      loop: "{{ __test_build_copies }}"
+      register: __test_build_runs
+      changed_when: true
+      failed_when: false
+
+    - name: Find each copy's build
+      ansible.builtin.find:
+        paths: "{{ __test_build_tmp.path }}/{{ item }}/dist"
+        patterns: aslib-infra.*.tgz
+      loop: "{{ __test_build_copies }}"
+      register: __test_build_found
+
+    - name: Check each build against its checksum, and that it holds the collection
+      ansible.builtin.command:
+        argv: [sh, -c, 'sha256sum --check "$1.sha256" && tar --list --gzip --file="$1" | grep -qx MANIFEST.json', sh, "{{ item.files[0].path | basename }}"]
+        chdir: "{{ item.files[0].path | default('/') | dirname }}"
+      loop: "{{ __test_build_found.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.files | length == 1
+      register: __test_build_checked
+      changed_when: false
+      failed_when: false
+
+    - name: Remove the copies
+      ansible.builtin.file:
+        path: "{{ __test_build_tmp.path }}"
+        state: absent
+
+    - name: Check the build in a git checkout is named after its branch, commit and time
+      vars:
+        __test_build_names: "{{ __test_build_found.results[0].files | map(attribute='path') | map('basename') | list }}"
+      ansible.builtin.assert:
+        that:
+          - __test_build_runs.results[0].rc == 0
+          - __test_build_names | length == 1
+          - __test_build_names[0] is match('^aslib-infra[.]hotfix[.]test[.]' ~ __test_build_commit.stdout ~ '[.][0-9]{12}[.]tgz$')
+          - __test_build_checked.results[0].rc | default(1) == 0
+        fail_msg: >-
+          build.yml: {{ __test_build_runs.results[0].stdout_lines[-6:] | default([]) }}; builds: {{ __test_build_names }};
+          checksum and contents: {{ __test_build_checked.results[0].stdout | default('') }}{{ __test_build_checked.results[0].stderr | default('') }}
+        success_msg: "PASSED build.yml in a git checkout built {{ __test_build_names[0] | default('') }}, with a matching checksum."
+
+    - name: Check a copy without git, inside another repository or where git is missing, gets a build named after the time
+      vars:
+        __test_build_names: "{{ __test_build_found.results[item].files | map(attribute='path') | map('basename') | list }}"
+      ansible.builtin.assert:
+        that:
+          - __test_build_runs.results[item].rc == 0
+          - __test_build_names | length == 1
+          - __test_build_names[0] is match('^aslib-infra[.][0-9]{12}[.]tgz$')
+          - __test_build_checked.results[item].rc | default(1) == 0
+        fail_msg: >-
+          build.yml in {{ __test_build_runs.results[item].item }}: {{ __test_build_runs.results[item].stdout_lines[-6:] | default([]) }};
+          builds: {{ __test_build_names }}
+        success_msg: >-
+          PASSED build.yml in {{ __test_build_runs.results[item].item }}, outside a git checkout, built
+          {{ __test_build_names[0] | default('') }}, with a matching checksum.
+      loop: [1, 2, 3]
