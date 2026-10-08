@@ -1,0 +1,13 @@
+#cloud-config
+# claude_vm (aslib.infra): {{ __claude_vm_name }}'s first boot. The account claude, with
+# sudo and key logins only; the rest is set up over SSH (entry point guest).
+hostname: {{ __claude_vm_name }}
+ssh_pwauth: false
+users:
+  - name: claude
+    gecos: Claude Code
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - {{ lookup('file', __claude_vm_key ~ '.pub') }}

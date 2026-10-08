@@ -1,0 +1,30 @@
+---
+# The VM's size. Molecule's test servers and images need a few GB of each.
+claude_vm_memory: 4096
+claude_vm_vcpus: 2
+claude_vm_disk_size: 40G
+
+# The VM's own network on the host: <prefix>.1 is the host, <prefix>.10 the VM.
+claude_vm_network_prefix: "192.168.123"
+
+# Keeps the VM away from the local network and the host's own services, while
+# it still reaches the internet.
+claude_vm_lan_block: true
+
+# Public keys that may also log in as claude, such as your workstation's. The
+# machine that runs the playbook always may (with ~/.ssh/claude-dev).
+claude_vm_authorized_keys: []
+
+# Ubuntu 24.04's cloud image, checked against its published checksums.
+claude_vm_image_url: https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img
+claude_vm_image_checksum: sha256:https://cloud-images.ubuntu.com/releases/noble/release/SHA256SUMS
+
+# In the VM: Python 3.10 for the ansible-core 2.12 and 2.14 venvs of aslib.infra's
+# tests, from the deadsnakes PPA (Ubuntu 24.04 ships 3.12 only)...
+claude_vm_python_repository: https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu
+claude_vm_python_key_url: https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776
+
+# ... and Claude Code from Anthropic's signed apt repository. The URL's last part
+# is the channel: stable, or latest.
+claude_vm_claude_code_repository: https://downloads.claude.ai/claude-code/apt/stable
+claude_vm_claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc

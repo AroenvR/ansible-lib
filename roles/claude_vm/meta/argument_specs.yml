@@ -1,0 +1,105 @@
+---
+argument_specs:
+  main:
+    short_description: Create claude-dev, a VM for Claude Code with sudo, on a Linux host with KVM
+    description:
+      - Creates the VM claude-dev from Ubuntu 24.04's cloud image, on a NAT network of its own, where it always has
+        the address <claude_vm_network_prefix>.10, and starts it now and at every boot. Its account claude may use
+        sudo and logs in with the key ~/.ssh/claude-dev of the machine that runs the playbook, created when missing.
+      - Firewall rules on the host (nftables, a table of their own, loaded by claude-vm-firewall.service) keep the
+        VM away from the local network and from the host's own services; it still reaches the internet.
+      - Then adds the VM to the inventory as the host claude-dev (group claude_vm), for the entry point guest. The
+        playbook aslib.infra.claude_vm runs both; one host per run.
+      - The host needs Ubuntu or RHEL on x86_64 with KVM, and the internet for its packages and the cloud image.
+    options:
+      claude_vm_memory:
+        type: int
+        default: 4096
+        description: The VM's memory, in MiB.
+      claude_vm_vcpus:
+        type: int
+        default: 2
+        description: The VM's virtual CPUs.
+      claude_vm_disk_size:
+        type: str
+        default: 40G
+        description: The size of the VM's disk, as qemu-img takes it. Only space the VM uses takes room on the host.
+      claude_vm_network_prefix:
+        type: str
+        default: "192.168.123"
+        description:
+          - The first three numbers of the VM's network, a /24 that the host does not use otherwise. The host is
+            <prefix>.1, the VM <prefix>.10.
+          - Changing it needs a new VM (aslib.infra.claude_vm_remove first).
+      claude_vm_lan_block:
+        type: bool
+        default: true
+        description: Keep the VM away from the private address ranges (the local network) and from the host's own
+          services, apart from its network's DHCP and DNS. False lets it reach them.
+      claude_vm_authorized_keys:
+        type: list
+        elements: str
+        default: []
+        description: Public keys that may also log in as claude, such as your workstation's, besides the key of the
+          machine that runs the playbook. Applied by the entry point guest.
+      claude_vm_image_url:
+        type: str
+        default: https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img
+        description: Ubuntu's cloud image, downloaded once into /var/lib/libvirt/images/. A mirror works too.
+      claude_vm_image_checksum:
+        type: str
+        default: sha256:https://cloud-images.ubuntu.com/releases/noble/release/SHA256SUMS
+        description: The image's checksum as get_url takes it, here the URL of Ubuntu's published checksums.
+      claude_vm_python_repository:
+        type: str
+        default: https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu
+        description: Passed on to the entry point guest, see there.
+      claude_vm_python_key_url:
+        type: str
+        default: https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776
+        description: Passed on to the entry point guest, see there.
+      claude_vm_claude_code_repository:
+        type: str
+        default: https://downloads.claude.ai/claude-code/apt/stable
+        description: Passed on to the entry point guest, see there.
+      claude_vm_claude_code_key_url:
+        type: str
+        default: https://downloads.claude.ai/keys/claude-code.asc
+        description: Passed on to the entry point guest, see there.
+  guest:
+    short_description: Set up claude-dev for Claude Code and aslib.infra's tests
+    description:
+      - Runs in the VM, as claude with sudo, after the entry point main. Writes claude's authorized_keys, adds the
+        apt repositories below (each key checked against its known fingerprint) and installs Podman, git, make,
+        Python 3.10 next to Ubuntu's 3.12 (ansible-core 2.12 and 2.14 need it for aslib.infra's test venvs) and
+        Claude Code.
+      - Needs the internet, or mirrors of the repositories below and Ubuntu's.
+    options:
+      claude_vm_authorized_keys:
+        type: list
+        elements: str
+        default: []
+        description: Public keys that may log in as claude besides the key of the machine that runs the playbook.
+      claude_vm_python_repository:
+        type: str
+        default: https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu
+        description: The apt repository with Python 3.10 for Ubuntu 24.04, the deadsnakes PPA by default.
+      claude_vm_python_key_url:
+        type: str
+        default: https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776
+        description: Its signing key, which must be F23C5A6CF475977595C89F51BA6932366A755776.
+      claude_vm_claude_code_repository:
+        type: str
+        default: https://downloads.claude.ai/claude-code/apt/stable
+        description: Anthropic's apt repository for Claude Code. The last part of the URL is the channel, stable or
+          latest. Claude Code then updates with apt, not by itself.
+      claude_vm_claude_code_key_url:
+        type: str
+        default: https://downloads.claude.ai/keys/claude-code.asc
+        description: Its signing key, which must be 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE.
+  remove:
+    short_description: Remove claude-dev from the host
+    description:
+      - Removes the VM with its disk, its network, the firewall rules and their service, and the VM's host key on
+        the machine that runs the playbook. Ubuntu's cloud image and the key ~/.ssh/claude-dev stay for the next VM.
+    options: {}

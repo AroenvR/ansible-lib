@@ -113,6 +113,16 @@ shared zone. Every build is also the update to Claude Code's newest version;
 `-e claude_code_bypass_permissions=true` deploys it without permission prompts.
 See [claude_code](roles/claude_code/README.md).
 
+**For development**, where Claude needs root (aslib.infra's own tests, for one), a
+VM of its own on a host with KVM, such as a spare laptop, keeps that root away
+from the host and the local network (a proof of concept):
+
+```sh
+ansible-playbook aslib.infra.claude_vm --ask-become-pass   # on the host; ends with how to log in
+```
+
+See [claude_vm](roles/claude_vm/README.md).
+
 ## What runs on a server
 
 Every service runs rootless as an account of its own, so root's `systemctl` and
@@ -135,14 +145,14 @@ A project that writes its own playbooks pins aslib.infra in a `requirements.yml`
 collections:
   # A release on GitHub. From GitLab's package registry it is:
   # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.2.0/aslib-infra-0.2.0.tar.gz
-  - name: /releases/download/v0.2.0/aslib-infra-0.2.0.tar.gz
+  - name: https://github.com/AroenvR/ansible-lib/releases/download/v0.2.0/aslib-infra-0.2.0.tar.gz
     type: url
 ```
 
 `ansible-galaxy collection install -r requirements.yml` installs it. To use a
 tarball file instead, such as a branch build or your own build, or a release
 downloaded from a private repository (`gh release download v0.2.0 --repo
-REPO_URL`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
+AroenvR/ansible-lib`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
 
 ```yaml
 collections:
@@ -171,6 +181,7 @@ role's README says so.
 | [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | Only if the `acl` package is missing |
 | [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with how to read their logs | Servers (RHEL 9.2+) | No |
 | [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.2+) | To build: Red Hat's registry, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
+| [claude_vm](roles/claude_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (Ubuntu, RHEL 9) | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
 
 Every role documents its variables; read them offline with
 `ansible-doc -t role aslib.infra.<role>`.
@@ -192,6 +203,8 @@ needed. The playbooks node_setup writes import them.
 | `ansible-playbook aslib.infra.overview` | A server itself, or any directory with an inventory, such as `ansible/` | Shows what aslib.infra runs on that server, or on the inventory's servers, each with the command that shows its log |
 | `ansible-playbook aslib.infra.podman_overview` | The same | Shows only the rootless Podman services, see [podman_overview](roles/podman_overview/README.md) |
 | `ansible-playbook aslib.infra.claude_setup` | An empty directory, or the root of an earlier setup | Writes a Claude Code project; its `ansible/` holds every other playbook it needs, see [claude_code](roles/claude_code/README.md) |
+| `ansible-playbook aslib.infra.claude_vm` | A host with KVM, or a directory with it in an inventory | Creates `claude-dev`, a VM where Claude Code has sudo, away from the local network, see [claude_vm](roles/claude_vm/README.md) |
+| `ansible-playbook aslib.infra.claude_vm_remove` | The same | Removes that VM, for a fresh one |
 
 ## Plugins
 

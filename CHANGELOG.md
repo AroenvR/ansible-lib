@@ -31,6 +31,11 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Added the `restart` entry point of `podman_service`, playbook
   `aslib.infra.node_restart` and `restart.yml` in node projects: restart a
   service and wait until it is ready again.
+- Added role `claude_vm` and playbooks `aslib.infra.claude_vm` and
+  `aslib.infra.claude_vm_remove`, a proof of concept: `claude-dev`, a VM from
+  Ubuntu 24.04's cloud image on a host with KVM, where Claude Code has sudo and
+  aslib.infra's tests run, which reaches the internet but not the local network
+  (nftables rules on the host).
 - Added playbook `aslib.infra.overview`: what aslib.infra runs on the servers,
   each with the command that shows its log, and the latest log lines of what
   does not run; so far the rootless Podman services of `podman_overview`, which

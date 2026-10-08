@@ -1,0 +1,80 @@
+---
+# Entry point "remove": takes away what the entry point "main" created on the
+# host: the VM with its disk, its network, the firewall rules and their service,
+# and, on the machine that runs the playbook, the VM's host key. Ubuntu's cloud
+# image and the key ~/.ssh/claude-dev stay, for the next VM. Running it again
+# changes nothing.
+- name: Look up the VM
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['domstate', __claude_vm_name] }}"
+  register: __claude_vm_state
+  changed_when: false
+  failed_when: false
+
+- name: Stop the VM
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['destroy', __claude_vm_name] }}"
+  when: __claude_vm_state.rc == 0 and __claude_vm_state.stdout is not search('shut off')
+  changed_when: true
+
+- name: Remove the VM from libvirt
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['undefine', __claude_vm_name] }}"
+  when: __claude_vm_state.rc == 0
+  changed_when: true
+
+- name: Look up the VM's network
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['net-info', __claude_vm_network] }}"
+  register: __claude_vm_net
+  changed_when: false
+  failed_when: false
+
+- name: Stop the VM's network
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['net-destroy', __claude_vm_network] }}"
+  when: "__claude_vm_net.stdout is search('Active: +yes', multiline=True)"
+  changed_when: true
+
+- name: Remove the VM's network from libvirt
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['net-undefine', __claude_vm_network] }}"
+  when: __claude_vm_net.rc == 0
+  changed_when: true
+
+- name: Look up the firewall rules' service
+  ansible.builtin.stat:
+    path: /etc/systemd/system/claude-vm-firewall.service
+  register: __claude_vm_unit
+
+- name: Stop the firewall rules' service, which removes the rules
+  ansible.builtin.systemd:
+    name: claude-vm-firewall.service
+    state: stopped
+    enabled: false
+  when: __claude_vm_unit.stat.exists
+
+- name: Remove the VM's disk, configuration and firewall service
+  ansible.builtin.file:
+    path: "{{ __claude_vm_path }}"
+    state: absent
+  loop:
+    - "{{ __claude_vm_disk }}"
+    - "{{ __claude_vm_config_dir }}"
+    - /etc/systemd/system/claude-vm-firewall.service
+  loop_control:
+    loop_var: __claude_vm_path
+
+- name: Let systemd forget the firewall rules' service
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: __claude_vm_unit.stat.exists
+
+# A new VM has a new host key, which SSH would otherwise refuse.
+- name: Forget the VM's host key, on the machine that runs the playbook
+  ansible.builtin.file:
+    path: "{{ __claude_vm_key }}.known_hosts"
+    state: absent
+  delegate_to: localhost
+  become: false
+  run_once: true

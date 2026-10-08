@@ -1,0 +1,25 @@
+#!/usr/sbin/nft -f
+# claude_vm (aslib.infra): written by every run, loaded by claude-vm-firewall.service.
+# claude-dev, on {{ __claude_vm_bridge }}, reaches the internet, but neither the local
+# network (the private address ranges) nor this host's own services, apart from the
+# DHCP and DNS of its network. The rules have a table of their own: a packet they
+# drop stays dropped, whatever other tables (libvirt's, firewalld's) accept.
+table inet claude_vm
+delete table inet claude_vm
+table inet claude_vm {
+{% if claude_vm_lan_block | bool %}
+  chain forward {
+    type filter hook forward priority -10; policy accept;
+    iifname "{{ __claude_vm_bridge }}" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop
+    iifname "{{ __claude_vm_bridge }}" ip6 daddr { fc00::/7, fe80::/10 } drop
+  }
+
+  chain input {
+    type filter hook input priority -10; policy accept;
+    iifname "{{ __claude_vm_bridge }}" ct state established,related accept
+    iifname "{{ __claude_vm_bridge }}" udp dport { 53, 67 } accept
+    iifname "{{ __claude_vm_bridge }}" tcp dport 53 accept
+    iifname "{{ __claude_vm_bridge }}" drop
+  }
+{% endif %}
+}

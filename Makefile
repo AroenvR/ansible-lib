@@ -93,6 +93,10 @@ test-servers-%: $(VENV)/ansible-% $(VENV)/collections ## Test the server roles o
 test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections ## Test the build-machine roles on this machine, e.g. make test-build-machine-2.14
 	$(call molecule,$*,build_machine)
 
+# Not part of `test`: it needs KVM, which the test containers lack.
+test-vm-%: $(VENV)/ansible-% $(VENV)/collections ## Test claude_vm's VM on this machine, which needs KVM, e.g. sudo make test-vm-2.14
+	$(call molecule,$*,vm)
+
 test-native: dist image-ubuntu2204 image-ubuntu2204-native ## Test with the ansible-core and Podman packages Ubuntu 22.04 itself ships
 	dev/native-test.sh localhost/aslib-test/ubuntu2204-native $(TARBALL) $(filter $(UBUNTU_ROLES),$(ROLES))
 

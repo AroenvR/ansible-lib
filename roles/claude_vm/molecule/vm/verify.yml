@@ -1,0 +1,131 @@
+---
+# A stand-in for a machine on the local network: 10.231.0.2 in a network
+# namespace of its own, behind a veth pair, and a service of the host itself on
+# the VM's network. Both answer the host (the control), and must not answer the VM.
+- name: Check claude-dev on the host, and set up what the VM must not reach
+  hosts: localhost
+  become: true
+  gather_facts: false
+  vars:
+    __claude_vm_test_virsh: [virsh, --connect, "qemu:///system"]
+  tasks:
+    - name: Look up the VM, its network and the firewall rules
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - "{{ __claude_vm_test_virsh + ['dominfo', 'claude-dev'] }}"
+        - "{{ __claude_vm_test_virsh + ['net-info', 'claude-vm'] }}"
+        - [nft, list, table, inet, claude_vm]
+      register: __claude_vm_test_host
+      changed_when: false
+
+    - name: Check the VM runs and starts at boot, on its network, behind the firewall rules
+      ansible.builtin.assert:
+        that:
+          - "__claude_vm_test_host.results[0].stdout is search('^State: +running$', multiline=True)"
+          - "__claude_vm_test_host.results[0].stdout is search('^Autostart: +enable$', multiline=True)"
+          - "__claude_vm_test_host.results[1].stdout is search('^Active: +yes$', multiline=True)"
+          - "__claude_vm_test_host.results[1].stdout is search('^Autostart: +yes$', multiline=True)"
+          - __claude_vm_test_host.results[2].stdout is search('iifname "virbr-claude" drop')
+        success_msg: PASSED claude_vm runs claude-dev, starts it and its network at boot, with the firewall rules loaded.
+
+    - name: Remove a stand-in left by an earlier run
+      ansible.builtin.command:
+        argv: [ip, netns, delete, claude-vm-lan]
+      changed_when: false
+      failed_when: false
+
+    - name: Create the stand-in for a machine on the local network
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - [ip, netns, add, claude-vm-lan]
+        - [ip, link, add, claude-vm-lan, type, veth, peer, name, claude-vm-peer, netns, claude-vm-lan]
+        - [ip, address, add, 10.231.0.1/24, dev, claude-vm-lan]
+        - [ip, link, set, claude-vm-lan, up]
+        - [ip, netns, exec, claude-vm-lan, ip, address, add, 10.231.0.2/24, dev, claude-vm-peer]
+        - [ip, netns, exec, claude-vm-lan, ip, link, set, claude-vm-peer, up]
+        - [ip, netns, exec, claude-vm-lan, ip, route, add, default, via, 10.231.0.1]
+      changed_when: true
+
+    # Each stops by itself after 10 minutes.
+    - name: Start a web server on the stand-in, and one of the host's on the VM's network
+      ansible.builtin.command:
+        argv: "{{ item }}"
+        chdir: /
+      loop:
+        - [ip, netns, exec, claude-vm-lan, timeout, "600", python3, -m, http.server, "9999", --bind, 10.231.0.2]
+        - [timeout, "600", python3, -m, http.server, "9998", --bind, "{{ claude_vm_network_prefix | default('192.168.123') }}.1"]
+      async: 600
+      poll: 0
+      changed_when: true
+
+    - name: Wait until both answer the host
+      ansible.builtin.uri:
+        url: "{{ item }}"
+      loop:
+        - http://10.231.0.2:9999/
+        - http://{{ claude_vm_network_prefix | default('192.168.123') }}.1:9998/
+      register: __claude_vm_test_control
+      until: __claude_vm_test_control is succeeded
+      retries: 15
+      delay: 2
+
+    - name: Reach the VM as claude
+      ansible.builtin.add_host:
+        name: claude-dev
+        ansible_host: "{{ claude_vm_network_prefix | default('192.168.123') }}.10"
+        ansible_user: claude
+        ansible_ssh_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/claude-dev"
+        ansible_ssh_common_args: -o UserKnownHostsFile={{ lookup('env', 'HOME') }}/.ssh/claude-dev.known_hosts -o StrictHostKeyChecking=accept-new
+        __claude_vm_test_host_ip: "{{ claude_vm_network_prefix | default('192.168.123') }}.1"
+      changed_when: false
+
+- name: Check claude-dev from inside, as claude
+  hosts: claude-dev
+  gather_facts: false
+  tasks:
+    - name: Look up claude's sudo and the tools
+      ansible.builtin.command:
+        argv: [sh, -c, "id -un; sudo -n true && echo sudo; podman --version; python3.10 --version; claude --version"]
+      register: __claude_vm_test_tools
+      changed_when: false
+      failed_when: false
+
+    - name: Try the internet, the machine on the local network and the host's service
+      ansible.builtin.uri:
+        url: "{{ item }}"
+        timeout: 5
+      loop:
+        - http://archive.ubuntu.com/ubuntu/
+        - http://10.231.0.2:9999/
+        - http://{{ __claude_vm_test_host_ip }}:9998/
+      register: __claude_vm_test_reach
+      failed_when: false
+
+    - name: Check claude has sudo and the tools, and reaches the internet only
+      ansible.builtin.assert:
+        that:
+          - __claude_vm_test_tools.stdout_lines[:2] == ['claude', 'sudo']
+          - __claude_vm_test_tools.stdout is search('^podman version ', multiline=True)
+          - __claude_vm_test_tools.stdout is search('^Python 3[.]10[.]', multiline=True)
+          - __claude_vm_test_tools.stdout is search('[(]Claude Code[)]$', multiline=True)
+          - __claude_vm_test_reach.results[0].status == 200
+          - __claude_vm_test_reach.results[1].status == -1
+          - __claude_vm_test_reach.results[2].status == -1
+        fail_msg: >-
+          Tools: {{ __claude_vm_test_tools.stdout_lines }} {{ __claude_vm_test_tools.stderr }}; HTTP status of the
+          internet, the local network and the host: {{ __claude_vm_test_reach.results | map(attribute='status') | list }}
+        success_msg: >-
+          PASSED claude_vm: claude has sudo, Podman, Python 3.10 and Claude Code, reaches the internet, and reaches
+          neither a machine on the local network nor the host's own services.
+
+- name: Remove the stand-in for the local network
+  hosts: localhost
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove the stand-in's network namespace, and with it the veth pair
+      ansible.builtin.command:
+        argv: [ip, netns, delete, claude-vm-lan]
+      changed_when: true

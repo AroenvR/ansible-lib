@@ -1,0 +1,3 @@
+---
+- name: Create and set up claude-dev, as aslib.infra.claude_vm does
+  ansible.builtin.import_playbook: aslib.infra.claude_vm

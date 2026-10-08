@@ -1,0 +1,53 @@
+---
+# One VM per host, named so: also its account's key (~/.ssh/claude-dev) and
+# known_hosts file on the machine that runs the playbook.
+__claude_vm_name: claude-dev
+__claude_vm_network: claude-vm
+__claude_vm_bridge: virbr-claude
+# A fixed MAC address, which the network's DHCP server ties to <prefix>.10.
+__claude_vm_mac: "52:54:00:c1:a0:de"
+__claude_vm_ip: "{{ claude_vm_network_prefix }}.10"
+__claude_vm_images: /var/lib/libvirt/images
+__claude_vm_disk: /var/lib/libvirt/images/claude-dev.qcow2
+__claude_vm_base: /var/lib/libvirt/images/{{ claude_vm_image_url | basename }}
+__claude_vm_config_dir: /etc/claude-vm
+
+# Packages on the host, by OS family.
+__claude_vm_host_packages:
+  Debian: [qemu-system-x86, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
+  RedHat: [qemu-kvm, qemu-img, libvirt, virt-install, xorriso, nftables]
+# libvirt's daemons: Ubuntu runs the classic one, RHEL 9 one per driver.
+__claude_vm_host_services:
+  Debian: [libvirtd.service]
+  RedHat: [virtqemud.socket, virtnetworkd.socket, virtstoraged.socket, virtlogd.socket]
+
+# The keys the VM's repositories are signed with.
+__claude_vm_python_key_fingerprint: F23C5A6CF475977595C89F51BA6932366A755776
+__claude_vm_claude_code_key_fingerprint: 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
+# What aslib.infra's tests need in the VM (make setup images test-...).
+__claude_vm_guest_packages: [podman, git, make, python3-venv, python3.10, python3.10-venv, claude-code]
+
+# virsh and the key, on the machine that runs the playbook, that logs in as claude.
+__claude_vm_virsh: [virsh, --connect, "qemu:///system"]
+__claude_vm_key: "{{ lookup('env', 'HOME') }}/.ssh/{{ __claude_vm_name }}"
+
+# How that machine reaches the VM: through the host, unless it is the host. The
+# VM's host key goes into a file of its own, which a removal deletes.
+__claude_vm_jump: >-
+  {{ '' if ansible_connection | default('ssh') == 'local'
+     else (ansible_user ~ '@' if ansible_user is defined else '') ~ (ansible_host | default(inventory_hostname))
+          ~ (':' ~ ansible_port if ansible_port is defined else '') }}
+__claude_vm_ssh_args: >-
+  -o UserKnownHostsFile={{ __claude_vm_key }}.known_hosts -o StrictHostKeyChecking=accept-new
+  {{- ' -o ProxyJump=' ~ __claude_vm_jump if __claude_vm_jump | length > 0 else '' }}
+
+# The VM's apt repositories, each checked against its signing key's fingerprint.
+__claude_vm_repositories:
+  - name: deadsnakes
+    key_url: "{{ claude_vm_python_key_url }}"
+    fingerprint: "{{ __claude_vm_python_key_fingerprint }}"
+    deb: "{{ claude_vm_python_repository }} {{ ansible_facts.distribution_release }} main"
+  - name: claude-code
+    key_url: "{{ claude_vm_claude_code_key_url }}"
+    fingerprint: "{{ __claude_vm_claude_code_key_fingerprint }}"
+    deb: "{{ claude_vm_claude_code_repository }} {{ claude_vm_claude_code_repository | basename }} main"

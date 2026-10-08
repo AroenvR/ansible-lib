@@ -1,0 +1,96 @@
+---
+# Entry point "guest": runs in the VM, as claude, who may use sudo. Sets up what
+# Claude Code and aslib.infra's tests need: Podman, git, make, Python 3.10 next to
+# Ubuntu's 3.12, and Claude Code from Anthropic's signed repository. Running it
+# again changes nothing.
+- name: Wait until the VM lets Ansible in
+  ansible.builtin.wait_for_connection:
+    timeout: 600
+
+# Until then, cloud-init may still hold apt's lock. 2: done, with warnings.
+- name: Wait until cloud-init has finished the first boot
+  ansible.builtin.command:
+    argv: [cloud-init, status, --wait]
+  register: __claude_vm_cloud_init
+  changed_when: false
+  failed_when: __claude_vm_cloud_init.rc not in [0, 2]
+
+- name: Look up the VM's Ubuntu release
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", distribution]
+
+- name: Let the keys in claude_vm_authorized_keys log in as claude, besides this machine's
+  ansible.builtin.template:
+    src: authorized_keys.j2
+    dest: /home/claude/.ssh/authorized_keys
+    owner: claude
+    group: claude
+    mode: "0600"
+
+- name: Download the keys the VM's repositories are signed with
+  ansible.builtin.get_url:
+    url: "{{ __claude_vm_repository.key_url }}"
+    dest: /etc/apt/keyrings/{{ __claude_vm_repository.name }}.asc
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __claude_vm_repositories }}"
+  loop_control:
+    loop_var: __claude_vm_repository
+    label: "{{ __claude_vm_repository.name }}"
+
+- name: Look up the keys' fingerprints
+  ansible.builtin.command:
+    argv: [gpg, --show-keys, --with-colons, "/etc/apt/keyrings/{{ __claude_vm_repository.name }}.asc"]
+  loop: "{{ __claude_vm_repositories }}"
+  loop_control:
+    loop_var: __claude_vm_repository
+    label: "{{ __claude_vm_repository.name }}"
+  register: __claude_vm_keys
+  changed_when: false
+
+- name: Check each key is the one its project publishes
+  ansible.builtin.assert:
+    that: "__claude_vm_key_check.stdout is search('^fpr:+' ~ __claude_vm_key_check.__claude_vm_repository.fingerprint ~ ':', multiline=True)"
+    fail_msg: >-
+      {{ __claude_vm_key_check.__claude_vm_repository.key_url }} is not the key
+      {{ __claude_vm_key_check.__claude_vm_repository.fingerprint }}.
+    quiet: true
+  loop: "{{ __claude_vm_keys.results }}"
+  loop_control:
+    loop_var: __claude_vm_key_check
+    label: "{{ __claude_vm_key_check.__claude_vm_repository.name }}"
+
+- name: Add the repositories
+  ansible.builtin.copy:
+    content: |
+      # claude_vm (aslib.infra): written by every run.
+      deb [signed-by=/etc/apt/keyrings/{{ __claude_vm_repository.name }}.asc] {{ __claude_vm_repository.deb }}
+    dest: /etc/apt/sources.list.d/{{ __claude_vm_repository.name }}.list
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __claude_vm_repositories }}"
+  loop_control:
+    loop_var: __claude_vm_repository
+    label: "{{ __claude_vm_repository.name }}"
+
+- name: Look up the installed packages
+  ansible.builtin.package_facts:
+
+- name: Install Podman, git, make, Python 3.10 and Claude Code where missing
+  ansible.builtin.apt:
+    name: "{{ __claude_vm_missing }}"
+    state: present
+    update_cache: true
+  vars:
+    __claude_vm_missing: "{{ __claude_vm_guest_packages | difference(ansible_facts.packages.keys()) }}"
+  when: __claude_vm_missing | length > 0
+
+- name: Show how to use the VM
+  ansible.builtin.debug:
+    msg:
+      - "Log in: ssh -i {{ __claude_vm_key }} {{ ansible_ssh_common_args }} claude@{{ ansible_host }}"
+      - "Claude Code: claude (sign in once); without permission prompts: claude --dangerously-skip-permissions"
+      - "aslib.infra: git clone <repository> ~/src/ansible_collections/aslib/infra, then see its CONTRIBUTING.md"
+      - "Its tests, as CI runs them: PYTHON_COMPAT=python3.10 make setup, then sudo make images test-servers-2.14"

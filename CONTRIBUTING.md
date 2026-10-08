@@ -9,7 +9,7 @@ Your machine needs `git`, `make`, Podman, Python 3.9 or 3.10 (the default
 `python3` on RHEL 9 and Ubuntu 22.04) and Python 3.10+ for linting.
 
 ```sh
-git clone REPOSITORY_URL ~/src/ansible_collections/aslib/infra
+git clone https://github.com/AroenvR/ansible-lib.git ~/src/ansible_collections/aslib/infra
 cd ~/src/ansible_collections/aslib/infra
 make setup images   # on RHEL 9: dnf install python3.12 first; on Ubuntu 22.04: make setup PYTHON_LINT=python3
 ```
@@ -31,6 +31,7 @@ taking another's account, UID or files.
 |---|---|---|---|
 | `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
 | `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code`'s setup and image) | The machine running the tests | `make test-build-machine-<ansible-core>` |
+| `roles/claude_vm/molecule/vm/` | A host with KVM (`claude_vm`) | The machine running the tests, which needs KVM; not part of `make test` | `sudo make test-vm-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
 one ansible-core version: `2.12` (what Ubuntu 22.04 ships) or `2.14` (what

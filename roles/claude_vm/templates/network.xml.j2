@@ -1,0 +1,13 @@
+<!-- claude_vm (aslib.infra): claude-dev's own network, NAT to the internet. Its
+     DHCP server gives the VM, by its MAC address, always the same address. -->
+<network>
+  <name>{{ __claude_vm_network }}</name>
+  <forward mode="nat"/>
+  <bridge name="{{ __claude_vm_bridge }}" stp="on" delay="0"/>
+  <ip address="{{ claude_vm_network_prefix }}.1" netmask="255.255.255.0">
+    <dhcp>
+      <range start="{{ claude_vm_network_prefix }}.100" end="{{ claude_vm_network_prefix }}.199"/>
+      <host mac="{{ __claude_vm_mac }}" name="{{ __claude_vm_name }}" ip="{{ __claude_vm_ip }}"/>
+    </dhcp>
+  </ip>
+</network>

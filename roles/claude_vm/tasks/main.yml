@@ -1,0 +1,227 @@
+---
+# Entry point "main": on a Linux host with KVM, creates claude-dev, a VM from
+# Ubuntu's cloud image on a network of its own, which reaches the internet but
+# not the local network, and lets the account claude in with a key of the machine
+# that runs the playbook. Then makes the VM reachable as the host claude-dev for
+# the entry point "guest" (playbooks/claude_vm.yml runs both). Running it again
+# changes nothing; a VM that is shut off is started.
+- name: Look up the host's OS and architecture
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", distribution, platform]
+
+- name: Look up KVM
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: __claude_vm_kvm
+
+- name: Check the host can run the VM
+  ansible.builtin.assert:
+    that:
+      - __claude_vm_kvm.stat.exists
+      - ansible_facts.architecture == 'x86_64'
+      - ansible_facts.os_family in __claude_vm_host_packages
+    fail_msg: >-
+      {{ inventory_hostname }} needs Ubuntu or RHEL on x86_64, with KVM (/dev/kvm): virtualization enabled in
+      the firmware, or nested virtualization when the host is a VM itself.
+    quiet: true
+
+- name: Look up the installed packages
+  ansible.builtin.package_facts:
+
+- name: Install QEMU/KVM, libvirt, virt-install and nftables where missing
+  ansible.builtin.package:
+    name: "{{ __claude_vm_missing }}"
+    state: present
+  vars:
+    __claude_vm_missing: "{{ __claude_vm_host_packages[ansible_facts.os_family] | difference(ansible_facts.packages.keys()) }}"
+  when: __claude_vm_missing | length > 0
+
+- name: Start libvirt, now and at every boot
+  ansible.builtin.systemd:
+    name: "{{ __claude_vm_service }}"
+    state: started
+    enabled: true
+  loop: "{{ __claude_vm_host_services[ansible_facts.os_family] }}"
+  loop_control:
+    loop_var: __claude_vm_service
+
+# On the machine that runs the playbook, as the person running it.
+- name: Create ~/.ssh for the key that logs in to the VM
+  ansible.builtin.file:
+    path: "{{ __claude_vm_key | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Create the key that logs in to the VM, ~/.ssh/{{ __claude_vm_name }}
+  ansible.builtin.command:
+    argv: [ssh-keygen, -q, -t, ed25519, -N, "", -C, "{{ __claude_vm_name }}", -f, "{{ __claude_vm_key }}"]
+    creates: "{{ __claude_vm_key }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+# The rules go live before the VM's network exists, so the VM never runs without them.
+- name: Create the VM's configuration directory, {{ __claude_vm_config_dir }}
+  ansible.builtin.file:
+    path: "{{ __claude_vm_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the rules that keep the VM away from the local network
+  ansible.builtin.template:
+    src: firewall.nft.j2
+    dest: "{{ __claude_vm_config_dir }}/firewall.nft"
+    owner: root
+    group: root
+    mode: "0600"
+  register: __claude_vm_rules
+
+- name: Write the service that loads them, also at boot before libvirt
+  ansible.builtin.template:
+    src: claude-vm-firewall.service.j2
+    dest: /etc/systemd/system/claude-vm-firewall.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: __claude_vm_unit
+
+- name: Load the rules, now and at every boot
+  ansible.builtin.systemd:
+    name: claude-vm-firewall.service
+    state: "{{ 'restarted' if __claude_vm_rules is changed or __claude_vm_unit is changed else 'started' }}"
+    enabled: true
+    daemon_reload: "{{ __claude_vm_unit is changed }}"
+
+- name: Look up the VM's network
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['net-info', __claude_vm_network] }}"
+  register: __claude_vm_net
+  changed_when: false
+  failed_when: false
+
+- name: Define the VM's network
+  when: __claude_vm_net.rc != 0
+  block:
+    - name: Write the VM's network
+      ansible.builtin.template:
+        src: network.xml.j2
+        dest: "{{ __claude_vm_config_dir }}/network.xml"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Define the VM's network in libvirt
+      ansible.builtin.command:
+        argv: "{{ __claude_vm_virsh + ['net-define', __claude_vm_config_dir ~ '/network.xml'] }}"
+      changed_when: true
+
+- name: Start the VM's network, now and at every boot
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + [__claude_vm_net_step.command, __claude_vm_network] }}"
+  loop:
+    - { command: net-autostart, done: "Autostart: +yes" }
+    - { command: net-start, done: "Active: +yes" }
+  loop_control:
+    loop_var: __claude_vm_net_step
+    label: "{{ __claude_vm_net_step.command }}"
+  when: __claude_vm_net.stdout is not search(__claude_vm_net_step.done, multiline=True)
+  changed_when: true
+
+# Downloaded once: the VM's disk is built on top of it, so it never changes. For a
+# newer one, remove the VM, delete this file and run the playbook again.
+- name: Look up Ubuntu's cloud image
+  ansible.builtin.stat:
+    path: "{{ __claude_vm_base }}"
+  register: __claude_vm_base_file
+
+- name: Download Ubuntu's cloud image, checked against its published checksums
+  ansible.builtin.get_url:
+    url: "{{ claude_vm_image_url }}"
+    dest: "{{ __claude_vm_base }}"
+    checksum: "{{ claude_vm_image_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not __claude_vm_base_file.stat.exists
+
+- name: Look up the VM
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['domstate', __claude_vm_name] }}"
+  register: __claude_vm_state
+  changed_when: false
+  failed_when: false
+
+- name: Create the VM
+  when: __claude_vm_state.rc != 0
+  block:
+    - name: Create the VM's disk, on top of the cloud image
+      ansible.builtin.command:
+        argv: [qemu-img, create, -q, -f, qcow2, -F, qcow2, -b, "{{ __claude_vm_base }}", "{{ __claude_vm_disk }}", "{{ claude_vm_disk_size }}"]
+        creates: "{{ __claude_vm_disk }}"
+
+    - name: Write what cloud-init sets up at the VM's first boot
+      ansible.builtin.template:
+        src: "{{ __claude_vm_seed }}.j2"
+        dest: "{{ __claude_vm_config_dir }}/{{ __claude_vm_seed }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop: [user-data, meta-data]
+      loop_control:
+        loop_var: __claude_vm_seed
+
+    - name: Create and start the VM
+      ansible.builtin.command:
+        argv:
+          - virt-install
+          - --connect=qemu:///system
+          - --name={{ __claude_vm_name }}
+          - --memory={{ claude_vm_memory }}
+          - --vcpus={{ claude_vm_vcpus }}
+          - --virt-type=kvm
+          - --import
+          - --disk=path={{ __claude_vm_disk }},format=qcow2,bus=virtio
+          - --network=network={{ __claude_vm_network }},model=virtio,mac={{ __claude_vm_mac }}
+          - --osinfo=ubuntu24.04
+          - --cloud-init=user-data={{ __claude_vm_config_dir }}/user-data,meta-data={{ __claude_vm_config_dir }}/meta-data
+          - --graphics=none
+          - --noautoconsole
+      changed_when: true
+
+    - name: Start the VM at every boot
+      ansible.builtin.command:
+        argv: "{{ __claude_vm_virsh + ['autostart', __claude_vm_name] }}"
+      changed_when: true
+
+- name: Start the VM, which is shut off
+  ansible.builtin.command:
+    argv: "{{ __claude_vm_virsh + ['start', __claude_vm_name] }}"
+  when: __claude_vm_state.stdout is search('shut off')
+  changed_when: true
+
+- name: Wait until the VM answers on SSH
+  ansible.builtin.wait_for:
+    host: "{{ __claude_vm_ip }}"
+    port: 22
+    timeout: 600
+
+# The VM's own settings come along, so that the inventory can set them for the host.
+- name: Reach the VM for its setup, as the host {{ __claude_vm_name }}
+  ansible.builtin.add_host:
+    name: "{{ __claude_vm_name }}"
+    groups: [claude_vm]
+    ansible_host: "{{ __claude_vm_ip }}"
+    ansible_user: claude
+    ansible_ssh_private_key_file: "{{ __claude_vm_key }}"
+    ansible_ssh_common_args: "{{ __claude_vm_ssh_args }}"
+    claude_vm_authorized_keys: "{{ claude_vm_authorized_keys }}"
+    claude_vm_python_repository: "{{ claude_vm_python_repository }}"
+    claude_vm_python_key_url: "{{ claude_vm_python_key_url }}"
+    claude_vm_claude_code_repository: "{{ claude_vm_claude_code_repository }}"
+    claude_vm_claude_code_key_url: "{{ claude_vm_claude_code_key_url }}"
+  changed_when: false
