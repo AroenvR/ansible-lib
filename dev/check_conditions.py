@@ -2,7 +2,7 @@
 
 YAML reads a plain list item that contains ': ' as a mapping, so an assert like
   - lookup('file', f) is search('key: value')
-becomes {"lookup(...) is search('key": "value')"}, which ansible-core 2.12 and 2.14
+becomes {"lookup(...) is search('key": "value')"}, which ansible-core 2.14 and 2.16
 accept and treat as true: the check silently checks nothing. ansible-lint does not
 notice. Quote such conditions: - "lookup('file', f) is search('key: value')"
 """

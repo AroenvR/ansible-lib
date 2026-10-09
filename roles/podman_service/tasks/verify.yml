@@ -1,8 +1,7 @@
 ---
-# Entry point "restart": restarts a deployed service and waits until it is ready,
-# as the deploy does. For when nothing the deploy installs changed (the deploy
-# restarts the service itself then), e.g. a file the app reads at start. Changes
-# nothing else.
+# Entry point "verify": checks that a deployed service keeps what the deploy
+# promises (checks.yml), changing nothing: run it any time, as the deploy and the
+# restart do at their end.
 - name: Work out the service's account and directories, and check Ansible acts as root
   ansible.builtin.import_tasks: common.yml
 
@@ -28,15 +27,6 @@
       - --
       - env
       - XDG_RUNTIME_DIR=/run/user/{{ ansible_facts.getent_passwd[__podman_service_user][1] }}
-
-- name: Restart the service, {{ podman_service_name }}
-  ansible.builtin.command:
-    argv: "{{ __podman_service_as_account + ['systemctl', '--user', 'restart', podman_service_name ~ '.service'] }}"
-    chdir: /
-  changed_when: true
-
-- name: Wait until the service is ready, showing its log if it is not
-  ansible.builtin.import_tasks: ready.yml
 
 - name: Check the service
   ansible.builtin.import_tasks: checks.yml

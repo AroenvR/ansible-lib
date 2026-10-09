@@ -9,7 +9,7 @@ grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null || echo "unknown OS"
 echo "user:   $(id)"
 echo "image:  ${CI_JOB_IMAGE:-unknown}"
 echo "runner: ${CI_RUNNER_DESCRIPTION:-unknown}, version ${CI_RUNNER_VERSION:-unknown}"
-for tool in podman make python3 python3.10 git curl; do
+for tool in podman make python3 python3.11 python3.12 git curl; do
   printf '  %-11s %s\n' "$tool" "$(command -v "$tool" || echo missing)"
 done
 grep '^CapEff' /proc/self/status

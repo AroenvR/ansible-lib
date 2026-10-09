@@ -7,7 +7,7 @@ Instructions for AI coding agents working on this repository. Humans: see
 ## What this is
 
 `aslib.infra` is an Ansible collection: a library of small, tested roles for
-RHEL 9 and Ubuntu 22.04 servers, plus roles and ready-made playbooks that take a
+RHEL 9.6 and Ubuntu 24.04 (and newer) servers, plus roles and ready-made playbooks that take a
 Node.js backend from project to running service (node_setup, node_image,
 node_deploy), and an always-on Claude Code agent for root (claude_code). Roles
 are named by area: `podman_` roles work for any image, `node_` roles add what
@@ -17,9 +17,12 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 
 ## Non-negotiable constraints
 
-- **Runtime compatibility.** Roles must run on the `ansible-core` that the OS
-  ships: 2.12.0 (Ubuntu 22.04, apt) and 2.14.18 (RHEL 9.6, AppStream). Read module
-  docs for the oldest version offline: `.venv/ansible-2.12/bin/ansible-doc ansible.builtin.<module>`.
+- **Runtime compatibility.** The oldest systems supported are RHEL 9.6 and
+  Ubuntu 24.04. Roles must run on the `ansible-core` they ship: 2.14.18 (RHEL
+  9.6, AppStream, on Python 3.11) and 2.16.3 (Ubuntu 24.04, universe, on Python
+  3.12), with RHEL 9.6's Podman 5.4 on servers and Ubuntu 24.04's Podman 4.9 on
+  build machines. Read module docs for the oldest version offline:
+  `.venv/ansible-2.14/bin/ansible-doc ansible.builtin.<module>`.
 - **Only `ansible.builtin`.** Any other collection is a dependency for every
   consumer; ask the maintainer first.
 - **Offline servers.** Never assume internet access. Every repository, key or
@@ -46,9 +49,16 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
   enterprise-proven; prefer the OS repositories.
 - **KISS over edge cases.** Clarity and readability come first; do not add
   complexity for a 1% case. SOLID applies at role level (see CONTRIBUTING.md).
+- **Checks in tests and at runtime (test first).** What a role promises is a
+  list of checks in its `verify` entry point (podman_service has the first):
+  its Molecule test runs it, and so does every deploy. Write the check first,
+  see it fail, then build. Between deploys, Podman's own health checks keep a
+  service honest: systemd counts it as started once it is healthy, and
+  restarts it when it is not.
 - **Documentation and linting are mandatory.** Every public role variable is
   documented in `meta/argument_specs.yml` with the same default as
-  `defaults/main.yml`; `make lint` enforces it. Each option and mechanism is
+  `defaults/main.yml`; `make lint` enforces it, and runs ShellCheck on our shell
+  scripts (not on the maintainer's `.tools/` and `libs/`). Each option and mechanism is
   described once, by the role that owns it (podman_service for every service's
   settings); other READMEs link to that section and name the option only where
   a reader uses it. A new option then changes its own role, not every README.
@@ -62,10 +72,10 @@ the git root).
 ```sh
 make setup images                          # once: venvs, test-only collections, test containers
 make lint                                  # ansible-lint (production profile) + interface check
-make test-servers-2.12 ROLES=<role>        # roles that run on servers, in the test containers
-make test-build-machine-2.12 ROLES=<role>  # roles that run where Ansible runs
-make test-dist-2.12                        # build.yml, in a git checkout and without git
-make build                                 # everything CI runs: lint, 2.12 and 2.14, native test
+make test-servers-2.14 ROLES=<role>        # roles that run on servers, in the test containers
+make test-build-machine-2.14 ROLES=<role>  # roles that run where Ansible runs
+make test-dist-2.14                        # build.yml, in a git checkout and without git
+make build                                 # everything CI runs: lint, 2.14 and 2.16, native test
 make dist                                  # tarball to try out in dist/ (runs build.yml)
 ```
 
@@ -73,7 +83,7 @@ Write the failing test first (`roles/<role>/molecule/<scenario>/verify.yml`),
 then the role. Name test tasks after what they check and end them with the test
 case; end each check with a `success_msg: PASSED <role> ...` line. Keep scenario
 playbooks free of Molecule-only variables: the native test runs them with plain
-`ansible-playbook`. A new role that supports Ubuntu 22.04 goes into
+`ansible-playbook`. A new role that supports Ubuntu goes into
 `UBUNTU_ROLES` in the Makefile, so the native test covers it. CONTRIBUTING.md
 explains the test layout and how releases are made.
 
@@ -129,18 +139,13 @@ source of truth.
 
 ## Known pitfalls (all verified)
 
-- Ubuntu 22.04's own `ansible-galaxy collection install` crashes (Ubuntu ships
-  resolvelib 0.8.1, ansible-core 2.12 needs < 0.6). Consumers there extract the
-  tarball instead; README.md documents it.
 - Molecule 6.0.3 searches `~/.ansible/collections` before `ANSIBLE_COLLECTIONS_PATH`,
   so a stale installed copy can shadow the code under test. Hence the
   `ansible_collections/aslib/infra` layout, `prerun: false` and `offline: true` in `.ansible-lint`.
-- Python 3.9/3.10's bundled pip installs ansible-core 2.12 (source only on PyPI)
-  with broken `#!python` launchers; venvs are created with `--upgrade-deps`.
-- Lint runs on a modern ansible-core, so lint passing does not prove 2.12
+- Lint runs on a modern ansible-core, so lint passing does not prove 2.14
   compatibility. Only the Molecule tests and the native test do.
 - ansible-lint cannot parse GitLab's `!reference` tag; use YAML anchors.
-- `meta-runtime[unsupported-version]` is skipped on purpose (2.12 is supported).
+- `meta-runtime[unsupported-version]` is skipped on purpose (2.14 is supported).
 - Role argument validation evaluates every default before the first task, so a
   default with a failing lookup (e.g. reading package.json) breaks the role with
   an unreadable error. Read files in tasks instead.
@@ -155,9 +160,9 @@ source of truth.
 - Podman inside Podman (the native test) needs its own subnet: both default to
   10.88.0.0/16, which makes the inner containers unreachable. The native image
   changes the inner one.
-- ansible-core 2.12 and 2.14 modules break on Python 3.12 for HTTPS (`cert_file`
-  errors). GitHub's runners have 3.12 as python3, so build_machine scenarios run
-  modules with the venv's Python (`ansible_python_interpreter`).
+- ansible-core 2.14 modules break on Python 3.12 for HTTPS (`cert_file`
+  errors; 2.12 did too). GitHub's runners have 3.12 as python3, so build_machine
+  scenarios run modules with the venv's Python (`ansible_python_interpreter`).
 - Quadlet: systemd specifiers (`%h`) work in `Volume=` and `EnvironmentFile=`.
   Avoid `StateDirectory=` for a user service's data: systemd 252 (RHEL 9) puts it
   in ~/.config, newer versions in ~/.local/state.
@@ -213,9 +218,9 @@ source of truth.
   over npm's `disturl`, so setting it would override a project's `.npmrc`. npm 10,
   11 and 12 still pass unknown `.npmrc` settings (`disturl`,
   `sqlite3_binary_host_mirror`) to install scripts; 11 and 12 warn.
-- Podman 3.4 supports what node_image uses: `podman build --secret` with
+- Podman 3.4 already supported what node_image uses: `podman build --secret` with
   `RUN --mount=type=secret,uid=...`, `--target`, and removing an image's untagged
-  parents with `podman rmi` (verified in the Ubuntu 22.04 image).
+  parents with `podman rmi` (verified in the Ubuntu 22.04 image), so 4.9 does too.
 - Binary output (a tar stream) cannot go through a module's stdout, which is
   text: redirect it to a file in the shell command.
 - Podman 3.4 (Ubuntu 22.04) cuts the output of `podman run --interactive` short
@@ -303,6 +308,21 @@ source of truth.
   The claude-code command sets the account's own address
   (`unix:path=/run/user/<uid>/bus`). Seen on the maintainer's server; the cause is
   the likeliest one, not yet confirmed there.
+- Quadlet with `Notify=healthy`: the first health check runs as the container
+  starts; if the app is not listening yet, the next one waits for the full
+  `HealthInterval`, so a 4-second app took 31 seconds to start. A startup check
+  (`HealthStartupCmd`, every 2 seconds until it passes) brings it back to 5.
+  A service whose container systemd restarts while still unhealthy stays
+  `activating` until a check passes; wait for `is-active`, not for HTTP.
+- In ansible-core 2.14 (not 2.16) the `vars:` of one `import_role` of a role
+  reach a later import of the same role in the same play, for the variables the
+  later one does not set: claude_code's podman_service got node_deploy's
+  `podman_service_health_cmd`, whose `node_deploy_health_check` was undefined
+  there. Each import sets every variable it relies on, and such expressions
+  guard with `default()`.
+- Quadlet writes `HealthCmd=` into `ExecStart` in double quotes, so a command
+  with single quotes (node_deploy's `node -e '...'`) arrives intact; a `%` would
+  need `%%`. Podman 5.8.2 fixed double quotes in it, so avoid them.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
 
@@ -329,14 +349,21 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-04, preparing release 0.2.0 on the development branch
-(v0.1.0 is tagged on main; `dev/ci/next-version.sh` gives galaxy.yml's 0.2.0).
+Last updated 2026-10-08, on main after v0.2.2.
 
-- GitHub Actions: run #35 passed everything, and the maintainer's regression
-  tests on their RHEL server pass: the NestJS project and Claude Code side by
-  side. Since then, not yet in CI (verified in the agent's sandbox): the image's
-  files as aslib.infra's, `aslib.infra.overview` with each service's log
-  command, and the docs pass.
+- Decided with the maintainer on 2026-10-08: the oldest systems supported are
+  RHEL 9.6 and Ubuntu 24.04, so the tests run ansible-core 2.14 and 2.16 (2.12
+  and Ubuntu 22.04 are gone); ShellCheck joins `make lint`; Podman's own health
+  checks (`HealthCmd`, `HealthOnFailure=kill`, `Notify=healthy`, which needs
+  Podman 5, so RHEL 9.6's servers) watch each service that has one; each role's
+  promises become a `verify` entry point, starting with podman_service.
+
+- GitHub Actions passed everything up to v0.2.2, and the maintainer's
+  regression tests on their RHEL server pass: the NestJS project and Claude Code
+  side by side. Not yet in CI (verified in the agent's sandbox, whose server
+  stand-in is Ubuntu 25.04 for its Podman 5.4): ansible-core 2.14 and 2.16 on
+  Python 3.11 and 3.12, the Ubuntu 24.04 images and native test, ShellCheck,
+  the health checks and podman_service's verify entry point.
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
@@ -375,7 +402,7 @@ Last updated 2026-10-04, preparing release 0.2.0 on the development branch
     `.env.production`. Every later command runs from `ansible/`, and settings
     are Ansible variables in group_vars. The maintainer's goal is a complete
     pipeline a project's runner executes. Test runs are `npm run test` for now.
-  - Images are built on RHEL 9 or Ubuntu 22.04 (Podman 3.4+) and are always
+  - Images are built on RHEL 9.6 or Ubuntu 24.04 (Podman 4.9+) and are always
     RHEL (UBI); which RHEL major is still open (UBI 9 for now).
   - Projects follow the NestJS convention: a `build` script that makes
     `dist/main.js`, which the image starts by its absolute path (not
@@ -388,7 +415,7 @@ Last updated 2026-10-04, preparing release 0.2.0 on the development branch
     set an npm or node-gyp setting a project's `.npmrc` might set.
   - The build machine keeps `<name>:<version>` and `<name>:build` per project.
   - Supported versions are test data (`roles/node_image/molecule/build_machine/vars/apps.yml`).
-  - Services run rootless on RHEL 9.2+ through Quadlet, published on
+  - Services run rootless on RHEL 9.6+ through Quadlet, published on
     127.0.0.1 by default (a containerized Nginx will sit in front later), ports
     3000-3999. `/opt/<service>/` on the server is the app's working directory,
     mounted at the same path; the app may create anything in it (`prod.db`,

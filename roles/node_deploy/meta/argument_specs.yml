@@ -29,6 +29,15 @@ argument_specs:
             them into config/ in the service's directory, removes files the project no longer has, and restarts the
             service when they change.
           - The app finds them read-only in config/ in its working directory.
+      node_deploy_health_check:
+        type: bool
+        default: true
+        description:
+          - Give the service a health check (podman_service_health_cmd), run with the image's Node.js - healthy while the
+            app answers HTTP on its port inside the container (podman_service_container_port) with anything but a
+            server error (5xx). systemd counts the service as started once it is healthy, and Podman restarts it after
+            3 failed checks in a row (one every 30 seconds once it started).
+          - False runs the service without one.
   restart:
     short_description: Restart a Node.js project's service and wait until it answers
     description:

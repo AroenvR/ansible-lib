@@ -39,7 +39,7 @@ ansible-playbook build-and-deploy.yml    # add --ask-become-pass if sudo asks fo
 
 This runs `image.yml`, then `deploy.yml`.
 
-**The image** (`image.yml`) needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04) and
+**The image** (`image.yml`) needs Podman 4.9 or newer (RHEL 9.6 or Ubuntu 24.04) and
 access to the [download sources](#download-sources). It lands in `images/` as `{{ __claude_code_name }}-<version>.tar`, with the
 newest version of the repository's channel unless `claude_code_version` pins one.
 A build without a new version or a changed Containerfile leaves everything as it was.
@@ -58,7 +58,7 @@ installs the policy with `permissions.defaultMode: bypassPermissions`. Its deny
 rules still apply. Claude Code asks once, in the first interactive session, to
 accept the mode; background sessions start only after that.
 
-What a server needs: RHEL 9.2 or newer with Podman, and SSH access with sudo
+What a server needs: RHEL 9.6 or newer with Podman, and SSH access with sudo
 (or as root) for Ansible.
 
 ## 3. Use it

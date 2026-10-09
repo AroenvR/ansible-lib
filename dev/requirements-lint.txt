@@ -1,3 +1,5 @@
 # Linting uses current tooling. It checks style and correctness; compatibility with
 # the old ansible-core versions is proven by the Molecule toolchains instead.
 ansible-lint==26.9.0
+# ShellCheck for our shell scripts (dev/check_shell.py), as a pinned binary wheel.
+shellcheck-py==0.11.0.1
