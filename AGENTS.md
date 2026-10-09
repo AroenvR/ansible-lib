@@ -9,7 +9,8 @@ Instructions for AI coding agents working on this repository. Humans: see
 `aslib.infra` is an Ansible collection: a library of small, tested roles for
 RHEL 9.6 and Ubuntu 24.04 (and newer) servers, plus roles and ready-made playbooks that take a
 Node.js backend from project to running service (node_setup, node_image,
-node_deploy), and an always-on Claude Code agent for root (claude_code). Roles
+node_deploy), an always-on Claude Code agent for root (claude_code), and a VM
+where Claude Code may have root, for development (claude_vm). Roles
 are named by area: `podman_` roles work for any image, `node_` roles add what
 Node.js projects need (node_deploy is a thin layer over podman_service), and
 claude_code is the same kind of layer for Claude Code. Consumers install a release tarball that holds only runtime
@@ -96,6 +97,7 @@ explains the test layout and how releases are made.
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
 | `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
 | `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
+| `roles/claude_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`make test-vm-<version>`) |
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
 | `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
 | `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
@@ -106,8 +108,15 @@ explains the test layout and how releases are made.
 ## Working with the maintainer
 
 The maintainer and the agent work in **separate environments**. The
-maintainer's repositories are the
-source of truth.
+maintainer's repositories (GitHub `AroenvR/ansible-lib`, later GitLab) are the
+source of truth, and this file is the project's memory: a new session, in any
+tool, must be able to continue from the repository alone. Record decisions and
+their reasons here, and bring Status up to date before ending a block of work.
+
+- **Roles.** The maintainer decides; the agent is the architect: it proposes,
+  explains the trade-offs and asks one question at a time, then builds. When the
+  maintainer wants to talk something through, talk; build once asked to. Work
+  in steps, with a task list and a local commit per step.
 
 - **Start from the maintainer's branch.** Pull the branch they name (usually
   `main`) and work on top of it: then every file of the repository, CI's
@@ -128,7 +137,9 @@ source of truth.
 - **Communication.** Be concise and end replies with a `TL;DR:` section. The
   maintainer may use speech-to-text: interpret intent, not literal typos.
   Research version-sensitive facts in credible, current sources instead of
-  relying on memory, and cite them.
+  relying on memory, and cite them in a `Sources:` section before the TL;DR.
+  Nothing the agent writes carries a mark of its tool (no attribution lines,
+  session links or tool names in commits, files or comments).
 
 ## Known pitfalls (all verified)
 
@@ -318,6 +329,14 @@ source of truth.
   need `%%`. Podman 5.8.2 fixed double quotes in it, so avoid them.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
+- A cloud sandbox may lack what the tests assume (the agent's had cgroup v1, no
+  systemd as PID 1, no Red Hat subscription, no KVM). What made the suite run
+  there, in a throwaway copy only: `PodmanArgs=--cgroups=disabled` in the
+  Quadlet template; an Ubuntu image standing in for `aslib-test/rhel9` (so
+  `package` and Ubuntu's package names in the server prepare); local stand-ins
+  for the UBI Node.js images (`node_image_registry`) and for Claude Code's base
+  (`claude_code_test_real: false`); NestJS's tarballs from a local web server
+  the containers can reach.
 - A default ACL replaces the umask, but not the mode a program asks for: a file
   created 0600 (Python's tempfile) gets `group::---`, whatever the default ACL
   gives the group. A shell's `>` (0666) gets `group::rw-` even with umask 077.
@@ -352,8 +371,16 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-09, on main after v0.3.0.
+Last updated 2026-10-09, on the VM branch after v0.4.0.
 
+- Decided with the maintainer on 2026-10-09: Claude Code's policy has one
+  aslib.infra base, claude_code's `files/managed-settings.json`, which every
+  container deploy merges with `files/managed-settings.container.json` and the
+  project's `config/managed-settings.json` (later values win, lists combine, as
+  Claude Code's own drop-ins do), and which claude_vm installs in the VM. Merged
+  by Ansible into one file rather than Claude Code's `managed-settings.d/`,
+  where a drop-in, read after `managed-settings.json`, would beat the project's
+  single values. The VM gets the base only: with sudo, Claude could change it.
 - Decided with the maintainer on 2026-10-09, from a health check that Claude
   Code ran in its own container: the shared zone's README checksum (read-only for
   services), `dnf upgrade` in claude_code's Containerfile, and memory limits
@@ -445,9 +472,21 @@ Last updated 2026-10-09, on main after v0.3.0.
   it; everything else is in its `ansible/`. Until it is handed over, its image
   files (Containerfile, .containerignore, README.md) are aslib.infra's: every
   update rewrites them, keeping a changed one as `.bak`, and merging is the
-  project maintainer's. config/ (the policy, CLAUDE.md) is the project's,
-  written once from aslib.infra's templates. `claude_code_bypass_permissions` is the POC's way to autonomy.
+  project maintainer's. config/ (the project's part of the policy, CLAUDE.md)
+  is the project's, written once from aslib.infra's templates; the deploy merges
+  aslib.infra's base policy into it (see Status). `claude_code_bypass_permissions`
+  is the POC's way to autonomy.
   Tests run it next to the Node.js service.
+- claude_vm, a proof of concept, decided with the maintainer: for development,
+  where Claude needs root (Molecule's tests use rootful Podman), the boundary is
+  a VM of its own on a host with KVM (a spare laptop), never the maintainer's
+  personal VM, which has no nested KVM and where Claude gets no root. What
+  matters is what the VM holds (only Claude's login: no keys to servers, no git
+  credentials; the maintainer fetches Claude's branches) and what it reaches
+  (the internet, not the local network, enforced by nftables on the host). Not
+  yet run on real hardware or a RHEL host. The VM has Python 3.11 (deadsnakes)
+  next to Ubuntu's 3.12, for both test venvs. Without KVM, the alternative is
+  Claude in an unprivileged account with a rootless test suite, not started.
 - The shared zone `/opt/containers/shared/`, decided with the maintainer: every
   service reads and writes it; a default ACL gives the group the access an app's
   mode asks for, whatever its umask ("tighten later, once the flows work"). A
@@ -470,13 +509,6 @@ Last updated 2026-10-09, on main after v0.3.0.
   lists, `.bak`), and node_deploy and claude_code each wrap podman_service's
   deploy, restart and remove. Extract a shared setup mechanism when a third kind
   of project arrives, and generic lifecycle playbooks after that; not before.
-- Later, when the work returns to them: the VM branch
-  (`feature/claude_code_vm-2026-10-08`) needs the new floor before it merges,
-  Python 3.11 instead of 3.10 in the VM for the ansible-core 2.14 venvs; and
-  Claude Code's policy could become one aslib.infra base that the container's
-  deploy merges with the project's `config/` and the VM installs too, so one
-  file reaches both (today `roles/claude_code/files/managed-settings.json` only
-  seeds new projects).
 - Open: the license (`LICENSE` is a placeholder, decided later); a pinned source
   for aslib.infra in projects' pipelines once the release location is final.
 

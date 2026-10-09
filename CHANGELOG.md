@@ -4,6 +4,30 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.5.0
+
+- Added role `claude_vm` and playbooks `aslib.infra.claude_vm` and
+  `aslib.infra.claude_vm_remove`, a proof of concept: `claude-dev`, a VM from
+  Ubuntu 24.04's cloud image on a host with KVM (RHEL 9.6 or Ubuntu 24.04, or
+  newer), where Claude Code has sudo and aslib.infra's tests run (Python 3.11
+  next to 3.12, for both ansible-core versions), which reaches the internet but
+  not the local network (nftables rules on the host).
+- Changed: Claude Code's policy has one base for the container and the VM.
+  claude_code's `files/managed-settings.json` is aslib.infra's base, which
+  every deploy now merges with the container's own settings and the project's
+  `config/managed-settings.json` (later values win, lists combine without
+  duplicates). Before, it only seeded new projects, so a change to it never
+  reached a deployed container. claude_vm installs the same base in the VM. A
+  new project's `config/managed-settings.json` starts as `{}`.
+
+### Upgrading from 0.4
+
+1. Nothing is required: a project's `config/managed-settings.json` from an
+   earlier setup is a full copy of the old policy, and merges to the same
+   policy plus what the base adds (ultracode, workflows). To see what is the
+   project's own, trim it to what differs from aslib.infra's base and the
+   container's settings.
+
 ## 0.4.0
 
 - Fixed: the shared zone's README said the group may read and write whatever a

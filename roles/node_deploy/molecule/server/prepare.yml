@@ -110,6 +110,18 @@
       vars:
         claude_code_project: "{{ node_deploy_test_claude_project }}"
 
+    # As a developer would add them: a rule of the project's own, one the base has
+    # already, and a value that replaces the base's.
+    - name: Give the project's policy rules of its own
+      ansible.builtin.copy:
+        content: |
+          {
+            "plansDirectory": "./project-plans",
+            "permissions": {"deny": ["Read(//opt/claude-code/data/private/**)", "Read(.env)"]}
+          }
+        dest: "{{ node_deploy_test_claude_project }}/config/managed-settings.json"
+        mode: "0644"
+
     # The tests need neither Anthropic's repository nor dnf: a stand-in with the
     # same contract replaces Claude Code. claude_code's own test builds the real one.
     - name: Replace the project's Containerfile with the stand-in for Claude Code

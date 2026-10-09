@@ -95,6 +95,10 @@ test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections ## Test the build-ma
 test-dist-%: $(VENV)/ansible-% ## Test build.yml, in a git checkout and without git, e.g. make test-dist-2.14
 	PATH="$(CURDIR)/$(VENV)/ansible-$*/bin:$$PATH" ansible-playbook dev/test-build.yml
 
+# Not part of `test`: it needs KVM, which the test containers lack.
+test-vm-%: $(VENV)/ansible-% $(VENV)/collections ## Test claude_vm's VM on this machine, which needs KVM, e.g. sudo make test-vm-2.14
+	$(call molecule,$*,vm)
+
 test-native: dist image-ubuntu2404 image-ubuntu2404-native ## Test with the ansible-core and Podman packages Ubuntu 24.04 itself ships
 	dev/native-test.sh localhost/aslib-test/ubuntu2404-native $(TARBALL) $(filter $(UBUNTU_ROLES),$(ROLES))
 

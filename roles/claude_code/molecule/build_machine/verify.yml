@@ -25,15 +25,12 @@
           - (claude_code_test_project ~ '/config/CLAUDE.md') is file
           - lookup('file', claude_code_test_project ~ '/Containerfile')
             == lookup('file', __claude_code_test_roles ~ '/claude_code/' ~ ('files' if claude_code_test_real | bool else 'molecule/mock') ~ '/Containerfile')
-          - __claude_code_test_policy.permissions.additionalDirectories == ['/opt/claude-code', '/opt/containers/shared']
-          - __claude_code_test_policy.autoMemoryDirectory == '/opt/claude-code/memory'
-          - __claude_code_test_policy.permissions.deny is contains('Edit(//opt/claude-code/config/**)')
-          - __claude_code_test_policy.env.DISABLE_AUTOUPDATER == '1'
+          - __claude_code_test_policy == {}
           - (lookup('file', __claude_code_test_dir ~ '/inventory.yml') | from_yaml).all.hosts.localhost.ansible_connection == 'local'
           - __claude_code_test_env.stat.mode == '0600'
         success_msg: >-
-          PASSED claude_code wrote the Containerfile, the policy and instructions in config/, the guide, the inventory
-          and a private environment file.
+          PASSED claude_code wrote the Containerfile, the instructions and the project's policy in config/ (empty: the
+          deploy adds aslib.infra's), the guide, the inventory and a private environment file.
 
     - name: Check aslib.infra's files are there, with their contents
       ansible.builtin.assert:

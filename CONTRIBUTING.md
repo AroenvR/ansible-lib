@@ -9,7 +9,7 @@ Your machine needs `git`, `make`, Podman, Python 3.11 (for ansible-core 2.14,
 as on RHEL 9.6) and Python 3.12 (for 2.16 and linting, as on Ubuntu 24.04).
 
 ```sh
-git clone REPOSITORY_URL ~/src/ansible_collections/aslib/infra
+git clone https://github.com/AroenvR/ansible-lib.git ~/src/ansible_collections/aslib/infra
 cd ~/src/ansible_collections/aslib/infra
 make setup images   # on RHEL 9.6: dnf install python3.11 python3.12 first; on Ubuntu 24.04: install Python 3.11 too
 ```
@@ -33,6 +33,7 @@ taking another's account, UID or files.
 |---|---|---|---|
 | `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
 | `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code`'s setup and image) | The machine running the tests | `make test-build-machine-<ansible-core>` |
+| `roles/claude_vm/molecule/vm/` | A host with KVM (`claude_vm`) | The machine running the tests, which needs KVM; not part of `make test` | `sudo make test-vm-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
 one ansible-core version: `2.14` (what RHEL 9.6 ships) or `2.16` (what
