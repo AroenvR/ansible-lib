@@ -1,10 +1,11 @@
 ---
 # The shared zone, /opt/containers/shared/: every service with podman_service_shared
 # may read and write it, through the group containers-shared. Its container keeps
-# that group (--group-add=keep-groups in the Quadlet file), and whatever an app
-# creates there is writable for the group, whichever mode the app asks for. No
-# sticky bit: with fs.protected_regular=2 (Ubuntu's default) it also stops a
-# service from opening another's file with O_CREAT, which most writes do.
+# that group (--group-add=keep-groups in the Quadlet file). A default ACL gives the
+# group the access an app's mode asks for, whatever its umask: most ask for
+# read and write (0666), a private file (0600) stays private. No sticky bit: with
+# fs.protected_regular=2 (Ubuntu's default) it also stops a service from opening
+# another's file with O_CREAT, which most writes do.
 - name: Create the shared zone's group, containers-shared
   ansible.builtin.group:
     name: containers-shared
@@ -69,7 +70,7 @@
   register: __podman_service_shared_acl
   changed_when: false
 
-- name: Make whatever is created in the shared zone writable for the group
+- name: Give the group the access an app asks for in the shared zone, whatever its umask
   ansible.builtin.command:
     argv:
       - setfacl
@@ -79,11 +80,40 @@
   changed_when: true
 
 # Root's, so no service can change it, as none is its owner or in its group. One
-# could still remove it from the group-writable directory: every deploy puts it back.
+# could still remove or replace it in the group-writable directory: its checksum,
+# below, shows whether it is this one, and every deploy puts it back.
 - name: Write the shared zone's README.md, how services work there
   ansible.builtin.copy:
     src: shared-README.md
     dest: /opt/containers/shared/README.md
+    owner: root
+    group: root
+    mode: "0644"
+    setype: container_file_t
+
+- name: Look up the README's SHA-256 checksum
+  ansible.builtin.stat:
+    path: /opt/containers/shared/README.md
+    checksum_algorithm: sha256
+  register: __podman_service_shared_readme
+
+# Root's and outside the zone, read-only in every container that has the zone:
+# sha256sum --check /opt/containers/shared-checksums/README.md.sha256 shows
+# whether the README is still the one written above. A directory, not a file, is
+# mounted, so running containers see the checksum a later deploy writes.
+- name: Create /opt/containers/shared-checksums, which services can read and not change
+  ansible.builtin.file:
+    path: /opt/containers/shared-checksums
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+    setype: container_file_t
+
+- name: Write the README's checksum
+  ansible.builtin.copy:
+    content: "{{ __podman_service_shared_readme.stat.checksum }}  /opt/containers/shared/README.md\n"
+    dest: /opt/containers/shared-checksums/README.md.sha256
     owner: root
     group: root
     mode: "0644"

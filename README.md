@@ -40,7 +40,7 @@ replaces an installed copy, also one with the same version (branch builds carry
 the version of their `galaxy.yml`):
 
 ```sh
-ansible-galaxy collection install --force aslib-infra-0.3.0.tar.gz   # or the .tgz of a branch build
+ansible-galaxy collection install --force aslib-infra-0.4.0.tar.gz   # or the .tgz of a branch build
 ```
 
 **Offline control node:** copy the tarball over; installing it needs no network.
@@ -127,19 +127,19 @@ A project that writes its own playbooks pins aslib.infra in a `requirements.yml`
 ```yaml
 collections:
   # A release on GitHub. From GitLab's package registry it is:
-  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.3.0/aslib-infra-0.3.0.tar.gz
-  - name: /releases/download/v0.3.0/aslib-infra-0.3.0.tar.gz
+  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.4.0/aslib-infra-0.4.0.tar.gz
+  - name: /releases/download/v0.4.0/aslib-infra-0.4.0.tar.gz
     type: url
 ```
 
 `ansible-galaxy collection install -r requirements.yml` installs it. To use a
 tarball file instead, such as a branch build or your own build, or a release
-downloaded from a private repository (`gh release download v0.3.0 --repo
+downloaded from a private repository (`gh release download v0.4.0 --repo
 REPO_URL`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
 
 ```yaml
 collections:
-  - name: ./aslib-infra-0.3.0.tar.gz
+  - name: ./aslib-infra-0.4.0.tar.gz
     type: file
 ```
 
@@ -205,8 +205,11 @@ Tested on every change, in CI:
   it) on the same server: separate accounts and UIDs, the shared zone both ways,
   root running Claude Code, its read-only policy, and its removal; podman_service's
   checks after every deploy and restart, and the Node.js service's health check
-  getting an app that answers with server errors restarted;
-- the Claude Code project's setup, update and real image build.
+  getting an app that answers with server errors restarted; a private file in the
+  shared zone staying private, a replaced README caught by its checksum and put
+  back by the next deploy, and Claude Code's 4 GiB memory limit;
+- the Claude Code project's setup, update and real image build, with every
+  package up to date.
 
 Not tested yet:
 

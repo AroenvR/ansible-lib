@@ -4,6 +4,40 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.4.0
+
+- Fixed: the shared zone's README said the group may read and write whatever a
+  service creates, whatever mode it asks for. A private mode stays private:
+  Python's `tempfile` makes files (0600) only their own service can read. The
+  README now says so, and says to `chmod g+rw` before the rename.
+- Added a checksum of the shared zone's README: a service can't change it, but
+  could remove or replace it, as the directory is the group's. Every deploy
+  writes its SHA-256 to `/opt/containers/shared-checksums/README.md.sha256`,
+  root's and read-only in every container with the zone; `sha256sum --check`
+  on it says whether the README is aslib.infra's. Claude's `CLAUDE.md` template
+  says to check it before following the README, and podman_service's checks
+  (deploy, restart, `verify`) report a README that does not match.
+- Added memory limits: `podman_service_memory` (e.g. `4g`; no limit by
+  default). node_deploy sets it from `node_deploy_memory` (no limit by default),
+  claude_code from `claude_code_memory`: **Claude Code's container now has at
+  most 4 GiB**, so a runaway build in a session can't starve the server. Set
+  `claude_code_memory: ""` for no limit.
+- claude_code's Containerfile upgrades every package before installing the
+  tools, the base image's included: every new image has the package updates
+  (security fixes) of its day. Before, packages stayed as old as Red Hat's last
+  build of the base image.
+
+### Upgrading from 0.3
+
+1. From each project's `ansible/`: `ansible-playbook update-playbooks.yml`, for
+   the Quadlet template (the checksum and the memory limit) and, in Claude Code
+   projects, the Containerfile; then deploy. A service whose Quadlet file lacks
+   the checksum's mount can't check the README.
+2. In Claude Code projects, `config/CLAUDE.md` is the project's: copy the shared
+   zone's bullet from aslib.infra's template (`roles/claude_code/files/CLAUDE.md`).
+   For more memory than 4g, or none set, put `claude_code_memory` in
+   `group_vars/all/project.yml`.
+
 ## 0.3.0
 
 - **Breaking:** the oldest supported systems are RHEL 9.6 and Ubuntu 24.04

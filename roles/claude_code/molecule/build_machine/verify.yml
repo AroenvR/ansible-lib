@@ -118,6 +118,17 @@
       changed_when: false
       failed_when: false
 
+    # A real image was built with every update its repositories offer (dnf
+    # upgrade), the base image's packages included: dnf check-update exits 100
+    # when there are updates, 0 when there are none.
+    - name: Look up the updates the image's repositories offer
+      ansible.builtin.command:
+        argv: [podman, run, --rm, --user=0, "localhost/claude-code:{{ __claude_code_test_version | default('none') }}", dnf, --quiet, check-update]
+      register: __claude_code_test_updates
+      changed_when: false
+      failed_when: false
+      when: claude_code_test_real | bool
+
     - name: Check there is one archive, and the image runs Claude Code as the deploy expects
       ansible.builtin.assert:
         that:
@@ -125,14 +136,17 @@
           - __claude_code_test_version | default('') is match('^[0-9]+[.][0-9]+[.][0-9]+')
           - __claude_code_test_claude.stdout is match(__claude_code_test_version | default('') | regex_escape ~ ' ')
           - __claude_code_test_image.stdout_lines == ['1001', '/opt/claude-code', '/opt/claude-code/config']
+          - __claude_code_test_updates.rc | default(0) == 0
         fail_msg: >-
           Archives: {{ __claude_code_test_archives.files | map(attribute='path') | map('basename') | list }};
           claude --version: {{ __claude_code_test_claude.stdout }} {{ __claude_code_test_claude.stderr }};
-          user, home, policy and missing commands: {{ __claude_code_test_image.stdout_lines }} {{ __claude_code_test_image.stderr }}
+          user, home, policy and missing commands: {{ __claude_code_test_image.stdout_lines }} {{ __claude_code_test_image.stderr }};
+          dnf check-update (rc {{ __claude_code_test_updates.rc | default('skipped') }}):
+          {{ __claude_code_test_updates.stdout_lines | default([]) }} {{ __claude_code_test_updates.stderr | default('') }}
         success_msg: >-
           PASSED images/ holds claude-code-{{ __claude_code_test_version }}.tar; its Claude Code says
           "{{ __claude_code_test_claude.stdout }}" and runs as 1001 in /opt/claude-code with
-          {{ __claude_code_test_commands | join(', ') }}.
+          {{ __claude_code_test_commands | join(', ') }}{{ ', every package up to date' if claude_code_test_real | bool else '' }}.
 
     # The update, as a developer would run it: from the project's ansible/ directory,
     # with its ansible.cfg and, since playbooks find the project through it, PWD.
