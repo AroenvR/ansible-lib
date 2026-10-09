@@ -1,5 +1,5 @@
 ---
-# Tests sudoers on both test servers (Ubuntu 22.04 and RHEL 9 containers).
+# Tests sudoers on both test servers (Ubuntu 24.04 and RHEL 9.6 containers).
 # Platforms, driver and verifier come from .config/molecule/config.yml.
 scenario:
   name: server

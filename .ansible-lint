@@ -6,5 +6,5 @@ exclude_paths:
   - .venv/
   - dist/
 skip_list:
-  # We support ansible-core 2.12 on purpose: it is what Ubuntu 22.04 ships.
+  # We support ansible-core 2.14 on purpose: it is what RHEL 9.6 ships.
   - meta-runtime[unsupported-version]

@@ -40,7 +40,7 @@ beforehand, and builds without aslib.infra too (its README.md shows how).
 `image.yml` builds the Containerfile into `ansible/images/claude-code-<version>.tar`.
 Without `claude_code_version`, the version is the newest in the repository
 (`stable` by default), so every build is also the update; the image only changes
-when that version or the Containerfile did. Needs Podman 3.4 or newer, Red Hat's
+when that version or the Containerfile did. Needs Podman 4.9 or newer, Red Hat's
 registry, Anthropic's repository and GitHub (nvm), or mirrors of them.
 
 ## On the server
@@ -54,7 +54,9 @@ registry, Anthropic's repository and GitHub (nvm), or mirrors of them.
 | The command | `/usr/local/sbin/claude-code`, for root: runs `claude` in the container, with a terminal or without one (`claude-code -p "..."` in a script) |
 
 A new image, policy or `CLAUDE.md` restarts the service, which ends what runs in
-it; conversations stay (`claude-code --continue`, `--resume`).
+it; conversations stay (`claude-code --continue`, `--resume`). It has no health
+check: nothing in it serves until root runs `claude-code`, so a running
+container is all there is to check.
 
 ## The policy
 
@@ -82,8 +84,8 @@ the mode; background sessions start only after that.
 
 ## Requirements
 
-- The Ansible machine: ansible-core; Podman 3.4 or newer to build.
-- The servers: what podman_service needs (RHEL 9.2 or newer with Podman).
+- The Ansible machine: ansible-core; Podman 4.9 or newer to build.
+- The servers: what podman_service needs (RHEL 9.6 or newer with its Podman).
 
 ## Limitations
 

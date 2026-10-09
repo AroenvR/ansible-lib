@@ -55,7 +55,7 @@ argument_specs:
         I(claude_code_repository), which a throwaway container of the base image looks up; a rebuild makes a new
         image only when that version or the Containerfile changed, so every build is also the update.
       - Keeps only that archive in images/, and only that image of the project on this machine.
-      - Needs Podman 3.4 or newer (RHEL 9, Ubuntu 22.04) and access to the base image's registry, Anthropic's
+      - Needs Podman 4.9 or newer (RHEL 9.6, Ubuntu 24.04) and access to the base image's registry, Anthropic's
         repository and GitHub (nvm, see the Containerfile), or to mirrors of them.
     options:
       claude_code_ansible_dir:

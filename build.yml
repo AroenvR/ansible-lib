@@ -1,6 +1,6 @@
 ---
 # Builds the aslib.infra tarball from this checkout into dist/. Not part of the
-# collection itself; run it from the repository root with any ansible-core 2.12+.
+# collection itself; run it from the repository root with any ansible-core 2.14+.
 #
 #   ansible-playbook build.yml
 #     A build to try out, named after the branch, the commit and the time:

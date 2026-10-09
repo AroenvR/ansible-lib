@@ -5,14 +5,16 @@ in [README.md](README.md); AI coding agents also read [AGENTS.md](AGENTS.md).
 
 ## Setup (once)
 
-Your machine needs `git`, `make`, Podman, Python 3.9 or 3.10 (the default
-`python3` on RHEL 9 and Ubuntu 22.04) and Python 3.10+ for linting.
+Your machine needs `git`, `make`, Podman, Python 3.11 (for ansible-core 2.14,
+as on RHEL 9.6) and Python 3.12 (for 2.16 and linting, as on Ubuntu 24.04).
 
 ```sh
 git clone REPOSITORY_URL ~/src/ansible_collections/aslib/infra
 cd ~/src/ansible_collections/aslib/infra
-make setup images   # on RHEL 9: dnf install python3.12 first; on Ubuntu 22.04: make setup PYTHON_LINT=python3
+make setup images   # on RHEL 9.6: dnf install python3.11 python3.12 first; on Ubuntu 24.04: install Python 3.11 too
 ```
+
+`PYTHON_2.14=`, `PYTHON_2.16=` and `PYTHON_LINT=` point make at another Python.
 
 The clone path must end in `ansible_collections/aslib/infra`. Ansible then loads
 the collection straight from your checkout, so tests never run against a stale
@@ -33,10 +35,10 @@ taking another's account, UID or files.
 | `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code`'s setup and image) | The machine running the tests | `make test-build-machine-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
-one ansible-core version: `2.12` (what Ubuntu 22.04 ships) or `2.14` (what
-RHEL 9.6 ships), pinned with Molecule in `dev/requirements-ansible-<version>.txt`.
+one ansible-core version: `2.14` (what RHEL 9.6 ships) or `2.16` (what
+Ubuntu 24.04 ships), pinned with Molecule in `dev/requirements-ansible-<version>.txt`.
 The log has a banner per role (`##### node_image: build_machine tests,
-ansible-core 2.12 #####`); task names end with the test case they belong to,
+ansible-core 2.14 #####`); task names end with the test case they belong to,
 and every check ends with a `PASSED <role>: ...` line saying what it proved.
 
 Three more checks complete the picture:
@@ -44,20 +46,23 @@ Three more checks complete the picture:
 - `make lint`: current ansible-lint (production profile), a check that every
   role documents its interface, a check that every condition is text (YAML turns
   an unquoted `- x is search('a: b')` into a mapping, which an assert accepts
-  without checking anything), and ansible-doc loading every plugin and its
-  documentation. Lint runs on a modern ansible-core, so it does **not** prove a
-  role works on 2.12; the Molecule tests do.
+  without checking anything), ShellCheck on every shell script
+  (`dev/check_shell.py`, which renders `*.sh.j2` templates first; the
+  maintainer's `.tools/` and `libs/` are left to them), and ansible-doc loading
+  every plugin and its documentation. Lint runs on a modern ansible-core, so it does **not** prove a
+  role works on 2.14; the Molecule tests do.
 - `make test-dist-<ansible-core>`: `build.yml` (`dev/test-build.yml`), on
   copies of the checkout: in a git repository of its own, outside one, inside
   another repository, and without git installed. Each must build a tarball,
   named after the branch, commit and time in a checkout and after the time only
   elsewhere, with a matching checksum.
-- `make test-native`: the roles that support Ubuntu 22.04 (`UBUNTU_ROLES` in the
-  Makefile), run with Ubuntu's own `ansible-core` (2.12.0) and Podman (3.4)
-  packages, after installing the release tarball the way a consumer does. The
-  real OS packages can differ from their PyPI twins; Ubuntu's `ansible-galaxy`
-  crash was found this way. It runs the scenario playbooks without Molecule, so
-  keep `prepare.yml`, `converge.yml` and `verify.yml` free of Molecule-only variables.
+- `make test-native`: the roles that support Ubuntu (`UBUNTU_ROLES` in the
+  Makefile), run with Ubuntu 24.04's own `ansible-core` (2.16.3) and Podman
+  (4.9) packages, after installing the release tarball the way a consumer does
+  (`ansible-galaxy collection install`). The real OS packages can differ from
+  their PyPI twins: Ubuntu 22.04's `ansible-galaxy` crash was found this way.
+  It runs the scenario playbooks without Molecule, so keep `prepare.yml`,
+  `converge.yml` and `verify.yml` free of Molecule-only variables.
 
 Versions to support are test data, not code. `node_image` builds, runs and
 queries every app listed in `roles/node_image/molecule/build_machine/vars/apps.yml`
@@ -75,7 +80,7 @@ role needs beyond it (acl), the role installs when missing.
 ## Workflow (test first)
 
 1. Describe the desired state in `roles/<role>/molecule/<scenario>/verify.yml`.
-2. Watch it fail: `make test-servers-2.12 ROLES=<role>` (or `test-build-machine-2.12`).
+2. Watch it fail: `make test-servers-2.14 ROLES=<role>` (or `test-build-machine-2.14`).
 3. Implement in `roles/<role>/` until it passes.
 4. Before pushing: `make build` (lint, both ansible-core versions, native test).
 
@@ -84,7 +89,7 @@ For faster iterations keep the test containers running:
 ```sh
 cd roles/<role>
 export ANSIBLE_COLLECTIONS_PATH=$(git rev-parse --show-toplevel)/.venv/collections
-export PATH=$(git rev-parse --show-toplevel)/.venv/ansible-2.12/bin:$PATH
+export PATH=$(git rev-parse --show-toplevel)/.venv/ansible-2.14/bin:$PATH
 molecule converge -s server   # create the containers once, apply the role
 molecule verify -s server     # run the checks
 molecule destroy -s server    # clean up when done
@@ -98,7 +103,7 @@ molecule destroy -s server    # clean up when done
   consumer, including offline ones, so it needs team agreement, an entry in
   `galaxy.yml` and a mention in README.md.
 - Look up modules in the oldest supported version, offline:
-  `.venv/ansible-2.12/bin/ansible-doc ansible.builtin.<module>`.
+  `.venv/ansible-2.14/bin/ansible-doc ansible.builtin.<module>`.
 - Write conditions that evaluate to a real boolean, and read facts as
   `ansible_facts['os_family']`, not `ansible_os_family`. Newer ansible-core
   versions require this.
@@ -138,7 +143,7 @@ molecule destroy -s server    # clean up when done
 ### Plugins
 
 - Plugins (`plugins/<type>/`) run on the Ansible machine, with the Python of the
-  oldest supported ansible-core (3.8 for 2.12): no newer syntax.
+  oldest supported ansible-core (3.9 for 2.14): no newer syntax.
 - Document them in `DOCUMENTATION`; `make lint` loads it with ansible-doc.
 - Callbacks support both result APIs: `result`, `task` and `host` (ansible-core
   2.19 and newer) and `_result`, `_task` and `_host` (older); see
@@ -155,9 +160,9 @@ schedule under Build > Pipeline schedules). GitHub also runs them for pull reque
 | Job | Make target | Needs |
 |---|---|---|
 | lint | `make lint` | Python 3.10+ |
-| server roles · ansible-core 2.12 / 2.14 | `make images test-servers-<version>` | Podman that can start privileged containers |
-| build-machine roles · ansible-core 2.12 / 2.14 | `make test-build-machine-<version>` | Same, plus access to Red Hat's registry, npm and GitHub |
-| Ubuntu 22.04's own ansible-core and Podman | `make test-native` | Same |
+| server roles · ansible-core 2.14 / 2.16 | `make images test-servers-<version>` | Podman that can start privileged containers |
+| build-machine roles · ansible-core 2.14 / 2.16 | `make test-build-machine-<version>`, `make test-dist-<version>` | Same, plus access to Red Hat's registry, npm and GitHub |
+| Ubuntu 24.04's own ansible-core and Podman | `make test-native` | Same |
 | branch build (every branch but main) | `make dist BRANCH=<branch>` | All jobs above green |
 | release (main) | `make dist-release` | All jobs above green |
 

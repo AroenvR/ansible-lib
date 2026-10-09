@@ -521,6 +521,130 @@
           PASSED restart: node_deploy's restarted the Node.js service and returned once it answered (start count
           {{ __node_deploy_test_after_restart.json.starts }}); claude_code's started a new container that runs.
 
+- name: Check the services keep what their deploy promised, and Podman restarts an unhealthy one
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/project.yml]
+  vars:
+    __node_deploy_test_unhealthy: /opt/deploy-test-app/data/unhealthy
+    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, systemctl, --user]
+  tasks:
+    - name: Check the Node.js service, as podman_service's entry point verify does
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_service
+        tasks_from: verify
+      vars:
+        podman_service_name: deploy-test-app
+
+    - name: Check Claude Code's service, which has no port
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_service
+        tasks_from: verify
+      vars:
+        podman_service_name: claude-code
+        podman_service_port: 0
+
+    - name: Look up Claude Code's account
+      ansible.builtin.getent:
+        database: passwd
+        key: claude-code
+
+    - name: Read both Quadlet files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/containers/systemd/users/3001/deploy-test-app.container
+        - /etc/containers/systemd/users/{{ ansible_facts.getent_passwd['claude-code'][1] }}/claude-code.container
+      register: __node_deploy_test_quadlets
+
+    - name: Count systemd's restarts of the Node.js service so far
+      ansible.builtin.command:
+        argv: "{{ __node_deploy_test_systemctl + ['show', '--property=NRestarts', '--value', 'deploy-test-app.service'] }}"
+        chdir: /
+      register: __node_deploy_test_restarts_before
+      changed_when: false
+
+    - name: Query the Node.js service before it turns unhealthy
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_healthy
+
+    - name: Make the app answer with a server error, as a broken app would
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ __node_deploy_test_unhealthy }}"
+        mode: "0644"
+
+    # 3 failed checks, one every 30 seconds, then systemd's 10 seconds.
+    - name: Wait until Podman stopped it and systemd started it again
+      ansible.builtin.slurp:
+        src: /opt/deploy-test-app/data/starts
+      register: __node_deploy_test_starts
+      until: (__node_deploy_test_starts.content | b64decode | int) > __node_deploy_test_healthy.json.starts
+      retries: 60
+      delay: 5
+
+    - name: Count systemd's restarts again
+      ansible.builtin.command:
+        argv: "{{ __node_deploy_test_systemctl + ['show', '--property=NRestarts', '--value', 'deploy-test-app.service'] }}"
+        chdir: /
+      register: __node_deploy_test_restarts_after
+      changed_when: false
+
+    - name: Read the service's log
+      ansible.builtin.command: journalctl --no-pager _SYSTEMD_USER_UNIT=deploy-test-app.service
+      register: __node_deploy_test_health_log
+      changed_when: false
+
+    - name: Let the app answer normally again
+      ansible.builtin.file:
+        path: "{{ __node_deploy_test_unhealthy }}"
+        state: absent
+
+    # systemd counts it as started once its health check passed again.
+    - name: Wait until systemd counts the service as started again
+      ansible.builtin.command:
+        argv: "{{ __node_deploy_test_systemctl + ['is-active', 'deploy-test-app.service'] }}"
+        chdir: /
+      register: __node_deploy_test_active
+      until: __node_deploy_test_active.stdout == 'active'
+      retries: 30
+      delay: 2
+      changed_when: false
+      failed_when: false
+
+    - name: Query the service again
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3009/
+      register: __node_deploy_test_recovered
+
+    - name: Check the Node.js service is healthy again
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_service
+        tasks_from: verify
+      vars:
+        podman_service_name: deploy-test-app
+
+    - name: Check the Node.js service has a health check that restarted it, and Claude Code none
+      vars:
+        __node_deploy_test_node_quadlet: "{{ __node_deploy_test_quadlets.results[0].content | b64decode }}"
+        __node_deploy_test_claude_quadlet: "{{ __node_deploy_test_quadlets.results[1].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_node_quadlet is search('^HealthCmd=node -e ', multiline=True)
+          - __node_deploy_test_node_quadlet is search('^Notify=healthy$', multiline=True)
+          - __node_deploy_test_node_quadlet is search('^HealthOnFailure=kill$', multiline=True)
+          - __node_deploy_test_claude_quadlet is not search('^HealthCmd=', multiline=True)
+          - __node_deploy_test_restarts_after.stdout | int > __node_deploy_test_restarts_before.stdout | int
+          - __node_deploy_test_recovered.json.starts > __node_deploy_test_healthy.json.starts
+        fail_msg: "The service's log: {{ __node_deploy_test_health_log.stdout_lines[-15:] }}"
+        success_msg: >-
+          PASSED health checks: both services passed podman_service's verify; once the Node.js app answered with a
+          server error, Podman stopped it and systemd started it again ({{ __node_deploy_test_restarts_after.stdout }}
+          restarts, start count
+          {{ __node_deploy_test_healthy.json.starts }} to {{ __node_deploy_test_recovered.json.starts }}), healthy
+          again once the app was; Claude Code has no health check.
+
 - name: Check the removal takes away the service and keeps its directory as it is
   hosts: all
   gather_facts: false

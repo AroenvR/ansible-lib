@@ -4,7 +4,7 @@
 # another repository (as an archive extracted into a directory of a checkout
 # would be), and one on a machine without git. Run from the repository root with
 # the ansible-core to test:
-#   make test-dist-2.12
+#   make test-dist-2.14
 - name: Test build.yml in a git checkout and outside one
   hosts: localhost
   connection: local

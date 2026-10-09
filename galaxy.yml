@@ -5,9 +5,9 @@ name: infra
 # Releases are made by CI from main: each gets the next patch version after the
 # latest v* tag, or this version when it is higher. Raise it here to release a
 # new minor or major version (see CONTRIBUTING.md).
-version: 0.2.0
+version: 0.3.0
 readme: README.md
-description: Tested building blocks for RHEL 9 and Ubuntu 22.04 servers.
+description: Tested building blocks for RHEL 9.6 and Ubuntu 24.04 servers.
 authors:
   - untitled
 license_file: LICENSE

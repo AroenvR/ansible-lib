@@ -44,8 +44,8 @@ The same builder image also installs node_modules for development, see
 
 ## What the build machine needs
 
-- Podman 3.4 or newer, ansible-core and this collection. RHEL 9
-  (`dnf install podman ansible-core`) and Ubuntu 22.04
+- Podman 4.9 or newer, ansible-core and this collection. RHEL 9.6
+  (`dnf install podman ansible-core`) and Ubuntu 24.04
   (`apt install podman ansible-core`) both work. Then install the collection as
   described in the [collection README](../../README.md#get-it).
 - Access to the download sources below, or to mirrors of them.
