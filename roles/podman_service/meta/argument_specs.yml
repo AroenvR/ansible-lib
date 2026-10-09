@@ -22,9 +22,10 @@ argument_specs:
         account, with a read-only root filesystem (/tmp is in memory), no capabilities and no privilege
         escalation, and starts it again after a crash or reboot.
       - The shared zone, /opt/containers/shared/, is a directory every service with I(podman_service_shared) may
-        read and write, at the same path in its container, through the group containers-shared. Whatever is
-        created in it is writable for the group. The deploy adds the account to the group; an account's running
-        services restart once, the first time, to get it.
+        read and write, at the same path in its container, through the group containers-shared, which gets the
+        access an app's mode asks for (most ask for read and write; 0600 stays private). Its README.md, root's,
+        has a checksum in /opt/containers/shared-checksums/, read-only in every container. The deploy adds the
+        account to the group; an account's running services restart once, the first time, to get it.
       - Servers need RHEL 9.6 or newer, with its Podman (5.4; the role needs 5.0 or newer). No network access is needed, unless the
         shared zone needs setfacl and the acl package is missing, which the deploy then installs from the server's
         repositories (RHEL's BaseOS has it).
@@ -96,6 +97,14 @@ argument_specs:
         default: 512m
         description: Size limit of the app's /tmp, which is in memory and emptied on every restart, e.g. C(2g). For large
           temporary files on disk, the app makes a directory of its own in its working directory.
+      podman_service_memory:
+        type: str
+        default: ""
+        description:
+          - The most memory the container may use, e.g. C(4g); /tmp counts toward it. Past it, the kernel stops a
+            process in the container rather than elsewhere on the server.
+          - Empty, the default, sets no limit. node_deploy and claude_code set this from node_deploy_memory and
+            claude_code_memory.
       podman_service_shared:
         type: bool
         default: true

@@ -109,27 +109,20 @@ The maintainer and the agent work in **separate environments**. The
 maintainer's repositories are the
 source of truth.
 
-- **Never lose the maintainer's edits.** Before changing a file, use the latest
-  version the maintainer provided. Files they have edited so far:
-  `.gitignore`, the `on:` block of `.github/workflows/ci.yml` (including its
-  TODO comments; its push trigger was changed to every branch at their request)
-  and `.github/workflows/test.yml` (the starter workflow, fixed for lint with
-  `branches: ["main"]`). Their repository may be ahead of the agent's copy: ask
-  for the current version of a file they may have changed before replacing it.
-  Only change their lines when they ask; suggest changes in chat instead.
-- **The maintainer's own tooling.** `.env.example` and `.tools/archive_git.sh`
-  are in the repository and every zip exactly as they gave them; never change
-  them. `libs/bash/` is their Bash library (which `archive_git.sh` sources), a
-  git subtree they maintain: it is not in the agent's copy, so the zip lacks it,
-  and their copy stays as it is. The release tarball leaves all three out
-  (`build_ignore`). They also keep private directories that are not in the zip
-  and restore them after overwriting; ignore them unless told otherwise.
-- **Deliver every change as a complete zip** of the repository root (the zip
-  root is the repository root), excluding `.git/`, `.venv/`, `dist/` and tool
-  caches. The maintainer overwrites their checkout with it, so every file in the
-  zip replaces theirs. With each zip, list the changed files and any files to
-  delete (overwriting never deletes), and give a commit message for it: plain
-  text, without attribution trailers (no Co-Authored-By, no session links).
+- **Start from the maintainer's branch.** Pull the branch they name (usually
+  `main`) and work on top of it: then every file of the repository, CI's
+  included, is the agent's to change as the work needs.
+- **Never touch the maintainer's own tooling**: `.tools/`, `libs/` (their Bash
+  library, a git subtree), `.env.example` and personal files like them. They
+  stay in the zip exactly as the branch has them; the release tarball leaves
+  them out (`build_ignore`). Private directories outside git (e.g. `tmp/`) are
+  theirs too.
+- **Deliver every change as a complete zip** of the repository root (`git
+  archive` of the agent's branch). The maintainer replaces their tree with it,
+  keeping `.git/`, so the zip is taken exactly as it is: what it adds, changes
+  or lacks is added, changed or deleted. With each zip, give a commit message:
+  plain text, without attribution trailers (no Co-Authored-By, no session
+  links).
 - **Verify from a clean state** before delivering: fresh venvs, empty pip and
   Molecule caches, a git checkout. A cached pip wheel once hid a CI failure.
 - **Communication.** Be concise and end replies with a `TL;DR:` section. The
@@ -325,6 +318,16 @@ source of truth.
   need `%%`. Podman 5.8.2 fixed double quotes in it, so avoid them.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
+- A default ACL replaces the umask, but not the mode a program asks for: a file
+  created 0600 (Python's tempfile) gets `group::---`, whatever the default ACL
+  gives the group. A shell's `>` (0666) gets `group::rw-` even with umask 077.
+- In `podman build` (4.9.3), a changed `--build-arg` rebuilds every `RUN` after
+  that `ARG`'s declaration, not just those that use it: claude_code's ARGs come
+  before the first RUN, so a new Claude Code version reruns `dnf upgrade`.
+- Quadlet in Podman 5.4 has no `Memory=` key: the memory limit is
+  `PodmanArgs=--memory=`. Rootless, it needs the memory controller
+  delegated to `user@.service`, which systemd 252 (RHEL 9) and 255 (Ubuntu
+  24.04) do by default. A host with cgroup v1 can't apply it.
 
 ## Looking inside a running service (field notes)
 
@@ -349,8 +352,14 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-08, on main after v0.2.2.
+Last updated 2026-10-09, on main after v0.3.0.
 
+- Decided with the maintainer on 2026-10-09, from a health check that Claude
+  Code ran in its own container: the shared zone's README checksum (read-only for
+  services), `dnf upgrade` in claude_code's Containerfile, and memory limits
+  (`podman_service_memory`, no limit by default; a role restricts its own
+  service by default, as claude_code does with 4g, and the deployer can always
+  lift it). A sticky bit for the zone's README stays out (see Pitfalls).
 - Decided with the maintainer on 2026-10-08: the oldest systems supported are
   RHEL 9.6 and Ubuntu 24.04, so the tests run ansible-core 2.14 and 2.16 (2.12
   and Ubuntu 22.04 are gone); ShellCheck joins `make lint`; Podman's own health
@@ -358,12 +367,11 @@ Last updated 2026-10-08, on main after v0.2.2.
   Podman 5, so RHEL 9.6's servers) watch each service that has one; each role's
   promises become a `verify` entry point, starting with podman_service.
 
-- GitHub Actions passed everything up to v0.2.2, and the maintainer's
+- GitHub Actions passed everything up to v0.3.0, and the maintainer's
   regression tests on their RHEL server pass: the NestJS project and Claude Code
-  side by side. Not yet in CI (verified in the agent's sandbox, whose server
-  stand-in is Ubuntu 25.04 for its Podman 5.4): ansible-core 2.14 and 2.16 on
-  Python 3.11 and 3.12, the Ubuntu 24.04 images and native test, ShellCheck,
-  the health checks and podman_service's verify entry point.
+  side by side. Only CI checks the memory limits (the agent's sandbox has cgroup
+  v1) and the real Claude Code image's `dnf upgrade` (Red Hat's registry is out
+  of the sandbox's reach).
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
@@ -441,13 +449,17 @@ Last updated 2026-10-08, on main after v0.2.2.
   written once from aslib.infra's templates. `claude_code_bypass_permissions` is the POC's way to autonomy.
   Tests run it next to the Node.js service.
 - The shared zone `/opt/containers/shared/`, decided with the maintainer: every
-  service reads and writes it; a default ACL keeps everything group-writable
-  ("tighten later, once the flows work"). Its README.md
+  service reads and writes it; a default ACL gives the group the access an app's
+  mode asks for, whatever its umask ("tighten later, once the flows work"). A
+  private mode (Python's tempfile: 0600) stays private: the README says to
+  `chmod g+rw` before the rename. Its README.md
   (podman_service/files/shared-README.md, root's, rewritten by every deploy) is
   how humans and agents learn to work there; Claude's CLAUDE.md points to it
-  instead of repeating it. A service can't change it, but could remove it until
-  the next deploy; one directory per service, created by the deploy under a
-  root-owned top level, would close that if it matters.
+  instead of repeating it. A service can't change it, but could remove or
+  replace it until the next deploy, so its checksum sits in
+  `/opt/containers/shared-checksums/` (root's, mounted read-only): Claude's
+  CLAUDE.md says to check it first, and `verify` checks it. The maintainer
+  asked for the checksum; a sticky bit is out (see Pitfalls).
 - Claude's CLAUDE.md: aslib.infra ships the template (claude_code/files/CLAUDE.md),
   each project adjusts its copy in config/. Positive, short, facts Claude can't
   infer; nothing Claude Code's own prompt already covers. The policy denies edits
@@ -458,6 +470,13 @@ Last updated 2026-10-08, on main after v0.2.2.
   lists, `.bak`), and node_deploy and claude_code each wrap podman_service's
   deploy, restart and remove. Extract a shared setup mechanism when a third kind
   of project arrives, and generic lifecycle playbooks after that; not before.
+- Later, when the work returns to them: the VM branch
+  (`feature/claude_code_vm-2026-10-08`) needs the new floor before it merges,
+  Python 3.11 instead of 3.10 in the VM for the ansible-core 2.14 venvs; and
+  Claude Code's policy could become one aslib.infra base that the container's
+  deploy merges with the project's `config/` and the VM installs too, so one
+  file reaches both (today `roles/claude_code/files/managed-settings.json` only
+  seeds new projects).
 - Open: the license (`LICENSE` is a placeholder, decided later); a pinned source
   for aslib.infra in projects' pipelines once the release location is final.
 

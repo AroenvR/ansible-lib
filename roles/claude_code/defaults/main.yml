@@ -9,3 +9,4 @@ claude_code_repository: https://downloads.claude.ai/claude-code/rpm/stable
 claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc
 claude_code_version: ""
 claude_code_bypass_permissions: false
+claude_code_memory: 4g

@@ -1,6 +1,7 @@
 ---
 # What a deployed service promises, as checks that change nothing: shared by the
-# deploy, the restart and the entry point verify, once the service is ready. Needs
+# deploy, the restart and the entry point verify, once the service is ready. With
+# the shared zone, that includes the zone's README being aslib.infra's. Needs
 # the account's commands (__podman_service_as_account) and its UID
 # (__podman_service_uid_number).
 - name: Look up the service's Quadlet file, and whether its account may run it at boot
@@ -34,8 +35,19 @@
   failed_when: false
   when: podman_service_port | int > 0
 
+# Another service may have removed or replaced it (see shared.yml). No service
+# can remove the checksum; a server deployed before 0.4.0 has none until its next deploy.
+- name: Check the shared zone's README.md against its checksum
+  ansible.builtin.command:
+    argv: [sha256sum, --check, --status, /opt/containers/shared-checksums/README.md.sha256]
+    removes: /opt/containers/shared-checksums/README.md.sha256
+  register: __podman_service_check_readme
+  changed_when: false
+  failed_when: false
+  when: podman_service_shared | bool
+
 # A container with a health check must have passed its latest one.
-- name: Check the service starts at boot, runs, is healthy and answers on its port
+- name: Check the service starts at boot, runs, is healthy and answers on its port, and the shared zone's README is intact
   vars:
     __podman_service_container: "{{ (__podman_service_check_state.results[1].stdout | default('[{}]', true) | from_json)[0] }}"
     __podman_service_health_test: "{{ __podman_service_container.Config.Healthcheck.Test | default([]) }}"
@@ -48,6 +60,7 @@
       - __podman_service_check_state.results[1].rc == 0
       - __podman_service_health_test | length == 0 or __podman_service_health == 'healthy'
       - podman_service_port | int == 0 or __podman_service_check_answer.status | default(-1) > 0
+      - __podman_service_check_readme.rc | default(0) == 0
     fail_msg: >-
       {{ podman_service_name }} on {{ inventory_hostname }} -
       Quadlet file: {{ __podman_service_check_files.results[0].stat.exists }},
@@ -56,6 +69,8 @@
       health: {{ __podman_service_health if __podman_service_health_test | length > 0 else 'no health check' }},
       HTTP answer on port {{ podman_service_port }}: {{ __podman_service_check_answer.status | default('none') }}.
       Its log: sudo journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service
+      {{- '. README.md in the shared zone was changed or replaced since the last deploy, which writes it again: a service broke its rules'
+          if __podman_service_check_readme.rc | default(0) != 0 else '' }}
     success_msg: >-
       {{ podman_service_name }} runs as {{ __podman_service_user }} and starts at boot;
       {{ 'it is healthy' if __podman_service_health_test | length > 0 else 'it has no health check' }}{{

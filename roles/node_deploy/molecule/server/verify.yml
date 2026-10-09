@@ -180,6 +180,51 @@
       register: __node_deploy_test_readme_tries
       changed_when: false
 
+    # Both with the private mode Python's tempfile asks for (0600); one then given
+    # the group's access before the rename, as the zone's README says.
+    - name: Write a private file into the shared zone from the Node.js service's container, and one given the group's access
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=deploy-test-app
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - podman
+          - exec
+          - deploy-test-app
+          - node
+          - --eval
+          - >-
+            const fs = require('fs'); const dir = '/opt/containers/shared/from-node/';
+            for (const [name, mode] of [['private', 0o600], ['shared', 0o660]]) {
+            fs.writeFileSync(dir + name + '.tmp', name + '\n', { mode: 0o600 }); fs.chmodSync(dir + name + '.tmp', mode);
+            fs.renameSync(dir + name + '.tmp', dir + name + '.txt'); }
+        chdir: /
+      changed_when: true
+
+    - name: Read both from Claude Code's container, and check the zone's README against its checksum
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - podman
+          - exec
+          - claude-code
+          - sh
+          - -c
+          - >-
+            cat /opt/containers/shared/from-node/shared.txt;
+            cat /opt/containers/shared/from-node/private.txt 2>/dev/null || echo unreadable;
+            sha256sum --check /opt/containers/shared-checksums/README.md.sha256;
+            touch /opt/containers/shared-checksums/new 2>/dev/null || echo read-only
+        chdir: /
+      register: __node_deploy_test_claude_checks
+      changed_when: false
+
     - name: Inspect the shared zone and its README on the server
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -251,12 +296,112 @@
           and unchangeable; claude-code ran Claude as 1001 in /opt/claude-code, despite a foreign D-Bus address,
           and Claude found its policy and instructions in /etc/claude-code and could not change them.
 
+    - name: Check a file reaches the group only with the group's access, and the README matches its read-only checksum
+      ansible.builtin.assert:
+        that:
+          - >-
+            __node_deploy_test_claude_checks.stdout_lines
+            == ['shared', 'unreadable', '/opt/containers/shared/README.md: OK', 'read-only']
+        fail_msg: "Claude Code's container: {{ __node_deploy_test_claude_checks.stdout_lines }} {{ __node_deploy_test_claude_checks.stderr }}"
+        success_msg: >-
+          PASSED shared zone: Claude Code could not read a file the Node.js service wrote with a private mode (0600), and
+          read the one it gave the group's access before the rename; the zone's README matched the checksum in
+          /opt/containers/shared-checksums, which the container could not change.
+
+    # The zone is the group's, so a service can rename its own file over the README.
+    - name: Replace the zone's README from the Node.js service's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=deploy-test-app
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - podman
+          - exec
+          - deploy-test-app
+          - sh
+          - -c
+          - >-
+            printf '# Other rules\n' > /opt/containers/shared/from-node/README.tmp
+            && mv /opt/containers/shared/from-node/README.tmp /opt/containers/shared/README.md
+        chdir: /
+      changed_when: true
+
+    - name: Check the README against its checksum from Claude Code's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - podman
+          - exec
+          - claude-code
+          - sh
+          - -c
+          - sha256sum --check --status /opt/containers/shared-checksums/README.md.sha256 && echo intact || echo replaced
+        chdir: /
+      register: __node_deploy_test_replaced
+      changed_when: false
+
+    - name: Run podman_service's verify for Claude Code, which must report the replaced README
+      block:
+        - name: Run podman_service's verify for Claude Code
+          ansible.builtin.include_role:
+            name: aslib.infra.podman_service
+            tasks_from: verify
+          vars:
+            podman_service_name: claude-code
+            podman_service_port: 0
+
+        - name: Note that verify passed
+          ansible.builtin.set_fact:
+            __node_deploy_test_verify_said: passed
+      rescue:
+        - name: Note what verify reported
+          ansible.builtin.set_fact:
+            __node_deploy_test_verify_said: "{{ ansible_failed_result.msg | default('') }}"
+
+    # Every deploy writes the README again, as this one does.
     - name: Deploy Claude Code again, with claude_code_bypass_permissions
       ansible.builtin.include_role:
         name: aslib.infra.claude_code
       vars:
         podman_service_uid: ""
         claude_code_bypass_permissions: "true"   # as -e claude_code_bypass_permissions=true passes it
+
+    - name: Check the README against its checksum again
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - podman
+          - exec
+          - claude-code
+          - sh
+          - -c
+          - sha256sum --check --status /opt/containers/shared-checksums/README.md.sha256 && echo intact || echo replaced
+        chdir: /
+      register: __node_deploy_test_restored
+      changed_when: false
+
+    - name: Check the replaced README was caught, and the deploy put it back
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_replaced.stdout == 'replaced'
+          - __node_deploy_test_verify_said is search('README[.]md in the shared zone was changed or replaced')
+          - __node_deploy_test_restored.stdout == 'intact'
+        fail_msg: >-
+          After the replacement, Claude Code's check: {{ __node_deploy_test_replaced.stdout }}, podman_service's
+          verify: {{ __node_deploy_test_verify_said }}; after the deploy: {{ __node_deploy_test_restored.stdout }}.
+        success_msg: >-
+          PASSED shared zone: once a service replaced the README, Claude Code's check against the checksum failed and
+          podman_service's verify reported it; the next deploy wrote it again, and the check passed.
 
     - name: Read the policy the deploy installed
       ansible.builtin.slurp:
@@ -557,6 +702,29 @@
         - /etc/containers/systemd/users/{{ ansible_facts.getent_passwd['claude-code'][1] }}/claude-code.container
       register: __node_deploy_test_quadlets
 
+    # As the kernel enforces it: Claude Code's at most 4g (claude_code_memory's
+    # default), the Node.js service's unlimited (node_deploy_memory's).
+    - name: Read each container's memory limit
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user={{ item.account }}
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ item.uid }}
+          - podman
+          - exec
+          - "{{ item.account }}"
+          - cat
+          - /sys/fs/cgroup/memory.max
+        chdir: /
+      loop:
+        - { account: deploy-test-app, uid: 3001 }
+        - { account: claude-code, uid: "{{ ansible_facts.getent_passwd['claude-code'][1] }}" }
+      register: __node_deploy_test_memory
+      changed_when: false
+      failed_when: false
+
     - name: Count systemd's restarts of the Node.js service so far
       ansible.builtin.command:
         argv: "{{ __node_deploy_test_systemctl + ['show', '--property=NRestarts', '--value', 'deploy-test-app.service'] }}"
@@ -644,6 +812,23 @@
           restarts, start count
           {{ __node_deploy_test_healthy.json.starts }} to {{ __node_deploy_test_recovered.json.starts }}), healthy
           again once the app was; Claude Code has no health check.
+
+    - name: Check Claude Code's container has at most 4g of memory, and the Node.js service's no limit
+      vars:
+        __node_deploy_test_node_quadlet: "{{ __node_deploy_test_quadlets.results[0].content | b64decode }}"
+        __node_deploy_test_claude_quadlet: "{{ __node_deploy_test_quadlets.results[1].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_node_quadlet is not search('--memory', multiline=True)
+          - __node_deploy_test_claude_quadlet is search('^PodmanArgs=--memory=4g$', multiline=True)
+          - __node_deploy_test_memory.results | map(attribute='stdout') | list == ['max', '4294967296']
+        fail_msg: >-
+          memory.max of the Node.js service and of Claude Code:
+          {{ __node_deploy_test_memory.results | map(attribute='stdout') | list }}
+          {{ __node_deploy_test_memory.results | map(attribute='stderr') | list }}
+        success_msg: >-
+          PASSED memory limits: the kernel holds Claude Code's container to 4 GiB (claude_code_memory's default), and
+          the Node.js service's container has no limit (node_deploy_memory's default).
 
 - name: Check the removal takes away the service and keeps its directory as it is
   hosts: all

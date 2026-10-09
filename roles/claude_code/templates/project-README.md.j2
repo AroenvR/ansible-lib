@@ -76,4 +76,6 @@ it needs the weaker nested sandbox inside an unprivileged container.
 
 Without a pinned version, every build installs the newest Claude Code of the
 repository's channel (stable by default): a new image is the update. Claude Code
-never updates itself here.
+never updates itself here. A new image also upgrades every package of the base
+image to its newest (security fixes), so with a pinned version the packages stay
+as they were too.

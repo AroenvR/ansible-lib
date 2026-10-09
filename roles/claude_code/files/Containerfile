@@ -19,14 +19,21 @@ ARG CLAUDE_CODE_VERSION=
 ARG NVM_URL=https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh
 ARG NVM_SHA256=a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
 
-# Tools for Claude's sessions, all from Red Hat's UBI repositories (a subset of
-# RHEL's). Add what your work needs here:
+# First every package at its newest, the base image's own included: the base
+# image is only as new as Red Hat's last build of it, and dnf install leaves
+# installed packages as they are. The build arguments above come before the
+# first RUN on purpose: a new Claude Code version or base image rebuilds every
+# layer, so every new image has the updates of its day.
+#
+# Then the tools for Claude's sessions, all from Red Hat's UBI repositories (a
+# subset of RHEL's). Add what your work needs here:
 # - everyday tools: git, ssh, jq, archives, rsync, file, patch, ps, ip, vi;
 # - Python 3.12 with pip and headers (python3 stays 3.9, which RHEL's own tools
 #   use), and a compiler for native modules;
 # - Node.js 24 with npm (UBI's unversioned nodejs is 16, end of life);
 # - the clients of SQLite, MariaDB and PostgreSQL, with their headers.
-RUN dnf module enable --assumeyes nodejs:24 \
+RUN dnf upgrade --assumeyes --nodocs \
+    && dnf module enable --assumeyes nodejs:24 \
     && dnf install --assumeyes --setopt=install_weak_deps=False --nodocs \
         git-core openssh-clients jq less which findutils diffutils patch file procps-ng iproute vim-minimal \
         tar gzip unzip xz zstd rsync shadow-utils \

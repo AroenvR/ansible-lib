@@ -61,6 +61,7 @@
     podman_service_quadlet_template: "{{ __claude_code_template if __claude_code_template is file else '' }}"
     # Nothing in the container serves, so there is nothing to check its health with.
     podman_service_health_cmd: ""
+    podman_service_memory: "{{ claude_code_memory | default('') }}"
 
 # Claude Code reads ~/.bashrc when it starts a session's shell. RHEL's default
 # one loads /etc/bashrc and with it /etc/profile.d/, where the image's nvm is.
