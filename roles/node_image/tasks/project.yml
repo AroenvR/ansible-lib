@@ -7,14 +7,14 @@
   changed_when: false
   failed_when: false
 
-- name: Check that Podman 3.4 or newer is installed
+- name: Check that Podman 4.9 or newer is installed
   ansible.builtin.assert:
     that:
       - __node_image_podman.rc == 0
-      - __node_image_podman.stdout.split()[-1] is version('3.4', '>=')
+      - __node_image_podman.stdout.split()[-1] is version('4.9', '>=')
     fail_msg: >-
-      This needs Podman 3.4 or newer on this machine (found: {{ __node_image_podman.stdout | default('none', true) }}).
-      On RHEL 9: dnf install podman. On Ubuntu 22.04: apt install podman.
+      This needs Podman 4.9 or newer on this machine (found: {{ __node_image_podman.stdout | default('none', true) }}).
+      On RHEL 9.6: dnf install podman. On Ubuntu 24.04: apt install podman.
     quiet: true
 
 - name: Check the project has a package.json

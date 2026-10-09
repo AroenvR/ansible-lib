@@ -1,7 +1,7 @@
 # aslib.infra
 
-Tested building blocks (Ansible roles and ready-made playbooks) for RHEL 9 and
-Ubuntu 22.04 servers: rootless Podman services, building and deploying
+Tested building blocks (Ansible roles and ready-made playbooks) for RHEL 9.6 and
+Ubuntu 24.04 (or newer) servers: rootless Podman services, building and deploying
 Node.js backends as such services, and an always-on Claude Code agent for root.
 Developing the collection itself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -9,9 +9,9 @@ Developing the collection itself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | | Supported |
 |---|---|
-| Ansible control node | The `ansible-core` package of Ubuntu 22.04 (2.12) or RHEL 9.6 (2.14), or newer |
-| Managed servers | Ubuntu 22.04, RHEL 9. `podman_service`, `podman_overview`, `node_deploy` and `claude_code`: RHEL 9.2 or newer with Podman |
-| Image build machines | Ubuntu 22.04, RHEL 9, with Podman 3.4 or newer |
+| Ansible control node | The `ansible-core` package of RHEL 9.6 (2.14) or Ubuntu 24.04 (2.16), or newer |
+| Managed servers | RHEL 9.6, Ubuntu 24.04. `podman_service`, `podman_overview`, `node_deploy` and `claude_code`: RHEL 9.6 or newer with its Podman (5.4) |
+| Image build machines | RHEL 9.6, Ubuntu 24.04, with their Podman (5.4, 4.9) |
 | Other collections | None. Only `ansible.builtin` is used. |
 
 ## Get it
@@ -25,11 +25,13 @@ Each tarball holds only what runs: no tests, no dev tooling.
   work in progress: the newest build of each branch is an artifact of its CI
   run (GitHub: Actions > the run > Artifacts) for 7 days.
 - **Your own build**, of any checkout of this repository, for example before CI
-  has published one. From the repository root, with any ansible-core 2.12 or newer:
+  has published one. From the repository root, with any ansible-core 2.14 or newer:
 
   ```sh
   ansible-playbook build.yml   # writes dist/aslib-infra.<branch>.<commit>.<time>.tgz
   ```
+
+  A copy without git (an exported archive) builds too, as `dist/aslib-infra.<time>.tgz`.
 
   CI uses the same playbook for branch builds and releases; its header explains both.
 
@@ -38,16 +40,7 @@ replaces an installed copy, also one with the same version (branch builds carry
 the version of their `galaxy.yml`):
 
 ```sh
-ansible-galaxy collection install --force aslib-infra-0.2.0.tar.gz   # or the .tgz of a branch build
-```
-
-**Ubuntu 22.04's own ansible-core (2.12.0):** `ansible-galaxy collection install`
-crashes there, because Ubuntu ships resolvelib 0.8.1 while 2.12 needs < 0.6.
-Running playbooks is not affected. Install by extracting the tarball instead:
-
-```sh
-mkdir -p ~/.ansible/collections/ansible_collections/aslib/infra
-tar -xzf aslib-infra-0.2.0.tar.gz -C ~/.ansible/collections/ansible_collections/aslib/infra
+ansible-galaxy collection install --force aslib-infra-0.3.0.tar.gz   # or the .tgz of a branch build
 ```
 
 **Offline control node:** copy the tarball over; installing it needs no network.
@@ -144,19 +137,19 @@ A project that writes its own playbooks pins aslib.infra in a `requirements.yml`
 ```yaml
 collections:
   # A release on GitHub. From GitLab's package registry it is:
-  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.2.0/aslib-infra-0.2.0.tar.gz
-  - name: https://github.com/AroenvR/ansible-lib/releases/download/v0.2.0/aslib-infra-0.2.0.tar.gz
+  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.3.0/aslib-infra-0.3.0.tar.gz
+  - name: /releases/download/v0.3.0/aslib-infra-0.3.0.tar.gz
     type: url
 ```
 
 `ansible-galaxy collection install -r requirements.yml` installs it. To use a
 tarball file instead, such as a branch build or your own build, or a release
-downloaded from a private repository (`gh release download v0.2.0 --repo
-AroenvR/ansible-lib`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
+downloaded from a private repository (`gh release download v0.3.0 --repo
+REPO_URL`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
 
 ```yaml
 collections:
-  - name: ./aslib-infra-0.2.0.tar.gz
+  - name: ./aslib-infra-0.3.0.tar.gz
     type: file
 ```
 
@@ -177,11 +170,11 @@ role's README says so.
 | [sudoers](roles/sudoers/README.md) | sudo rules as validated drop-in files | Servers | Only if sudo is missing |
 | [node_setup](roles/node_setup/README.md) | Prepares a Node.js project: its `ansible/` directory with settings, inventory, playbooks and guide | The project's machine | No |
 | [node_image](roles/node_image/README.md) | Production container image of a Node.js project, and its node_modules for development, built in containers | The build machine | Yes, from sources you choose |
-| [node_deploy](roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot, with podman_service | Servers (RHEL 9.2+) | No |
-| [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.2+) | Only if the `acl` package is missing |
-| [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with how to read their logs | Servers (RHEL 9.2+) | No |
-| [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.2+) | To build: Red Hat's registry, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
-| [claude_vm](roles/claude_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (Ubuntu, RHEL 9) | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
+| [node_deploy](roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot, with podman_service | Servers (RHEL 9.6+) | No |
+| [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.6+) | Only if the `acl` package is missing |
+| [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with how to read their logs | Servers (RHEL 9.6+) | No |
+| [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.6+) | To build: Red Hat's registry, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
+| [claude_vm](roles/claude_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (RHEL 9.6+, Ubuntu 24.04+) | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
 
 Every role documents its variables; read them offline with
 `ansible-doc -t role aslib.infra.<role>`.
@@ -216,14 +209,16 @@ needed. The playbooks node_setup writes import them.
 
 Tested on every change, in CI:
 
-- every role with ansible-core 2.12 and 2.14, on test containers that mimic
-  default RHEL 9 and Ubuntu 22.04 installs, and with the ansible-core 2.12.0 and
-  Podman 3.4 packages of Ubuntu 22.04 itself;
+- every role with ansible-core 2.14 and 2.16, on test containers that mimic
+  default RHEL 9.6 and Ubuntu 24.04 installs, and with the ansible-core 2.16.3
+  and Podman 4.9 packages of Ubuntu 24.04 itself;
 - node_image with NestJS 10, 11 and 12 and NestJS's default branch;
 - a service's deploy, update, overview, removal and redeploy as another
-  account, on a RHEL 9 test container, next to Claude Code (with a stand-in for
+  account, on a RHEL 9.6 test container, next to Claude Code (with a stand-in for
   it) on the same server: separate accounts and UIDs, the shared zone both ways,
-  root running Claude Code, its read-only policy, and its removal;
+  root running Claude Code, its read-only policy, and its removal; podman_service's
+  checks after every deploy and restart, and the Node.js service's health check
+  getting an app that answers with server errors restarted;
 - the Claude Code project's setup, update and real image build.
 
 Not tested yet:

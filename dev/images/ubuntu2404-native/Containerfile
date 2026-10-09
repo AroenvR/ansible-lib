@@ -1,0 +1,12 @@
+# Ubuntu 24.04 with the ansible-core (2.16.3) and Podman (4.9.3) packages Ubuntu
+# itself ships: both a server and a build machine exactly as Ubuntu provides them.
+FROM localhost/aslib-test/ubuntu2404:latest
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install --yes ansible-core podman \
+ && apt-get clean
+# This container runs inside Podman, whose network is also 10.88.0.0/16: the
+# Podman in here gets another subnet, or its containers are unreachable. Nor does
+# it always get the pids cgroup controller from the outer one (`podman run` then
+# fails now and then with "the requested cgroup controller `pids` is not
+# available"); it sets no pids limit, so it needs none.
+RUN printf '[containers]\npids_limit = 0\n\n[network]\ndefault_subnet = "10.89.0.0/16"\n' > /etc/containers/containers.conf

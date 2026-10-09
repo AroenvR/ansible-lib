@@ -85,7 +85,7 @@ This runs `image.yml`, then `deploy.yml`. Each also runs on its own: a change to
 `container.env`, the config files, the settings or the Quadlet template alone
 needs only `ansible-playbook deploy.yml`.
 
-**The image** (`image.yml`) needs Podman 3.4 or newer (RHEL 9 or Ubuntu 22.04)
+**The image** (`image.yml`) needs Podman 4.9 or newer (RHEL 9.6 or Ubuntu 24.04)
 and access to the [download sources](#download-sources). It lands in `images/` as
 `{{ __node_setup_service }}-<version>.tar`, with the version from package.json.
 This directory, `config/`, `data/`, `*.db` and `.env` files never go into it.
@@ -123,7 +123,7 @@ one another. What any of them creates there, all of them may change; agreeing on
 who writes what is up to the apps. `podman_service_shared: false` leaves the
 service out of it.
 
-What a server needs: RHEL 9.2 or newer with Podman (`sudo dnf install podman`),
+What a server needs: RHEL 9.6 or newer with Podman (`sudo dnf install podman`),
 and SSH access with sudo (or as root) for Ansible. Nothing is downloaded: the
 image comes from this directory.
 

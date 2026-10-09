@@ -16,8 +16,8 @@ driver:
   name: podman
 
 platforms:
-  - name: ubuntu2204
-    image: localhost/aslib-test/ubuntu2204:latest
+  - name: ubuntu2404
+    image: localhost/aslib-test/ubuntu2404:latest
     pre_build_image: true
     command: /sbin/init
     systemd: always

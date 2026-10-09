@@ -4,3 +4,4 @@
 # aslib.infra.podman_service's.
 node_deploy_ansible_dir: "{{ lookup('env', 'PWD') }}"
 node_deploy_config_files: config/production/*.json
+node_deploy_health_check: true

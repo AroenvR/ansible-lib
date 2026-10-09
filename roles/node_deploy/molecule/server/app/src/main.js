@@ -5,6 +5,8 @@
 // a value from the config file, the TUNED variable the test adds to the project's
 // Quadlet template, the start count, its working directory and the size of /tmp.
 // It logs a line once it listens, which the overview test finds in its log.
+// While data/unhealthy exists it answers with a server error, as a hung or broken
+// app would, which its health check must notice.
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
@@ -19,6 +21,11 @@ const tmp = fs.statfsSync(os.tmpdir());
 
 http
   .createServer((request, response) => {
+    if (fs.existsSync('data/unhealthy')) {
+      response.statusCode = 500;
+      response.end('unhealthy');
+      return;
+    }
     response.setHeader('content-type', 'application/json');
     response.end(
       JSON.stringify({

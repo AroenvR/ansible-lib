@@ -4,6 +4,41 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.3.0
+
+- **Breaking:** the oldest supported systems are RHEL 9.6 and Ubuntu 24.04
+  (before: RHEL 9 and Ubuntu 22.04), and the oldest ansible-core is 2.14, what
+  RHEL 9.6 ships (before: 2.12). Servers that run services need RHEL 9.6's
+  Podman (5.0 or newer); build machines need Podman 4.9 or newer. Ubuntu 24.04's
+  own `ansible-galaxy` installs the tarball, so extracting it by hand is no
+  longer needed.
+- Added Podman's own health checks: `podman_service_health_cmd`, run in the
+  container every 2 seconds from the start until it passes, then every 30 seconds. systemd counts a service as
+  started once it is healthy, and Podman stops it after 3 failed checks in a
+  row, after which systemd starts it again. node_deploy gives every Node.js
+  service one (`node_deploy_health_check`, on by default): healthy while the app
+  answers HTTP on its port with anything but a server error, asked with the
+  image's own Node.js. Claude Code's service has none.
+- Added the `verify` entry point of `podman_service`: checks, changing nothing,
+  that a service is installed, starts at boot, runs, is healthy and answers on
+  its port. Every deploy and restart now ends with the same checks.
+
+### Upgrading from 0.2
+
+1. Servers that run services need RHEL 9.6 or newer; control nodes and build
+   machines RHEL 9.6 or Ubuntu 24.04 (or newer).
+2. From each Node.js project's `ansible/`: `ansible-playbook update-playbooks.yml`,
+   for the Quadlet template with the health check; until then the service runs
+   without one. An app that answers `/` with a server error (5xx) when it is
+   fine sets `node_deploy_health_check: false` in `group_vars/all/project.yml`.
+
+## 0.2.2
+
+- Fixed: `build.yml` stopped when its directory was not a git checkout, such as
+  an exported copy, or when git was not installed. Such a build is now named
+  after the time only, `dist/aslib-infra.<UTC time>.tgz`. A copy inside another
+  checkout no longer takes that checkout's branch and commit.
+
 ## 0.2.0
 
 - Added role `claude_code` and playbook `aslib.infra.claude_setup`: an

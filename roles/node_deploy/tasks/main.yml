@@ -31,3 +31,10 @@
     podman_service_env_file: "{{ node_deploy_ansible_dir }}/container.env"
     podman_service_config_files: "{{ query('fileglob', (node_deploy_ansible_dir | dirname) ~ '/' ~ node_deploy_config_files) }}"
     podman_service_quadlet_template: "{{ __node_deploy_template if __node_deploy_template is file else '' }}"
+    # Healthy while the app answers HTTP on its port with anything but a server
+    # error (5xx), asked with the image's own Node.js, which has fetch(). The
+    # default() keeps it empty where ansible-core 2.14 lets these vars reach a
+    # later import of podman_service in the same play (Claude Code's, in the tests).
+    podman_service_health_cmd: "{{ __node_deploy_health_cmd if node_deploy_health_check | default(false) | bool else '' }}"
+    __node_deploy_health_cmd: >-
+      node -e 'fetch(`http://127.0.0.1:{{ podman_service_container_port }}/`).then(r => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))'

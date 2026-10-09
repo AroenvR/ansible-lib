@@ -19,13 +19,13 @@
   changed_when: false
   failed_when: false
 
-- name: Check that Podman 4.4 or newer is installed
+- name: Check that Podman 5.0 or newer is installed
   ansible.builtin.assert:
     that:
       - __podman_service_podman.rc == 0
-      - __podman_service_podman.stdout.split()[-1] is version('4.4', '>=')
+      - __podman_service_podman.stdout.split()[-1] is version('5.0', '>=')
     fail_msg: >-
-      The service needs Podman 4.4 or newer for Quadlet (RHEL 9.2 or newer); found:
+      The service needs Podman 5.0 or newer, for Quadlet and its health checks (RHEL 9.6 or newer); found:
       {{ __podman_service_podman.stdout | default('none', true) }}. Install it: dnf install podman
     quiet: true
 
@@ -65,6 +65,7 @@
 # Such commands run from / (chdir), which every account may enter.
 - name: Prepare running commands as the account
   ansible.builtin.set_fact:
+    __podman_service_uid_number: "{{ __podman_service_account.uid }}"
     __podman_service_as_account:
       - runuser
       - --user={{ __podman_service_user }}
@@ -226,6 +227,9 @@
 
 - name: Wait until the service is ready, showing its log if it is not
   ansible.builtin.import_tasks: ready.yml
+
+- name: Check the service
+  ansible.builtin.import_tasks: checks.yml
 
 # Only the deployed version stays: its archive and its image. The account holds
 # this one service, so every other image is an earlier version or build.

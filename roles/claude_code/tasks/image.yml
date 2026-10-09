@@ -12,13 +12,13 @@
   changed_when: false
   failed_when: false
 
-- name: Check that Podman 3.4 or newer is installed
+- name: Check that Podman 4.9 or newer is installed
   ansible.builtin.assert:
     that:
       - __claude_code_podman.rc == 0
-      - __claude_code_podman.stdout.split()[-1] is version('3.4', '>=')
+      - __claude_code_podman.stdout.split()[-1] is version('4.9', '>=')
     fail_msg: >-
-      Building needs Podman 3.4 or newer (RHEL 9, Ubuntu 22.04); found:
+      Building needs Podman 4.9 or newer (RHEL 9.6, Ubuntu 24.04); found:
       {{ __claude_code_podman.stdout | default('none', true) }}.
     quiet: true
 

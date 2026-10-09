@@ -32,8 +32,8 @@ stages: [check, test, publish]
   image: $PODMAN_IMAGE
   needs: [runner-check]
   before_script:
-    # The Podman image is Fedora; the test venvs need Python 3.10.
-    - dnf install --assumeyes --quiet make python3.10
+    # The Podman image is Fedora; the test venvs need Python 3.11 (2.14) and 3.12 (2.16).
+    - dnf install --assumeyes --quiet make python3.11 python3.12
     - *copy-to-collection-dir
 
 lint:
@@ -54,18 +54,19 @@ servers:
   extends: .with-podman
   parallel:
     matrix:
-      - ANSIBLE: ["2.12", "2.14"]
+      - ANSIBLE: ["2.14", "2.16"]
   script:
-    - make images test-servers-$ANSIBLE PYTHON_COMPAT=python3.10
+    - make images test-servers-$ANSIBLE
 
 build-machine:
   stage: test
   extends: .with-podman
   parallel:
     matrix:
-      - ANSIBLE: ["2.12", "2.14"]
+      - ANSIBLE: ["2.14", "2.16"]
   script:
-    - make test-build-machine-$ANSIBLE PYTHON_COMPAT=python3.10
+    - make test-build-machine-$ANSIBLE
+    - make test-dist-$ANSIBLE
 
 native:
   stage: test

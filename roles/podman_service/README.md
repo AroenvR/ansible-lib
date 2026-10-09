@@ -53,7 +53,8 @@ On every server it:
 5. waits until the service answers HTTP requests on its port, or, for a service
    without a port, until it runs. If it does not within a minute, the deploy
    fails and shows the service's log;
-6. removes the archives of other versions and the account's other images, so
+6. checks what it promised, as the entry point `verify` does ([below](#check-a-service));
+7. removes the archives of other versions and the account's other images, so
    only the deployed version stays.
 
 Running it again without changes changes nothing.
@@ -100,6 +101,16 @@ has its own account, UID and range of subordinate UIDs, so two services never
 share files or processes, even though both run as 1001 inside their containers.
 After a crash, systemd starts the service again every 10 seconds.
 
+**Health checks.** With `podman_service_health_cmd`, Podman runs that command in
+the container (with `/bin/sh`) every 2 seconds from the start until it passes,
+then every 30 seconds; exit code 0 means healthy. systemd counts the service as
+started only once it passed (`Notify=healthy`), so a start or restart returns
+with a working app or fails (after systemd's start timeout, 90 seconds).
+After 3 failures in a row Podman stops the container (`HealthOnFailure=kill`)
+and systemd starts it again: a hung app gets restarted, not just a crashed one.
+The command can only use what the image has: [node_deploy](../node_deploy/README.md)
+asks with the image's own Node.js.
+
 The app's output goes to the journal (`--log-driver=journald`), where root reads
 it. Without that, Podman writes it to a file in the account's storage whenever
 the account cannot read the journal, which is RHEL's default; `podman logs` as
@@ -121,6 +132,7 @@ copy of this one, which lists the variables it can use.
 | `podman_service_uid` | (any free UID) | Fix the account's UID, e.g. the same on every server |
 | `podman_service_tmp_size` | `512m` | Size limit of the app's `/tmp`, which is in memory |
 | `podman_service_shared` | `true` | Give the service the shared zone, `/opt/containers/shared/` |
+| `podman_service_health_cmd` | `""` (none) | The health check, run in the container: exit code 0 means healthy |
 | `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |
 | `podman_service_quadlet_template` | the role's | A Quadlet template of your own |
 
@@ -162,7 +174,7 @@ what the service wrote there) stay.
 
 ## What a server needs
 
-- RHEL 9.2 or newer with Podman 4.4 or newer, which brings Quadlet: `sudo dnf install podman`.
+- RHEL 9.6 or newer with its Podman (5.4; the role needs 5.0 or newer, for Quadlet's health checks): `sudo dnf install podman`.
 - SSH access for Ansible as root or as an account that may use sudo
   (not needed when deploying to `localhost`).
 
@@ -175,12 +187,28 @@ server's repositories (RHEL's BaseOS) when it is missing.
 - A service with a port must answer HTTP on it: that is how the deploy knows it
   started. One without a port counts as started once systemd runs it.
 - Not tested yet: a deploy over SSH with sudo to a remote server (tests deploy
-  to a RHEL 9 test container), and SELinux in enforcing mode.
+  to a RHEL 9.6 test container), and SELinux in enforcing mode.
 - Tested through [node_deploy](../node_deploy/README.md)'s scenario, which
   deploys, updates, removes and redeploys a service, next to Claude Code (a
   service without a port) on the same server, sharing the shared zone.
 
 ## Check a service
+
+What the deploy promised, checked any time without changing anything: the
+Quadlet file is installed, the account may run the service at boot, the service
+is active, its container passed its latest health check (if it has one), and it
+answers HTTP on its port (if it has one). The deploy and the restart end with the
+same checks.
+
+```yaml
+    - name: Check the service
+      ansible.builtin.import_role:
+        name: aslib.infra.podman_service
+        tasks_from: verify
+      vars:
+        podman_service_name: orders-api
+        podman_service_port: 8080
+```
 
 Every service on the servers in the inventory, with the command that shows its
 log, and the latest log lines of those that do not run

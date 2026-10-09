@@ -3,7 +3,7 @@ argument_specs:
   main:
     short_description: Build a production container image of a Node.js project with Podman.
     description:
-      - Runs on the machine where Ansible runs (the build machine) and needs Podman 3.4 or newer there.
+      - Runs on the machine where Ansible runs (the build machine) and needs Podman 4.9 or newer there.
       - Needs package.json with C(name), C(version) and a C(build) script that makes I(node_image_main) (the NestJS
         convention, C(dist/main.js)), and no package in both C(dependencies) and C(devDependencies) (npm would leave it
         out of the image). The image is tagged C(name):C(version) and starts C(node /opt/app-root/src/)I(node_image_main),
@@ -91,9 +91,9 @@ argument_specs:
         C(npm install); npm takes its settings from the project's .npmrc and, below that, I(node_image_npmrc).
       - Only once the install has succeeded, the current node_modules is saved as
         node_modules.<UTC yyyymmddHHMMSS>.bak.tgz in the project and replaced by the new one.
-      - The result is for this machine if it runs Linux with glibc 2.34 or newer (RHEL 9, Ubuntu 22.04) and the
+      - The result is for this machine if it runs Linux with glibc 2.34 or newer (RHEL 9, Ubuntu 24.04) and the
         same Node.js major version, as native modules are compiled in the container.
-      - Runs from the project's ansible/ directory, like the image build, and needs Podman 3.4 or newer.
+      - Runs from the project's ansible/ directory, like the image build, and needs Podman 4.9 or newer.
     options:
       node_image_source:
         type: str

@@ -39,6 +39,7 @@ are [podman_service's](../podman_service/README.md#settings);
 | Variable | Default | What |
 |---|---|---|
 | `node_deploy_config_files` | `config/production/*.json` | The config files to copy, relative to the project's root |
+| `node_deploy_health_check` | `true` | A [health check](../podman_service/README.md#the-quadlet-file) with the image's Node.js: healthy while the app answers HTTP on its port with anything but a server error (5xx) |
 
 Before 0.1.0, the `podman_service_` settings were called `node_deploy_`; the
 deploy stops, naming the new name, when the project still sets an old one.
@@ -93,8 +94,8 @@ A later deploy uses the service's directory again.
 ## What a server needs
 
 What [podman_service](../podman_service/README.md#what-a-server-needs) needs:
-RHEL 9.2 or newer with Podman 4.4 or newer, and SSH access for Ansible as root
-or with sudo.
+RHEL 9.6 or newer with its Podman, and SSH access for Ansible as root or with
+sudo.
 
 ## Check a service
 

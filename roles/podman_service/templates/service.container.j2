@@ -2,9 +2,9 @@
   The Quadlet file of the service: how Podman and systemd run it. The deploy
   renders this template for every server into
   /etc/containers/systemd/users/<the account's UID>/<service>.container
-  and restarts the service when the result changes. The keys that RHEL 9's Podman
-  (4.4 and newer) knows are listed in
-  https://docs.podman.io/en/v4.4/markdown/podman-systemd.unit.5.html
+  and restarts the service when the result changes. The keys that RHEL 9.6's Podman
+  (5.4) knows are listed in
+  https://docs.podman.io/en/v5.4.0/markdown/podman-systemd.unit.5.html
   aslib.infra owns this file: an update replaces it, keeping your version as .bak.
   Changes that would help every project belong in aslib.infra itself.
 
@@ -13,8 +13,8 @@
     podman_service_image  the image of the version to run, e.g. localhost/orders-api:1.4.0
     podman_service_user   the account the service runs as
     podman_service_dir    the service's directory on the server, also its working directory
-  and every other podman_service_ setting, such as podman_service_port (0: no port)
-  and podman_service_shared (the shared zone).
+  and every other podman_service_ setting, such as podman_service_port (0: no port),
+  podman_service_shared (the shared zone) and podman_service_health_cmd.
 #}
 # {{ podman_service_name }}, deployed by aslib.infra.podman_service: the next deploy replaces this file.
 
@@ -56,6 +56,19 @@ DropCapability=all
 NoNewPrivileges=true
 # An init process forwards stop signals, so the app shuts down cleanly.
 RunInit=true
+{% if podman_service_health_cmd | length > 0 %}
+# Health: Podman runs this command in the container (with /bin/sh) every 2 seconds
+# from the start until it passes, then every 30 seconds. systemd counts the service
+# as started once it passed; after 3 failures in a row Podman stops the container,
+# and systemd starts it again.
+HealthStartupCmd={{ podman_service_health_cmd }}
+HealthStartupInterval=2s
+HealthCmd={{ podman_service_health_cmd }}
+HealthInterval=30s
+HealthRetries=3
+HealthOnFailure=kill
+Notify=healthy
+{% endif %}
 # The app's output goes to the journal, where root reads it with
 # journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service. Without this, Podman writes
 # it to a file in the account's storage when the account cannot read the journal,
