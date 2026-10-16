@@ -19,6 +19,14 @@ __claude_vm_image_url: >-
      ~ __claude_vm_arch ~ '.img' }}
 __claude_vm_config_dir: /etc/claude-vm
 
+# How the VM boots (virt-install's --boot): an x86_64 VM with BIOS, from its
+# disk; an ARM64 VM with UEFI firmware without Secure Boot. libvirt's default for
+# ARM64, Secure Boot enforced with Microsoft's keys, crashes in Ubuntu's boot
+# loader on a Raspberry Pi 4; in a VM where Claude has root, it protects nothing.
+__claude_vm_boot:
+  x86_64: hd
+  aarch64: uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no
+
 # Packages on the host, by OS family and architecture. An ARM64 VM boots with
 # UEFI, from the firmware of qemu-efi-aarch64 (Ubuntu) or edk2-aarch64 (RHEL).
 __claude_vm_host_packages:

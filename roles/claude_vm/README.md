@@ -39,7 +39,8 @@ breaks it: a broken VM is rebuilt in minutes.
 Ubuntu 24.04 or RHEL 9.6 (or newer) on x86_64 or ARM64 (aarch64, such as a
 Raspberry Pi 5), with virtualization enabled in the firmware (`/dev/kvm`),
 headless is fine. The playbook installs QEMU/KVM, libvirt, virt-install and
-nftables where missing (on ARM64 also the UEFI firmware the VM boots with), and
+nftables where missing (on ARM64 also the UEFI firmware the VM boots with,
+without Secure Boot), and
 downloads Ubuntu 24.04's cloud image for the host's architecture once, checked
 against its published checksums. The VM has the host's architecture: on a
 Raspberry Pi, Claude works on ARM64, and the test images it builds are ARM64's.
@@ -128,9 +129,9 @@ VM as it was made.
   stand-in for the cloud image), where the deadsnakes and Claude Code
   repositories were out of reach: not yet on real hardware, on ARM64, on a RHEL
   host or in CI.
-- On a Raspberry Pi 4 (ARM64), the VM's UEFI firmware crashes as it starts
-  Ubuntu's boot loader, so the VM never comes up: being worked out with the
-  playbooks above.
+- An ARM64 VM boots without Secure Boot. Enforced, as libvirt would have it,
+  Ubuntu's boot loader crashes on a Raspberry Pi 4; in a VM where Claude has
+  root, it would protect nothing.
 - The firewall blocks the private address ranges. A local network on public
   addresses, or IPv6 global addresses, is not blocked.
 - Claude's login stays in the VM: a prompt injection could take it. Use an

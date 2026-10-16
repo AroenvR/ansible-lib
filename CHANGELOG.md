@@ -28,9 +28,10 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   DevOps, registry, Pages or monitoring, size limits. Plain HTTP on port 8929,
   SSH on 2224, at most 4 GB of memory. The deploy downloads the image as an
   archive on the Ansible machine, so the server needs no access to Docker Hub.
-- claude_vm also runs on ARM64 hosts (aarch64, such as a Raspberry Pi 5): it
-  takes the cloud image of the host's architecture and, on ARM64, the UEFI
-  firmware the VM boots with. `claude_vm_image_url` is now empty by default,
+- claude_vm also runs on ARM64 hosts (aarch64, such as a Raspberry Pi): it
+  takes the cloud image of the host's architecture and, on ARM64, UEFI firmware
+  without Secure Boot for the VM (enforced, as libvirt would have it, Ubuntu's
+  boot loader crashes on a Raspberry Pi 4). `claude_vm_image_url` is now empty by default,
   for that image. The playbook checks the VM's memory fits in the host's, and
   removes a VM again that did not start, so that a rerun creates it anew.
   The VM's cloud-init data is a CD of its own that stays attached, so a restart

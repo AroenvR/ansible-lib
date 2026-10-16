@@ -232,6 +232,11 @@
           - --network=network={{ __claude_vm_network }},model=virtio,mac={{ __claude_vm_mac }}
           - --osinfo=ubuntu24.04
           - --disk=path={{ __claude_vm_seed_iso }},device=cdrom
+          # cloud-init looks for its data very early in the boot, before an ARM64
+          # VM's CD may show up; this tells it the data is there (as virt-install's
+          # --cloud-init does).
+          - --sysinfo=system.serial=ds=nocloud
+          - --boot={{ __claude_vm_boot[ansible_facts.architecture] }}
           - --graphics=none
           - --noautoconsole
       changed_when: true

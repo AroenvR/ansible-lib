@@ -11,7 +11,8 @@ argument_specs:
       - Then adds the VM to the inventory as the host claude-dev (group claude_vm), for the entry point guest. The
         playbook aslib.infra.claude_vm runs both; one host per run.
       - The host needs Ubuntu or RHEL on x86_64 or ARM64 (aarch64, such as a Raspberry Pi 5) with KVM, and the
-        internet for its packages and the cloud image. The VM has the host's architecture.
+        internet for its packages and the cloud image. The VM has the host's architecture; an ARM64 VM boots with
+        UEFI firmware without Secure Boot.
     options:
       claude_vm_memory:
         type: int
@@ -154,7 +155,8 @@ argument_specs:
         description:
           - The UEFI firmware to boot with, from Ubuntu's qemu-efi-aarch64 (an ARM64 VM; an x86_64 VM boots with
             BIOS). Empty keeps the VM's own.
-          - C(secure-ms), libvirt's choice for a new VM, Secure Boot with Microsoft's keys enrolled, so enforced.
+          - C(secure-ms), libvirt's default for a new ARM64 VM, Secure Boot with Microsoft's keys enrolled, so
+            enforced (on a Raspberry Pi 4, Ubuntu's boot loader crashes with it).
             C(secure-nokeys), the same firmware without keys, so nothing enforced. C(plain), firmware without
             Secure Boot.
       claude_vm_trial_tpm:

@@ -403,7 +403,13 @@ their reasons here, and bring Status up to date before ending a block of work.
   installed. An x86_64 VM boots with BIOS. On the maintainer's Raspberry Pi 4
   (Ubuntu 24.04, qemu-efi-aarch64 2024.02) that firmware crashes at every boot
   as it starts Ubuntu's shim from the disk ("Synchronous Exception at
-  0x…DC296B98"); see Status.
+  0x…DC296B98"). Boot trials showed it is the enforcement: the same Secure Boot
+  build without keys (`AAVMF_CODE.secboot.fd`, `AAVMF_VARS.fd`) and the plain
+  build boot, TPM or not. Likely, unproven: the Pi 4's Cortex-A72 lacks the ARMv8
+  crypto instructions that signature checks would use. claude_vm boots an ARM64
+  VM without Secure Boot (`--boot uefi,firmware.feature0.name=secure-boot,
+  firmware.feature0.enabled=no`), and keeps virt-install's `ds=nocloud` SMBIOS
+  serial, which tells cloud-init's early ds-identify where its data is.
 - virt-xml takes one kind of change per call. `--xml xpath.delete=` with an
   attribute predicate (`disk[@device='cdrom']`) changes nothing ("XML did not
   change"); `--remove-device --disk target=sda` and `--tpm all` work. Deleting
@@ -441,14 +447,14 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
 
-- Open, debugged with the maintainer on their Raspberry Pi 4 (from 2026-10-16):
-  claude-dev's UEFI firmware (Secure Boot, Microsoft keys, a TPM) crashes as it
-  starts Ubuntu's shim from the disk, at the same address every boot, so the VM
-  never reaches Linux. A VM of the old role (virt-install `--cloud-init`) reached
-  a login prompt once, booting from the boot entry shim's fallback had written.
-  The address's page offset (`…B98`) matches LP #2145095 (Secure Boot ARM64
-  firmware; its reporter later saw Noble guests fail on a Raspberry Pi 4). Next:
-  boot trials with `secure-nokeys` and `plain` firmware, then without the TPM.
+- Debugged with the maintainer on their Raspberry Pi 4 (2026-10-16), with the
+  new claude_vm_overview and claude_vm_boot_trial: claude-dev's firmware crashed
+  in Ubuntu's shim whenever Secure Boot was enforced (libvirt's ARM64 default;
+  see Pitfalls). The page offset of the address (`…B98`) matches LP #2145095,
+  whose reporter saw Noble guests fail on a Raspberry Pi 4. Fixed by booting an
+  ARM64 VM without Secure Boot; waiting for the maintainer's run of
+  claude_vm_remove and claude_vm on the Pi, which is the first real ARM64 test
+  (cloud-init from the CD, deadsnakes' Python 3.11 for arm64).
 
 - Decided with the maintainer on 2026-10-11: a GitLab of Claude's own, GitLab CE
   as a rootless Podman service (role gitlab, a proof of concept) on the laptop
@@ -579,8 +585,8 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   matters is what the VM holds (only Claude's login: no keys to servers, no git
   credentials; the maintainer fetches Claude's branches) and what it reaches
   (the internet, not the local network, enforced by nftables on the host). Not
-  yet run on real hardware, ARM64 or a RHEL host. On ARM64 the VM boots with
-  UEFI (qemu-efi-aarch64, which virt-install picks by default for aarch64) and
+  yet run through on real hardware, ARM64 or a RHEL host. On ARM64 the VM boots
+  with UEFI firmware without Secure Boot (qemu-efi-aarch64; see Pitfalls) and
   is ARM64 itself; whether deadsnakes builds Python 3.11 for arm64 is
   unverified. GitLab next to it needs Podman 5 (podman_service): Ubuntu 24.04
   has 4.9, 26.04 has 5.7. The VM has Python 3.11 (deadsnakes)
