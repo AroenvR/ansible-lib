@@ -1,0 +1,406 @@
+---
+- name: Check GitLab's service and the settings it got
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/test.yml]
+  tasks:
+    - name: Check the service, as podman_service's entry point verify does
+      ansible.builtin.include_role:
+        name: aslib.infra.podman_service
+        tasks_from: verify
+      vars:
+        podman_service_name: gitlab
+        podman_service_port: 8929
+        podman_service_bind_address: 0.0.0.0
+
+    - name: Read the Quadlet file and aslib.infra's gitlab.rb
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/containers/systemd/users/3200/gitlab.container
+        - /opt/gitlab/config/gitlab.rb
+      register: __gitlab_test_files
+
+    - name: Look up GitLab's secrets, created by GitLab in its own volume
+      ansible.builtin.stat:
+        path: /opt/gitlab/etc/gitlab-secrets.json
+      register: __gitlab_test_secrets
+
+    - name: Check the Quadlet file and gitlab.rb hold the role's settings
+      vars:
+        __gitlab_test_quadlet: "{{ __gitlab_test_files.results[0].content | b64decode }}"
+        __gitlab_test_rb: "{{ __gitlab_test_files.results[1].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - __gitlab_test_quadlet is search('^HostName=gitlab[.]home[.]arpa$', multiline=True)
+          - __gitlab_test_quadlet is search('^PublishPort=0[.]0[.]0[.]0:8929:8929$', multiline=True)
+          - __gitlab_test_quadlet is search('^PublishPort=0[.]0[.]0[.]0:2224:22$', multiline=True)
+          - __gitlab_test_quadlet is search('^ShmSize=256m$', multiline=True)
+          - __gitlab_test_quadlet is search('^StopSignal=SIGTERM$', multiline=True)
+          - __gitlab_test_quadlet is search('^Volume=/opt/gitlab/config:/etc/gitlab-aslib:ro,Z$', multiline=True)
+          - __gitlab_test_quadlet is search('^PodmanArgs=--memory=4g$', multiline=True)
+          - __gitlab_test_rb is search("^external_url 'http://gitlab[.]home[.]arpa:8929'$", multiline=True)
+          - __gitlab_test_rb is search("^gitlab_rails\\['gitlab_shell_ssh_port'\\] = 2224$", multiline=True)
+          - __gitlab_test_rb is search("^gitlab_rails\\['usage_ping_enabled'\\] = false$", multiline=True)
+          - __gitlab_test_rb is search("^gitlab_rails\\['time_zone'\\] = 'Europe/Amsterdam'$", multiline=True)
+          - __gitlab_test_secrets.stat.exists
+          - __gitlab_test_secrets.stat.uid == 3200
+        success_msg: >-
+          PASSED gitlab: the service runs healthy as the account gitlab (UID 3200), on ports 8929 and 2224 as
+          gitlab.home.arpa, with at most 4 GB of memory and aslib.infra's gitlab.rb read-only; GitLab's secrets are in
+          /opt/gitlab/etc, owned by the account.
+
+    # The stand-in records what it found (mock/server.js) and keeps the settings
+    # it was given (mock/gitlab-rails).
+    - name: Check the stand-in got its settings as GitLab would
+      when: not gitlab_test_real | bool
+      block:
+        - name: Read what the stand-in found, and the application settings it keeps
+          ansible.builtin.slurp:
+            src: "{{ item }}"
+          loop: [/opt/gitlab/data/mock-start.json, /opt/gitlab/data/mock-settings.json]
+          register: __gitlab_test_mock
+
+        - name: Check the stand-in ran as root, read gitlab.rb through GITLAB_OMNIBUS_CONFIG and got the settings
+          vars:
+            __gitlab_test_start: "{{ __gitlab_test_mock.results[0].content | b64decode | from_json }}"
+            __gitlab_test_settings: "{{ __gitlab_test_mock.results[1].content | b64decode | from_json }}"
+          ansible.builtin.assert:
+            that:
+              - __gitlab_test_start.uid == 0
+              - __gitlab_test_start.config == "from_file('/etc/gitlab-aslib/gitlab.rb')"
+              - __gitlab_test_start.url == 'http://gitlab.home.arpa:8929/'
+              - __gitlab_test_settings.signup_enabled == false
+              - __gitlab_test_settings.restricted_visibility_levels == [20]
+              - __gitlab_test_settings.max_artifacts_size == 200
+            success_msg: >-
+              PASSED gitlab (stand-in): the container ran as root, read aslib.infra's gitlab.rb through
+              GITLAB_OMNIBUS_CONFIG, and got the role's application settings with the test's own.
+
+- name: Use GitLab as a person would, over its API, HTTP and SSH
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/test.yml]
+  vars:
+    __gitlab_test_api: http://127.0.0.1:8929/api/v4
+    __gitlab_test_as_account: [runuser, --user=gitlab, --, env, XDG_RUNTIME_DIR=/run/user/3200]
+    __gitlab_test_git_ssh: >-
+      ssh -i /root/.ssh/gitlab-test -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/.ssh/gitlab-known-hosts
+    # As GitLab's docs create a token programmatically; it must have 20 characters.
+    __gitlab_test_root_ruby: |
+      root = User.find_by(username: 'root')
+      token = root.personal_access_tokens.create(scopes: ['api'], name: 'aslib test', expires_at: 2.days.from_now)
+      token.set_token(ENV.fetch('ASLIB_TEST_TOKEN'))
+      token.save!
+      puts "root password: #{root.valid_password?(ENV.fetch('GITLAB_ROOT_PASSWORD'))}"
+  tasks:
+    - name: Use GitLab
+      when: gitlab_test_real | bool
+      block:
+        - name: Note a token for root and a password for claude, made up for this test
+          ansible.builtin.set_fact:
+            __gitlab_test_token: "{{ lookup('ansible.builtin.password', '/dev/null length=20 chars=ascii_letters,digits') }}"
+            __gitlab_test_claude_password: "Cl-{{ lookup('ansible.builtin.password', '/dev/null length=16 chars=ascii_letters,digits') }}"
+
+        - name: Check GitLab, its database, Redis and Gitaly are ready, from inside the container
+          ansible.builtin.command:
+            argv: "{{ __gitlab_test_as_account + ['podman', 'exec', 'gitlab', '/opt/gitlab/embedded/bin/curl', '--silent', '--fail',
+                   'http://localhost:8929/-/readiness?all=1'] }}"
+            chdir: /
+          register: __gitlab_test_ready
+          changed_when: false
+
+        - name: Give root a token, and check root's password, as an administrator would with gitlab-rails
+          ansible.builtin.command:
+            argv: "{{ __gitlab_test_as_account + ['podman', 'exec', '--env=ASLIB_TEST_TOKEN=' ~ __gitlab_test_token, 'gitlab',
+                   'gitlab-rails', 'runner', __gitlab_test_root_ruby] }}"
+            chdir: /
+          register: __gitlab_test_root
+          changed_when: true
+
+        - name: Read the application settings
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/application/settings"
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+          register: __gitlab_test_settings
+
+        - name: Ask for the sign-up page
+          ansible.builtin.uri:
+            url: http://127.0.0.1:8929/users/sign_up
+            follow_redirects: none
+            status_code: [200, 302, 404]
+          register: __gitlab_test_sign_up
+
+        - name: Check GitLab is ready, root has the password from the environment file, and the settings are the role's
+          vars:
+            __gitlab_test_s: "{{ __gitlab_test_settings.json }}"
+          ansible.builtin.assert:
+            that:
+              - (__gitlab_test_ready.stdout | from_json).status == 'ok'
+              - "__gitlab_test_root.stdout_lines[-1] == 'root password: true'"
+              - __gitlab_test_s.signup_enabled == false
+              - __gitlab_test_s.version_check_enabled == false
+              - __gitlab_test_s.auto_devops_enabled == false
+              - __gitlab_test_s.gravatar_enabled == false
+              - __gitlab_test_s.default_project_visibility == 'private'
+              - __gitlab_test_s.restricted_visibility_levels == ['public']
+              - __gitlab_test_s.email_confirmation_setting == 'off'
+              - __gitlab_test_s.max_artifacts_size == 200
+              - __gitlab_test_s.receive_max_input_size == 1024
+              - __gitlab_test_s.usage_ping_enabled == false
+              - __gitlab_test_s.gitlab_product_usage_data_enabled == false
+              - __gitlab_test_sign_up.status != 200
+            fail_msg: "Readiness: {{ __gitlab_test_ready.stdout }}; root: {{ __gitlab_test_root.stdout_lines[-1:] }}; settings: {{ __gitlab_test_s }}"
+            success_msg: >-
+              PASSED gitlab: GitLab, its database, Redis and Gitaly are ready; root has the password from gitlab.env;
+              sign-ups are off, new projects private, nothing public but by administrators, no version check,
+              Service Ping, product usage data, Gravatar or Auto DevOps, and the test's own setting (artifacts up to
+              200 MB) applies.
+
+        # The account Claude will have: created by an administrator, with a token.
+        - name: Create the account claude, as an administrator would
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/users"
+            method: POST
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+            body_format: json
+            body:
+              username: claude
+              name: Claude
+              email: claude@gitlab.home.arpa
+              password: "{{ __gitlab_test_claude_password }}"
+              skip_confirmation: true
+            status_code: [201]
+          register: __gitlab_test_claude
+
+        - name: Give claude a token for the API and git over HTTP
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/users/{{ __gitlab_test_claude.json.id }}/personal_access_tokens"
+            method: POST
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+            body_format: json
+            body:
+              name: claude
+              scopes: [api]
+              expires_at: "{{ '%Y-%m-%d' | strftime((now(utc=true).timestamp() | int) + 2 * 86400) }}"
+            status_code: [201]
+          register: __gitlab_test_claude_token
+
+        - name: Create a key pair for claude's SSH
+          ansible.builtin.command:
+            argv: [ssh-keygen, -q, -t, ed25519, -N, "", -C, claude, -f, /root/.ssh/gitlab-test]
+            creates: /root/.ssh/gitlab-test
+
+        - name: Read claude's public key
+          ansible.builtin.slurp:
+            src: /root/.ssh/gitlab-test.pub
+          register: __gitlab_test_public_key
+
+        - name: Add the key to claude's account, and create the project claude/demo, as claude
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/{{ item.path }}"
+            method: POST
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_claude_token.json.token }}"}
+            body_format: json
+            body: "{{ item.body }}"
+            status_code: [201]
+          loop:
+            - path: user/keys
+              body: {title: claude, key: "{{ __gitlab_test_public_key.content | b64decode | trim }}"}
+            - path: projects
+              body: {name: demo}
+          loop_control:
+            label: "{{ item.path }}"
+          register: __gitlab_test_claude_made
+
+        - name: Clone the empty project over HTTP with claude's token
+          ansible.builtin.command:
+            argv: [git, clone, --quiet, "http://claude:{{ __gitlab_test_claude_token.json.token }}@127.0.0.1:8929/claude/demo.git",
+                   /root/demo-http]
+            creates: /root/demo-http
+
+        - name: Add a file
+          ansible.builtin.copy:
+            content: "Pushed over HTTP\n"
+            dest: /root/demo-http/README.md
+            mode: "0644"
+
+        - name: Commit it and push it over HTTP
+          ansible.builtin.command:
+            argv: "{{ item }}"
+            chdir: /root/demo-http
+          loop:
+            - [git, add, README.md]
+            - [git, -c, user.name=Claude, -c, user.email=claude@gitlab.home.arpa, commit, --quiet, --message=Over HTTP]
+            - [git, push, --quiet, origin, HEAD:main]
+          changed_when: true
+
+        # GitLab writes a new key for its SSH in the background (Sidekiq).
+        - name: Clone it over SSH with claude's key
+          ansible.builtin.command:
+            argv: [git, clone, --quiet, "ssh://git@127.0.0.1:2224/claude/demo.git", /root/demo-ssh]
+            creates: /root/demo-ssh
+          environment:
+            GIT_SSH_COMMAND: "{{ __gitlab_test_git_ssh }}"
+          register: __gitlab_test_ssh_clone
+          until: __gitlab_test_ssh_clone.rc | default(0) == 0
+          retries: 20
+          delay: 3
+
+        - name: Add another file
+          ansible.builtin.copy:
+            content: "Pushed over SSH\n"
+            dest: /root/demo-ssh/SSH.md
+            mode: "0644"
+
+        - name: Commit it and push it over SSH
+          ansible.builtin.command:
+            argv: "{{ item }}"
+            chdir: /root/demo-ssh
+          loop:
+            - [git, add, SSH.md]
+            - [git, -c, user.name=Claude, -c, user.email=claude@gitlab.home.arpa, commit, --quiet, --message=Over SSH]
+            - [git, push, --quiet, origin, HEAD:main]
+          environment:
+            GIT_SSH_COMMAND: "{{ __gitlab_test_git_ssh }}"
+          changed_when: true
+
+        - name: Fork claude/demo as root
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/projects/claude%2Fdemo/fork"
+            method: POST
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+            status_code: [201, 202]
+          register: __gitlab_test_fork
+
+        - name: Wait until the fork is complete
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/projects/{{ __gitlab_test_fork.json.id }}"
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+          register: __gitlab_test_forked
+          until: __gitlab_test_forked.json.import_status | default('none') in ['none', 'finished', 'failed']
+          retries: 30
+          delay: 2
+
+        - name: List the commits of claude/demo and of the fork
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/projects/{{ item }}/repository/commits?ref_name=main"
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+          loop: [claude%2Fdemo, "{{ __gitlab_test_fork.json.id }}"]
+          register: __gitlab_test_commits
+
+        - name: Check claude's project is private and has both pushes, and the fork has them too
+          ansible.builtin.assert:
+            that:
+              - __gitlab_test_claude_made.results[1].json.visibility == 'private'
+              - __gitlab_test_commits.results[0].json | map(attribute='title') | list == ['Over SSH', 'Over HTTP']
+              - __gitlab_test_forked.json.import_status | default('none') in ['none', 'finished']
+              - __gitlab_test_commits.results[1].json | map(attribute='title') | list == ['Over SSH', 'Over HTTP']
+            fail_msg: >-
+              claude/demo: {{ __gitlab_test_commits.results[0].json | map(attribute='title') | list }};
+              fork ({{ __gitlab_test_forked.json.import_status | default('') }}):
+              {{ __gitlab_test_commits.results[1].json | map(attribute='title') | list }}
+            success_msg: >-
+              PASSED gitlab: an administrator created claude with a password and a token; claude created a private
+              project, pushed to it over HTTP (with the token) and over SSH (port 2224, with a key it added), and root
+              forked it with both commits.
+
+        - name: Restart GitLab, as podman_service's entry point restart does
+          ansible.builtin.include_role:
+            name: aslib.infra.podman_service
+            tasks_from: restart
+          vars:
+            podman_service_name: gitlab
+            podman_service_port: 8929
+            podman_service_bind_address: 0.0.0.0
+
+        - name: List claude's commits after the restart
+          ansible.builtin.uri:
+            url: "{{ __gitlab_test_api }}/projects/claude%2Fdemo/repository/commits?ref_name=main"
+            headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+          register: __gitlab_test_after_restart
+
+        - name: Check the project kept its commits through the restart
+          ansible.builtin.assert:
+            that: __gitlab_test_after_restart.json | length == 2
+            success_msg: PASSED gitlab came back after a restart with claude's project and both commits.
+
+- name: Remove GitLab's service, and deploy it again on the data it left
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/test.yml]
+  tasks:
+    - name: Remove GitLab's service
+      ansible.builtin.include_role:
+        name: aslib.infra.gitlab
+        tasks_from: remove
+
+    - name: Look up the account and GitLab's secrets
+      ansible.builtin.getent:
+        database: passwd
+        key: gitlab
+        fail_key: false
+
+    - name: Look up GitLab's secrets after the removal
+      ansible.builtin.stat:
+        path: /opt/gitlab/etc/gitlab-secrets.json
+      register: __gitlab_test_secrets_kept
+
+    - name: Check the account is gone and GitLab's data stayed
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd.get('gitlab') is none
+          - __gitlab_test_secrets_kept.stat.exists
+        success_msg: PASSED gitlab remove took away the service and its account, and kept /opt/gitlab with GitLab's secrets.
+
+    - name: Try to deploy GitLab with another UID, which would take its data over
+      block:
+        - name: Run gitlab with UID 3201
+          ansible.builtin.include_role:
+            name: aslib.infra.gitlab
+          vars:
+            podman_service_uid: "3201"
+
+        - name: Note that the deploy went ahead
+          ansible.builtin.set_fact:
+            __gitlab_test_other_uid: went ahead
+      rescue:
+        - name: Note why the deploy stopped
+          ansible.builtin.set_fact:
+            __gitlab_test_other_uid: "{{ ansible_failed_result.msg | default('') }}"
+
+    - name: Look up whether the deploy created the account again
+      ansible.builtin.getent:
+        database: passwd
+        key: gitlab
+        fail_key: false
+
+    - name: Check the deploy stopped before it changed anything
+      ansible.builtin.assert:
+        that:
+          - __gitlab_test_other_uid is search('owned by UID 3200')
+          - not ansible_facts.getent_passwd.get('gitlab')
+        fail_msg: "The deploy with UID 3201: {{ __gitlab_test_other_uid }}"
+        success_msg: PASSED gitlab refused to deploy with another UID onto the data of UID 3200, and created no account.
+
+    - name: Deploy GitLab again, with the same UID
+      ansible.builtin.include_role:
+        name: aslib.infra.gitlab
+
+    - name: List claude's commits on the redeployed GitLab
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8929/api/v4/projects/claude%2Fdemo/repository/commits?ref_name=main
+        headers: {PRIVATE-TOKEN: "{{ __gitlab_test_token }}"}
+      register: __gitlab_test_redeployed
+      when: gitlab_test_real | bool
+
+    - name: Check the new deploy took over GitLab's data and settings as they were
+      vars:
+        __gitlab_test_settings_run: "{{ __gitlab_settings_run.stdout_lines | select('match', '^[{]') | last | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - __gitlab_test_settings_run.changed == []
+          - not gitlab_test_real | bool or __gitlab_test_redeployed.json | length == 2
+        success_msg: >-
+          PASSED gitlab, deployed again on /opt/gitlab: its application settings were already as the role
+          sets them{{ ", and claude/demo, its two commits and root's token were there" if gitlab_test_real | bool else "" }}.

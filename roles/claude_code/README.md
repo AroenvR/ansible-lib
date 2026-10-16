@@ -20,7 +20,7 @@ claude-code             # Claude, in the container; arguments go to claude
 
 | File | What it is | Whose |
 |---|---|---|
-| `config/` | Claude Code's `/etc/claude-code/`: the policy `managed-settings.json` (below) and the instructions `CLAUDE.md` (a template). Mounted read-only, never in the image | The project's |
+| `config/` | Claude Code's `/etc/claude-code/`: the project's part of the policy `managed-settings.json` (below) and the instructions `CLAUDE.md` (a template). Mounted read-only, never in the image | The project's |
 | `Containerfile` | UBI 9, the tools Claude needs (Python 3.12, Node.js 24 with nvm, compilers, database clients), and Claude Code from Anthropic's signed dnf repository | aslib.infra's |
 | `.containerignore`, `README.md` | What stays out of the image; running it with plain Podman | aslib.infra's |
 | `ansible/inventory.yml`, `ansible/group_vars/all/project.yml`, `ansible/container.env` | The servers, the settings, the container's environment (git-ignored) | The project's |
@@ -40,7 +40,9 @@ beforehand, and builds without aslib.infra too (its README.md shows how).
 `image.yml` builds the Containerfile into `ansible/images/claude-code-<version>.tar`.
 Without `claude_code_version`, the version is the newest in the repository
 (`stable` by default), so every build is also the update; the image only changes
-when that version or the Containerfile did. Needs Podman 4.9 or newer, Red Hat's
+when that version, the base image or the Containerfile did. A new image also has
+every package update of its day (`dnf upgrade`), so a pinned version also pins
+the packages. Needs Podman 4.9 or newer, Red Hat's
 registry, Anthropic's repository and GitHub (nvm), or mirrors of them.
 
 ## On the server
@@ -58,20 +60,34 @@ it; conversations stay (`claude-code --continue`, `--resume`). It has no health
 check: nothing in it serves until root runs `claude-code`, so a running
 container is all there is to check.
 
+The container may use at most 4 GiB of memory (`claude_code_memory: 4g`), so a
+runaway build in a session cannot starve the server; past it, the kernel stops a
+process in the container. Set another size in `project.yml`, or `""` for no limit.
+
 ## The policy
 
-`config/managed-settings.json` is where Claude Code reads an organisation's
-policy, above every other setting. It makes Claude's home and the shared zone
-its working directories; keeps it away from its login and config (`.claude/`),
-`.env` files, the instruction files in its home (`CLAUDE.md`, `AGENTS.md`) and
-the files that would run code at its next start (hooks, `.mcp.json`,
-`.git/config`); keeps its memory in `/opt/claude-code/memory`; and turns off the
-self-updater and telemetry. Claude may read the rest of the container, which
-holds nothing but the read-only image: Claude Code's
-`blockReadsOutsideWorkingDirectories` would only add prompts for that. The
-project's README.md shows how to limit its shell commands to an allowlist of
-hosts. `config/CLAUDE.md` starts from aslib.infra's template: what Claude needs
-to know about this setup, for the project to adjust.
+Claude Code reads an organisation's policy, above every other setting, from
+`/etc/claude-code/managed-settings.json`. Every deploy assembles it from three
+files, in this order:
+
+| File | Whose | What |
+|---|---|---|
+| [files/managed-settings.json](files/managed-settings.json) | aslib.infra's base, the same for every project and for [claude_vm](../claude_vm/README.md)'s VM | The self-updater and telemetry off, workflows and ultracode on, plans in `plans/`; keeps Claude away from `.env` files and the files that would run code at its next start (hooks, `.mcp.json`, `.git/config`) |
+| [files/managed-settings.container.json](files/managed-settings.container.json) | aslib.infra's, for the container | Claude's home and the shared zone as its working directories, its memory in `/opt/claude-code/memory`; keeps it away from its login and config (`.claude/`) and the instruction files in its home (`CLAUDE.md`, `AGENTS.md`) |
+| `config/managed-settings.json` | The project's, `{}` to start | What this project adds or changes |
+
+A later value replaces an earlier one, blocks such as `env` merge key by key,
+and lists such as `permissions.deny` combine without duplicates, as Claude Code
+combines its own drop-in files: a project adds deny rules, it cannot drop the
+base's. A change to the base reaches every project with its next deploy, and the
+VM with its next run. Projects set up before 0.5.0 hold a full copy of the old
+policy, which merges to the same result; they may trim it to what is theirs.
+
+Claude may read the rest of the container, which holds nothing but the
+read-only image: Claude Code's `blockReadsOutsideWorkingDirectories` would only
+add prompts for that. The project's README.md shows how to limit its shell
+commands to an allowlist of hosts. `config/CLAUDE.md` starts from aslib.infra's
+template: what Claude needs to know about this setup, for the project to adjust.
 
 Deny rules guard Claude's tools, not every program it runs; the container and
 its account are the boundary. Nothing in the container can change `config/`.

@@ -81,10 +81,17 @@ hands it, with everything in it, to the account.
 `/opt/containers/shared/` is where services hand data to one another: every
 service with `podman_service_shared` (the default) reads and writes it, at the
 same path in its container. Its accounts are members of the group
-`containers-shared`, which owns the directory (mode 2770), and a default ACL makes
-everything created in it writable by the group, whichever service created it.
+`containers-shared`, which owns the directory (mode 2770). A default ACL gives the
+group the access to a new file that the program creating it asks for, whatever
+its umask: most ask for read and write; a private mode, such as Python's
+`tempfile` uses (0600), stays private until the service runs `chmod g+rw`.
 The zone's [README.md](files/shared-README.md), root's and rewritten by every
-deploy, tells humans and agents how to work there. A service joins with its next
+deploy, tells humans and agents how to work there. A service could still remove
+or replace it, as the directory is the group's, so its SHA-256 checksum is in
+`/opt/containers/shared-checksums/`, root's and read-only in every container:
+`sha256sum --check /opt/containers/shared-checksums/README.md.sha256` says
+whether it is still aslib.infra's, and the entry point `verify` checks it too.
+A service joins with its next
 deploy; one that leaves (`podman_service_shared: false`) keeps the group but no
 longer sees the directory. With SELinux, the directory is labelled for
 containers. The default ACL needs `setfacl`: the deploy installs the `acl`
@@ -101,6 +108,13 @@ has its own account, UID and range of subordinate UIDs, so two services never
 share files or processes, even though both run as 1001 inside their containers.
 After a crash, systemd starts the service again every 10 seconds.
 
+**Memory.** No limit by default. With `podman_service_memory` (e.g. `4g`,
+`/tmp` included), the kernel stops a process in the container once it needs
+more, rather than one elsewhere on the server. Roles that deploy a service
+choose its default: unlimited for [node_deploy](../node_deploy/README.md)
+(`node_deploy_memory`), 4g for [claude_code](../claude_code/README.md)
+(`claude_code_memory`).
+
 **Health checks.** With `podman_service_health_cmd`, Podman runs that command in
 the container (with `/bin/sh`) every 2 seconds from the start until it passes,
 then every 30 seconds; exit code 0 means healthy. systemd counts the service as
@@ -116,7 +130,7 @@ it. Without that, Podman writes it to a file in the account's storage whenever
 the account cannot read the journal, which is RHEL's default; `podman logs` as
 the account cannot read the journal there either.
 
-For anything the settings do not cover, such as a memory limit or a network,
+For anything the settings do not cover, such as a network,
 pass a template of your own as `podman_service_quadlet_template`; start from a
 copy of this one, which lists the variables it can use.
 
@@ -131,6 +145,7 @@ copy of this one, which lists the variables it can use.
 | `podman_service_user` | `<service>` | The account |
 | `podman_service_uid` | (any free UID) | Fix the account's UID, e.g. the same on every server |
 | `podman_service_tmp_size` | `512m` | Size limit of the app's `/tmp`, which is in memory |
+| `podman_service_memory` | `""` (no limit) | The most memory the container may use, e.g. `4g`; node_deploy and claude_code set it from their own setting |
 | `podman_service_shared` | `true` | Give the service the shared zone, `/opt/containers/shared/` |
 | `podman_service_health_cmd` | `""` (none) | The health check, run in the container: exit code 0 means healthy |
 | `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |

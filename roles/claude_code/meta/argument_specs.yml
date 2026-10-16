@@ -6,10 +6,13 @@ argument_specs:
       - Deploys the image that the entry point image built (ansible/images/claude-code-<version>.tar) to the servers
         as the always-on service claude-code, with aslib.infra.podman_service, as an account of its own whose home is
         /opt/claude-code. Runs from the project's ansible/ directory (see the entry point setup).
-      - The container holds Claude Code and its tools, without a port. The project's config/ directory, with the
-        policy managed-settings.json and Claude's instructions CLAUDE.md, is mounted read-only as /etc/claude-code,
-        where Claude Code reads them. The container's environment variables come from ansible/container.env. With
-        podman_service_shared, Claude also works in the shared zone, /opt/containers/shared/.
+      - The container holds Claude Code and its tools, without a port. The project's config/ directory, with
+        Claude's instructions CLAUDE.md, is mounted read-only as /etc/claude-code, where Claude Code reads them. Its
+        policy managed-settings.json there is aslib.infra's base (files/managed-settings.json, which claude_vm
+        installs too), the container's own settings (files/managed-settings.container.json) and the project's
+        config/managed-settings.json, merged in that order - later values win, lists combine. The container's
+        environment variables come from ansible/container.env. With podman_service_shared, Claude also works in the
+        shared zone, /opt/containers/shared/.
       - Installs /usr/local/sbin/claude-code, for root, which runs Claude in the container, with or without a
         terminal; its arguments go to claude.
       - Servers need what aslib.infra.podman_service needs.
@@ -27,12 +30,20 @@ argument_specs:
             restarts the service.
           - Claude Code asks once, in the first interactive session, to accept the mode; background sessions start
             only after that.
+      claude_code_memory:
+        type: str
+        default: 4g
+        description:
+          - The most memory Claude's container may use (podman_service_memory), its /tmp included, so a runaway build
+            cannot starve the server. Past it, the kernel stops a process in the container.
+          - Empty sets no limit.
   setup:
     short_description: Write a Claude Code project, ready to build and deploy with aslib.infra
     description:
       - Writes the project into an empty directory, for a git repository of its own, or brings an earlier one up to
         date. Needs nothing in the directory beforehand.
-      - The project's files, written once and never touched again - config/managed-settings.json (the policy),
+      - The project's files, written once and never touched again - config/managed-settings.json (the project's
+        part of the policy, empty to start),
         config/CLAUDE.md (Claude's instructions, a template); in ansible/, inventory.yml, group_vars/all/project.yml
         (every setting at its default) and container.env (git-ignored).
       - aslib.infra's files, brought up to date by every run - the Containerfile (Claude Code on Red Hat UBI 9 from

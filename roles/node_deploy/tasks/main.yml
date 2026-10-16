@@ -36,5 +36,6 @@
     # default() keeps it empty where ansible-core 2.14 lets these vars reach a
     # later import of podman_service in the same play (Claude Code's, in the tests).
     podman_service_health_cmd: "{{ __node_deploy_health_cmd if node_deploy_health_check | default(false) | bool else '' }}"
+    podman_service_memory: "{{ node_deploy_memory | default('') }}"
     __node_deploy_health_cmd: >-
       node -e 'fetch(`http://127.0.0.1:{{ podman_service_container_port }}/`).then(r => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))'

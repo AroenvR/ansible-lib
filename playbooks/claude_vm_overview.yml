@@ -1,0 +1,17 @@
+---
+# Shows the host and the VM claude-dev, for finding out why the VM does not come
+# up: the host's model, kernel and virtualization packages, the VM's state,
+# firmware, TPM, disks and DHCP leases, and its console's last lines.
+# Changes nothing. Run it like aslib.infra.claude_vm:
+#   ansible-playbook aslib.infra.claude_vm_overview --ask-become-pass
+# Options: ansible-doc -t role aslib.infra.claude_vm (entry point overview).
+- name: Show the host and the VM claude-dev
+  # Without an inventory Ansible only knows this machine, which "all" leaves out.
+  hosts: "{{ 'all' if groups['all'] else 'localhost' }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Show the host and the VM
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_vm
+        tasks_from: overview

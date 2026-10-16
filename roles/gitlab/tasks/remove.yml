@@ -1,0 +1,11 @@
+---
+# Entry point "remove": takes GitLab's service away with aslib.infra.podman_service:
+# the service, its account, Quadlet and environment files, and image archive. Its
+# directory, /opt/gitlab, with GitLab's configuration, secrets and data, stays as
+# it is unless podman_service_remove_workdir is true; a deploy uses it again.
+- name: Remove GitLab's service, account, images and Quadlet file
+  ansible.builtin.import_role:
+    name: aslib.infra.podman_service
+    tasks_from: remove
+  vars:
+    podman_service_name: gitlab

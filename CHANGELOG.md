@@ -4,6 +4,95 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.5.0
+
+- Added role `claude_vm` and playbooks `aslib.infra.claude_vm` and
+  `aslib.infra.claude_vm_remove`, a proof of concept: `claude-dev`, a VM from
+  Ubuntu 24.04's cloud image on a host with KVM (RHEL 9.6 or Ubuntu 24.04, or
+  newer), where Claude Code has sudo and aslib.infra's tests run (Python 3.11
+  next to 3.12, for both ansible-core versions), which reaches the internet but
+  not the local network (nftables rules on the host).
+- Changed: Claude Code's policy has one base for the container and the VM.
+  claude_code's `files/managed-settings.json` is aslib.infra's base, which
+  every deploy now merges with the container's own settings and the project's
+  `config/managed-settings.json` (later values win, lists combine without
+  duplicates). Before, it only seeded new projects, so a change to it never
+  reached a deployed container. claude_vm installs the same base in the VM. A
+  new project's `config/managed-settings.json` starts as `{}`.
+- Added role `gitlab` and playbooks `aslib.infra.gitlab` and
+  `aslib.infra.gitlab_remove`, a proof of concept: GitLab CE 19.4.1 as the
+  rootless Podman service `gitlab`, with podman_service and a Quadlet file of its
+  own (GitLab's image runs as root inside its container). Set up for a private
+  instance on a small server without email: sign-ups off, private by default,
+  nothing public but by administrators, no Service Ping, version check, Auto
+  DevOps, registry, Pages or monitoring, size limits. Plain HTTP on port 8929,
+  SSH on 2224, at most 4 GB of memory. The deploy downloads the image as an
+  archive on the Ansible machine, so the server needs no access to Docker Hub.
+- claude_vm also runs on ARM64 hosts (aarch64, such as a Raspberry Pi): it
+  takes the cloud image of the host's architecture and, on ARM64, UEFI firmware
+  without Secure Boot for the VM (enforced, as libvirt would have it, Ubuntu's
+  boot loader crashes on a Raspberry Pi 4). `claude_vm_image_url` is now empty by default,
+  for that image. The playbook checks the VM's memory fits in the host's, and
+  removes a VM again that did not start, so that a rerun creates it anew.
+  The VM's cloud-init data is a CD of its own that stays attached, so a restart
+  during its first boot (UEFI on ARM64) no longer leaves it shut off.
+- Added playbooks `aslib.infra.claude_vm_overview` and
+  `aslib.infra.claude_vm_boot_trial`, for a VM that does not come up: the first
+  shows the host and the VM and changes nothing; the second boots the VM once in
+  a changed form (other UEFI firmware, no TPM, no CD drive), with its console
+  recorded, and shows how far the boot got.
+- Changed: the repository may be cloned anywhere, as `aslib/`. make links the
+  checkout into `.venv/self/ansible_collections/aslib/infra` for Ansible, and
+  both CI pipelines work in their checkout itself; the
+  `ansible_collections/aslib/infra` path is no longer needed.
+- Added `claude_vm_host_ports` and `claude_vm_host_names`: ports of the host's
+  that claude_vm's VM may reach (such as GitLab's), and names that lead to the
+  host from inside the VM.
+- Changed: podman_service counts a redirect as the service's answer, and no
+  longer follows it (GitLab answers with one, to its own URL).
+
+### Upgrading from 0.4
+
+1. Nothing is required: a project's `config/managed-settings.json` from an
+   earlier setup is a full copy of the old policy, and merges to the same
+   policy plus what the base adds (ultracode, workflows). To see what is the
+   project's own, trim it to what differs from aslib.infra's base and the
+   container's settings.
+
+## 0.4.0
+
+- Fixed: the shared zone's README said the group may read and write whatever a
+  service creates, whatever mode it asks for. A private mode stays private:
+  Python's `tempfile` makes files (0600) only their own service can read. The
+  README now says so, and says to `chmod g+rw` before the rename.
+- Added a checksum of the shared zone's README: a service can't change it, but
+  could remove or replace it, as the directory is the group's. Every deploy
+  writes its SHA-256 to `/opt/containers/shared-checksums/README.md.sha256`,
+  root's and read-only in every container with the zone; `sha256sum --check`
+  on it says whether the README is aslib.infra's. Claude's `CLAUDE.md` template
+  says to check it before following the README, and podman_service's checks
+  (deploy, restart, `verify`) report a README that does not match.
+- Added memory limits: `podman_service_memory` (e.g. `4g`; no limit by
+  default). node_deploy sets it from `node_deploy_memory` (no limit by default),
+  claude_code from `claude_code_memory`: **Claude Code's container now has at
+  most 4 GiB**, so a runaway build in a session can't starve the server. Set
+  `claude_code_memory: ""` for no limit.
+- claude_code's Containerfile upgrades every package before installing the
+  tools, the base image's included: every new image has the package updates
+  (security fixes) of its day. Before, packages stayed as old as Red Hat's last
+  build of the base image.
+
+### Upgrading from 0.3
+
+1. From each project's `ansible/`: `ansible-playbook update-playbooks.yml`, for
+   the Quadlet template (the checksum and the memory limit) and, in Claude Code
+   projects, the Containerfile; then deploy. A service whose Quadlet file lacks
+   the checksum's mount can't check the README.
+2. In Claude Code projects, `config/CLAUDE.md` is the project's: copy the shared
+   zone's bullet from aslib.infra's template (`roles/claude_code/files/CLAUDE.md`).
+   For more memory than 4g, or none set, put `claude_code_memory` in
+   `group_vars/all/project.yml`.
+
 ## 0.3.0
 
 - **Breaking:** the oldest supported systems are RHEL 9.6 and Ubuntu 24.04

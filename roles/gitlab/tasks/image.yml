@@ -1,0 +1,82 @@
+---
+# Entry point "image": on the machine that runs it (the deploy delegates it to the
+# Ansible machine), downloads GitLab's image of gitlab_version from Docker Hub and
+# saves it as gitlab_image_dir/gitlab-ce-<version>.tar, the archive the deploy
+# installs; servers need no access to Docker Hub. Does nothing when the archive is
+# there already, so an offline machine works with an archive copied there.
+
+# Unquoted, 19.10 would be the number 19.1.
+- name: Check gitlab_version is a full version, such as 19.4.1
+  ansible.builtin.assert:
+    that: gitlab_version | string is match('^[0-9]+[.][0-9]+[.][0-9]+$')
+    fail_msg: gitlab_version must be a full version such as 19.4.1 (quote it in YAML); found {{ gitlab_version }}.
+    quiet: true
+
+- name: Look up GitLab's image archive, {{ __gitlab_archive | basename }}
+  ansible.builtin.stat:
+    path: "{{ __gitlab_archive }}"
+  register: __gitlab_archive_stat
+
+- name: Download GitLab's image and save it as an archive
+  when: not __gitlab_archive_stat.stat.exists
+  block:
+    - name: Look up the Podman version on this machine
+      ansible.builtin.command: podman --version
+      register: __gitlab_podman
+      changed_when: false
+      failed_when: false
+
+    - name: Check that Podman 4.9 or newer is installed
+      ansible.builtin.assert:
+        that:
+          - __gitlab_podman.rc == 0
+          - __gitlab_podman.stdout.split()[-1] is version('4.9', '>=')
+        fail_msg: >-
+          Downloading GitLab's image needs Podman 4.9 or newer (RHEL 9.6, Ubuntu 24.04); found:
+          {{ __gitlab_podman.stdout | default('none', true) }}.
+        quiet: true
+
+    - name: Create the image directory, {{ gitlab_image_dir }}
+      ansible.builtin.file:
+        path: "{{ gitlab_image_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download GitLab's image, about 1.5 GB, {{ __gitlab_image }}
+      ansible.builtin.command:
+        argv: [podman, pull, --quiet, "{{ __gitlab_image }}"]
+      changed_when: true
+
+    # Under a temporary name first, so an interrupted save leaves no broken archive.
+    - name: Save it as {{ __gitlab_archive | basename }}
+      ansible.builtin.command:
+        argv: [podman, save, --format=oci-archive, "--output={{ __gitlab_archive }}.part", "{{ __gitlab_image }}"]
+      changed_when: true
+
+    - name: Give the archive its name
+      ansible.builtin.command:
+        argv: [mv, --force, "{{ __gitlab_archive }}.part", "{{ __gitlab_archive }}"]
+      changed_when: true
+
+    # The archive holds it; the server loads it from there.
+    - name: Remove the downloaded image from this machine's Podman
+      ansible.builtin.command:
+        argv: [podman, rmi, "{{ __gitlab_image }}"]
+      changed_when: true
+
+# The deploy installs one version.
+- name: Find archives of other GitLab versions
+  ansible.builtin.find:
+    paths: "{{ gitlab_image_dir }}"
+    patterns: gitlab-ce-*.tar
+    excludes: "{{ __gitlab_archive | basename }}"
+  register: __gitlab_old_archives
+
+- name: Remove archives of other GitLab versions
+  ansible.builtin.file:
+    path: "{{ __gitlab_old.path }}"
+    state: absent
+  loop: "{{ __gitlab_old_archives.files }}"
+  loop_control:
+    loop_var: __gitlab_old
+    label: "{{ __gitlab_old.path | basename }}"

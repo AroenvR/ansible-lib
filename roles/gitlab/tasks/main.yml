@@ -1,0 +1,128 @@
+---
+# Entry point "main": deploys GitLab CE as the rootless Podman service gitlab,
+# with aslib.infra.podman_service, then sets the application settings that
+# GitLab keeps in its database. Downloads the image as an archive on the Ansible
+# machine first, unless it is there. Running it again changes nothing.
+- name: Check the environment file, {{ gitlab_env_file }}
+  ansible.builtin.assert:
+    that: gitlab_env_file is file
+    fail_msg: >-
+      {{ gitlab_env_file }} is missing on the Ansible machine. Create it, readable by you only and never in git,
+      with root's first password: GITLAB_ROOT_PASSWORD=<password>. GitLab uses it only when it creates its database.
+    quiet: true
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+# GitLab rejects a password that is short, common, holds a predictable word
+# ("gitlab", "devops") or a part of root's name, username or email (Administrator,
+# root, gitlab_admin_...@example.com); its setup then fails at every start. All
+# but "common" can be checked here.
+- name: Check root's first password, if the environment file sets one
+  vars:
+    __gitlab_password: >-
+      {{ lookup('ansible.builtin.file', gitlab_env_file).splitlines() | select('match', '^GITLAB_ROOT_PASSWORD=')
+         | map('regex_replace', '^GITLAB_ROOT_PASSWORD=', '') | first | default('') }}
+  ansible.builtin.assert:
+    that:
+      - __gitlab_password | length == 0 or __gitlab_password | length >= 8
+      - __gitlab_password is not search('gitlab|devops|root|admin|example', ignorecase=True)
+    fail_msg: >-
+      GITLAB_ROOT_PASSWORD in {{ gitlab_env_file }} would be rejected by GitLab: it needs at least 8 characters, must
+      not contain gitlab, devops, root, admin or example, and must not be a common password.
+    quiet: true
+  no_log: true
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+# GitLab's files belong to the account's UID and subordinate UIDs. podman_service
+# hands a directory owned by another UID to the account with chown -R, which would
+# break them: refuse instead.
+- name: Look up GitLab's directory on the server
+  ansible.builtin.stat:
+    path: "{{ podman_service_dir | default('') or '/opt/gitlab' }}"
+  register: __gitlab_dir
+
+- name: Look up GitLab's account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ podman_service_user | default('') or 'gitlab' }}"
+    fail_key: false
+
+- name: Check the deploy would leave GitLab's data with its owner
+  vars:
+    __gitlab_account: "{{ ansible_facts.getent_passwd.get(podman_service_user | default('') or 'gitlab') or [] }}"
+    __gitlab_owner: "{{ __gitlab_dir.stat.uid | default('') | string }}"
+  ansible.builtin.assert:
+    that: >-
+      not __gitlab_dir.stat.exists
+      or (__gitlab_account | length > 0 and __gitlab_account[1] | string == __gitlab_owner)
+      or (__gitlab_account | length == 0 and podman_service_uid | default('') | string == __gitlab_owner)
+    fail_msg: >-
+      {{ __gitlab_dir.stat.path | default('') }} holds GitLab's data, owned by UID {{ __gitlab_owner }}, but the
+      account would have another UID. Deploy with podman_service_uid: {{ __gitlab_owner }}, or move the directory away.
+    quiet: true
+
+- name: Download GitLab's image as an archive on the Ansible machine, unless it is there
+  delegate_to: localhost
+  run_once: true
+  become: false
+  block:
+    - name: Download the image
+      ansible.builtin.import_tasks: image.yml
+
+# The vars below are evaluated inside podman_service, where role_path is its own.
+- name: Note this role's directory
+  ansible.builtin.set_fact:
+    __gitlab_role_path: "{{ role_path }}"
+
+# podman_service does the work on the server: the account, its directory
+# (/opt/gitlab), the image, config/ (read-only in the container), the Quadlet file
+# from this role's template, and the start, which waits until GitLab is healthy.
+- name: Deploy GitLab
+  ansible.builtin.import_role:
+    name: aslib.infra.podman_service
+  vars:
+    podman_service_name: gitlab
+    podman_service_image: "{{ __gitlab_image }}"
+    podman_service_archive: "{{ __gitlab_archive }}"
+    podman_service_env_file: "{{ gitlab_env_file }}"
+    podman_service_config_files:
+      - name: gitlab.rb
+        content: "{{ lookup('ansible.builtin.template', __gitlab_role_path ~ '/templates/gitlab.rb.j2') }}"
+      - "{{ __gitlab_role_path }}/files/application_settings.rb"
+    podman_service_quadlet_template: "{{ __gitlab_role_path }}/templates/gitlab.container.j2"
+    podman_service_port: "{{ gitlab_http_port }}"
+    podman_service_container_port: "{{ gitlab_http_port }}"
+    podman_service_bind_address: "{{ gitlab_bind_address }}"
+    podman_service_memory: "{{ gitlab_memory }}"
+    podman_service_health_cmd: "{{ __gitlab_health_cmd }}"
+    podman_service_shared: false
+
+# Through Rails in the container (about a minute), which needs no administrator's
+# token; see files/application_settings.rb.
+- name: Set the application settings, and check root has a password
+  ansible.builtin.command:
+    argv: >-
+      {{ __podman_service_as_account + ['podman', 'exec',
+         '--env=ASLIB_GITLAB_SETTINGS=' ~ (__gitlab_application_settings | combine(gitlab_application_settings) | to_json),
+         'gitlab', 'gitlab-rails', 'runner', '/etc/gitlab-aslib/application_settings.rb'] }}
+    chdir: /
+  register: __gitlab_settings_run
+  changed_when: __gitlab_settings_result.changed | length > 0
+  vars:
+    __gitlab_settings_result: "{{ __gitlab_settings_run.stdout_lines | select('match', '^[{]') | last | default('{}') | from_json }}"
+
+- name: Check root can sign in with a password
+  vars:
+    __gitlab_settings_result: "{{ __gitlab_settings_run.stdout_lines | select('match', '^[{]') | last | from_json }}"
+  ansible.builtin.assert:
+    that: __gitlab_settings_result.root_password
+    fail_msg: >-
+      GitLab has no password for root. Set one:
+      cd / && sudo runuser -u {{ __podman_service_user }} -- env XDG_RUNTIME_DIR=/run/user/{{ __podman_service_uid_number }}
+      podman exec -it gitlab gitlab-rake "gitlab:password:reset[root]"
+    success_msg: >-
+      GitLab {{ gitlab_version }} runs at {{ __gitlab_url }} (SSH on port {{ gitlab_ssh_port }}), with its
+      application settings{{ ' changed: ' ~ __gitlab_settings_result.changed | join(', ') if __gitlab_settings_result.changed else ' as they were' }}.

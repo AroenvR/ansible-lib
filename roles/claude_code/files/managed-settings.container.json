@@ -1,0 +1,15 @@
+{
+  "autoMemoryDirectory": "/opt/claude-code/memory",
+  "permissions": {
+    "additionalDirectories": ["/opt/claude-code", "/opt/containers/shared"],
+    "deny": [
+      "Read(//opt/claude-code/.claude/**)",
+      "Edit(//opt/claude-code/.claude/**)",
+      "Read(//opt/claude-code/.ssh/**)",
+      "Edit(//opt/claude-code/config/**)",
+      "Edit(//opt/claude-code/CLAUDE.md)",
+      "Edit(//opt/claude-code/CLAUDE.local.md)",
+      "Edit(//opt/claude-code/AGENTS.md)"
+    ]
+  }
+}

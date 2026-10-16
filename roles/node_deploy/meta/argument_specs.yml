@@ -38,6 +38,13 @@ argument_specs:
             server error (5xx). systemd counts the service as started once it is healthy, and Podman restarts it after
             3 failed checks in a row (one every 30 seconds once it started).
           - False runs the service without one.
+      node_deploy_memory:
+        type: str
+        default: ""
+        description:
+          - The most memory the service's container may use, e.g. C(1g) (podman_service_memory); its /tmp counts toward
+            it. Past it, the kernel stops a process in the container rather than elsewhere on the server.
+          - Empty, the default, sets no limit.
   restart:
     short_description: Restart a Node.js project's service and wait until it answers
     description:

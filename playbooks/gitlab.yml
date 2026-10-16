@@ -1,0 +1,15 @@
+---
+# GitLab Community Edition on a server of your own, as the rootless Podman service
+# gitlab (proof of concept). Run it from the directory with gitlab.env (and your
+# inventory, if any), on the server itself or with the server in the inventory's
+# group gitlab:
+#   ansible-playbook aslib.infra.gitlab --ask-become-pass
+# It downloads GitLab's image to images/ there first. Options and how it works:
+# ansible-doc -t role aslib.infra.gitlab. Remove: aslib.infra.gitlab_remove
+- name: Deploy GitLab
+  # Without an inventory, or without a group gitlab, this machine.
+  hosts: "{{ 'gitlab' if groups.get('gitlab') else 'localhost' }}"
+  become: true
+  gather_facts: false
+  roles:
+    - role: aslib.infra.gitlab

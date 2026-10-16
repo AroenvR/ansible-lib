@@ -26,6 +26,7 @@ node_image_ignore: []                  # more files kept out of the image (.cont
 # Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
 node_deploy_config_files: config/production/*.json   # copied to config/ in the service's directory
 node_deploy_health_check: true         # Podman checks the app answers HTTP, and restarts it when it does not
+node_deploy_memory: ""                 # the most memory the container may use, e.g. 1g; empty: no limit
 podman_service_port: 3000              # the service's port on the server
 podman_service_bind_address: 127.0.0.1 # 0.0.0.0 to reach it from other machines
 podman_service_container_port: 3000    # the app's port in the container (node_image_port)

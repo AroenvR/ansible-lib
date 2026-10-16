@@ -1,0 +1,14 @@
+# Stands in for GitLab's image in the role's test with gitlab_test_real: false:
+# the same contract (runs as root, reads GITLAB_OMNIBUS_CONFIG and the file it
+# names, keeps its secrets in /etc/gitlab and its data in /var/opt/gitlab, answers
+# HTTP on the port of its external URL, has the health check and gitlab-rails
+# runner the deploy uses), without GitLab: it starts in seconds, offline.
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9/nodejs-24-minimal
+FROM ${BASE_IMAGE}
+USER 0
+COPY server.js /opt/mock/server.js
+COPY gitlab-healthcheck /opt/gitlab/bin/gitlab-healthcheck
+COPY gitlab-rails /usr/local/bin/gitlab-rails
+RUN chmod 0755 /opt/gitlab/bin/gitlab-healthcheck /usr/local/bin/gitlab-rails \
+    && mkdir -p /opt/gitlab/etc
+CMD ["node", "/opt/mock/server.js"]
