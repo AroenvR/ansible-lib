@@ -512,8 +512,11 @@ Last updated 2026-10-16, on accept, before v0.5.0's release.
   delivery by pushed branch (requests into accept only past the gates) or by
   zip. See Working with the maintainer.
 - In claude_vm's VM on the Pi (2026-10-16): `make setup`, `make lint` and
-  `make images` pass; sudoers' server test passes as root, not rootless; no
-  nested KVM, so no `make test-vm-*` there (see Known pitfalls).
+  `make images` pass; sudoers' server test passes as root, not rootless;
+  node_setup's and claude_code's build-machine tests pass as root with
+  ansible-core 2.14, the latter building the real Claude Code image (2.1.292,
+  `dnf upgrade` included) on ARM64; no nested KVM, so no `make test-vm-*` there
+  (see Known pitfalls).
 
 - Debugged with the maintainer on their Raspberry Pi 4 (2026-10-16), with the
   new claude_vm_overview and claude_vm_boot_trial: claude-dev's firmware crashed
@@ -564,11 +567,11 @@ Last updated 2026-10-16, on accept, before v0.5.0's release.
 
 - GitHub Actions passed everything up to v0.4.0 (CI tags a release only once
   every job passed), and the maintainer's regression tests on their RHEL server
-  pass: the NestJS project and Claude Code side by side. So far only CI checks
-  the memory limits (the cloud sandbox has cgroup v1) and the real Claude Code
-  image's `dnf upgrade` (Red Hat's registry is out of the cloud sandbox's
-  reach). claude_vm's VM could check both (cgroup v2, the registry in reach)
-  but has not yet.
+  pass: the NestJS project and Claude Code side by side. The real Claude Code
+  image's `dnf upgrade` needs Red Hat's registry, out of the cloud sandbox's
+  reach: CI checks it, and so did claude_vm's VM (2026-10-16, above). So far
+  only CI checks the memory limits (the cloud sandbox has cgroup v1);
+  claude_vm's VM could (cgroup v2) but has not yet.
 - Not tested yet (README "Status" lists them for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
