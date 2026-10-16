@@ -9,15 +9,16 @@ Your machine needs `git`, `make`, Podman, Python 3.11 (for ansible-core 2.14,
 as on RHEL 9.6) and Python 3.12 (for 2.16 and linting, as on Ubuntu 24.04).
 
 ```sh
-git clone https://github.com/AroenvR/ansible-lib.git ~/src/ansible_collections/aslib/infra
-cd ~/src/ansible_collections/aslib/infra
+git clone https://github.com/AroenvR/ansible-lib.git aslib
+cd aslib
 make setup images   # on RHEL 9.6: dnf install python3.11 python3.12 first; on Ubuntu 24.04: install Python 3.11 too
 ```
 
 `PYTHON_2.14=`, `PYTHON_2.16=` and `PYTHON_LINT=` point make at another Python.
 
-The clone path must end in `ansible_collections/aslib/infra`. Ansible then loads
-the collection straight from your checkout, so tests never run against a stale
+Clone it anywhere. make links the checkout into
+`.venv/self/ansible_collections/aslib/infra`, where Ansible finds it as
+aslib.infra, so lint and tests run on your checkout itself, never on an
 installed copy. `make help` lists all targets.
 
 ## How the tests are organized
@@ -90,8 +91,9 @@ For faster iterations keep the test containers running:
 
 ```sh
 cd roles/<role>
-export ANSIBLE_COLLECTIONS_PATH=$(git rev-parse --show-toplevel)/.venv/collections
-export PATH=$(git rev-parse --show-toplevel)/.venv/ansible-2.14/bin:$PATH
+top=$(git rev-parse --show-toplevel)   # after make setup, which links .venv/self
+export ANSIBLE_COLLECTIONS_PATH=$top/.venv/self:$top/.venv/collections
+export PATH=$top/.venv/ansible-2.14/bin:$PATH
 molecule converge -s server   # create the containers once, apply the role
 molecule verify -s server     # run the checks
 molecule destroy -s server    # clean up when done

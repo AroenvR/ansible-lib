@@ -51,7 +51,9 @@ says what does; on a Raspberry Pi with 4 GB, `-e claude_vm_memory=2560`.
 Run it on the host itself, where it needs no inventory, or from another machine
 with the host in an inventory; the VM is then reached through the host (SSH's
 `ProxyJump`). The machine that runs it gets the key `~/.ssh/claude-dev`, which
-logs in as `claude`; `claude_vm_authorized_keys` lets more keys in.
+logs in as `claude`; `claude_vm_authorized_keys` lets more keys in. Run it as
+yourself with `--ask-become-pass`, not with `sudo`: the key goes into the home
+of whoever runs `ansible-playbook`, root's with `sudo`.
 
 | What | Where, on the host |
 |---|---|
@@ -78,7 +80,7 @@ sudo, so here it sets defaults; the VM is the boundary.
 aslib.infra's tests run there as in CI:
 
 ```sh
-git clone <repository> ~/src/ansible_collections/aslib/infra && cd $_
+git clone <repository> ~/src/aslib && cd $_
 make setup
 sudo make images test-servers-2.14
 ```
@@ -86,7 +88,7 @@ sudo make images test-servers-2.14
 **Getting Claude's work out**, from the host or through it:
 
 ```sh
-git remote add claude-dev claude-dev:src/ansible_collections/aslib/infra
+git remote add claude-dev claude-dev:src/aslib
 git fetch claude-dev
 ```
 
@@ -125,10 +127,11 @@ VM as it was made.
 
 - A proof of concept: one VM per host, named `claude-dev`. Changing the network
   or the image needs a new VM.
-- Tested on an Ubuntu 24.04 x86_64 host without KVM (QEMU's emulation, with a
-  stand-in for the cloud image), where the deadsnakes and Claude Code
-  repositories were out of reach: not yet on real hardware, on ARM64, on a RHEL
-  host or in CI.
+- Runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04, ARM64, KVM) with
+  `-e claude_vm_memory=2560`. Its test runs on an Ubuntu 24.04 x86_64 host
+  without KVM (QEMU's emulation, a stand-in for the cloud image, without the
+  deadsnakes and Claude Code repositories); not yet on an x86_64 host with KVM,
+  a RHEL host or in CI.
 - An ARM64 VM boots without Secure Boot. Enforced, as libvirt would have it,
   Ubuntu's boot loader crashes on a Raspberry Pi 4; in a VM where Claude has
   root, it would protect nothing.

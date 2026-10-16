@@ -120,5 +120,5 @@
     msg:
       - "Log in: ssh -i {{ __claude_vm_key }} {{ ansible_ssh_common_args }} claude@{{ ansible_host }}"
       - "Claude Code: claude (sign in once); without permission prompts: claude --dangerously-skip-permissions"
-      - "aslib.infra: git clone <repository> ~/src/ansible_collections/aslib/infra, then see its CONTRIBUTING.md"
+      - "aslib.infra: git clone <repository> ~/src/aslib, then see its CONTRIBUTING.md"
       - "Its tests, as CI runs them: make setup, then sudo make images test-servers-2.14"

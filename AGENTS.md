@@ -66,9 +66,10 @@ files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
 
 ## Commands
 
-The repository must sit at `<dir>/ansible_collections/aslib/infra` (the Makefile
-refuses otherwise) and be a git checkout (Molecule finds `.config/molecule/` via
-the git root).
+The repository may be cloned anywhere, as `aslib/`, but must be a git checkout
+(Molecule finds `.config/molecule/` via the git root). make links it into
+`.venv/self/ansible_collections/aslib/infra`, where Ansible finds it as
+aslib.infra.
 
 ```sh
 make setup images                          # once: venvs, test-only collections, test containers
@@ -154,8 +155,9 @@ their reasons here, and bring Status up to date before ending a block of work.
 ## Known pitfalls (all verified)
 
 - Molecule 6.0.3 searches `~/.ansible/collections` before `ANSIBLE_COLLECTIONS_PATH`,
-  so a stale installed copy can shadow the code under test. Hence the
-  `ansible_collections/aslib/infra` layout, `prerun: false` and `offline: true` in `.ansible-lint`.
+  so a stale installed copy can shadow the code under test. Hence `prerun: false`
+  (Molecule never installs a copy), `offline: true` in `.ansible-lint`, and
+  make's link `.venv/self/ansible_collections/aslib/infra` to the checkout.
 - Lint runs on a modern ansible-core, so lint passing does not prove 2.14
   compatibility. Only the Molecule tests and the native test do.
 - ansible-lint cannot parse GitLab's `!reference` tag; use YAML anchors.
@@ -447,14 +449,19 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
 
+- Decided with the maintainer on 2026-10-16: the repository is cloned as
+  `aslib/`, anywhere (it is to be renamed from ansible-lib); make's link in
+  `.venv/self/` replaced the required `ansible_collections/aslib/infra` path,
+  and both CI pipelines work in their checkout itself.
+
 - Debugged with the maintainer on their Raspberry Pi 4 (2026-10-16), with the
   new claude_vm_overview and claude_vm_boot_trial: claude-dev's firmware crashed
   in Ubuntu's shim whenever Secure Boot was enforced (libvirt's ARM64 default;
   see Pitfalls). The page offset of the address (`…B98`) matches LP #2145095,
   whose reporter saw Noble guests fail on a Raspberry Pi 4. Fixed by booting an
-  ARM64 VM without Secure Boot; waiting for the maintainer's run of
-  claude_vm_remove and claude_vm on the Pi, which is the first real ARM64 test
-  (cloud-init from the CD, deadsnakes' Python 3.11 for arm64).
+  ARM64 VM without Secure Boot. Then claude_vm created and set up claude-dev on
+  the Pi in one run (cloud-init from the CD, deadsnakes' Python 3.11 for arm64,
+  Claude Code): its first run on real hardware.
 
 - Decided with the maintainer on 2026-10-11: a GitLab of Claude's own, GitLab CE
   as a rootless Podman service (role gitlab, a proof of concept) on the laptop
@@ -584,11 +591,11 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   personal VM, which has no nested KVM and where Claude gets no root. What
   matters is what the VM holds (only Claude's login: no keys to servers, no git
   credentials; the maintainer fetches Claude's branches) and what it reaches
-  (the internet, not the local network, enforced by nftables on the host). Not
-  yet run through on real hardware, ARM64 or a RHEL host. On ARM64 the VM boots
-  with UEFI firmware without Secure Boot (qemu-efi-aarch64; see Pitfalls) and
-  is ARM64 itself; whether deadsnakes builds Python 3.11 for arm64 is
-  unverified. GitLab next to it needs Podman 5 (podman_service): Ubuntu 24.04
+  (the internet, not the local network, enforced by nftables on the host). Runs
+  on the maintainer's Raspberry Pi 4 (ARM64); not yet on an x86_64 host with KVM
+  or a RHEL host. On ARM64 the VM boots with UEFI firmware without Secure Boot
+  (qemu-efi-aarch64; see Pitfalls) and is ARM64 itself, deadsnakes' Python 3.11
+  included. GitLab next to it needs Podman 5 (podman_service): Ubuntu 24.04
   has 4.9, 26.04 has 5.7. The VM has Python 3.11 (deadsnakes)
   next to Ubuntu's 3.12, for both test venvs. Without KVM, the alternative is
   Claude in an unprivileged account with a rootless test suite, not started.

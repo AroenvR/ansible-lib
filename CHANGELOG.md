@@ -41,6 +41,10 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   shows the host and the VM and changes nothing; the second boots the VM once in
   a changed form (other UEFI firmware, no TPM, no CD drive), with its console
   recorded, and shows how far the boot got.
+- Changed: the repository may be cloned anywhere, as `aslib/`. make links the
+  checkout into `.venv/self/ansible_collections/aslib/infra` for Ansible, and
+  both CI pipelines work in their checkout itself; the
+  `ansible_collections/aslib/infra` path is no longer needed.
 - Added `claude_vm_host_ports` and `claude_vm_host_names`: ports of the host's
   that claude_vm's VM may reach (such as GitLab's), and names that lead to the
   host from inside the VM.
