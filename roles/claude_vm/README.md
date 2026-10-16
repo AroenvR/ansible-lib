@@ -31,7 +31,7 @@ breaks it: a broken VM is rebuilt in minutes.
 |---|---|
 | **Root** | Claude has sudo in the VM and nowhere else. Nothing of the host is shared with it: no folders, no keys |
 | **Network** | It reaches the internet, but not the local network (the private address ranges) nor the host's own services, except the ports you name (`claude_vm_host_ports`, such as GitLab's, below). The rules live on the host, out of the VM's reach |
-| **Secrets** | Only Claude's own login. Keep it that way: no keys to servers, no git credentials. Fetch Claude's work from the VM (below), review it, and push it yourself |
+| **Secrets** | Claude's own login, and a git credential of Claude's own that pushes its branches to your repository (below). Protect the branches you merge from (such as `main` and `accept`), so that only you push or merge there. No keys to servers, and none of yours |
 | **Reset** | `ansible-playbook aslib.infra.claude_vm_remove`, then `aslib.infra.claude_vm` again: a fresh VM |
 
 ## The host
@@ -86,7 +86,10 @@ make setup
 sudo make images test-servers-2.14
 ```
 
-**Getting Claude's work out**, from the host or through it:
+**Getting Claude's work out:** Claude pushes its branches to your repository
+with a credential of its own (an account or a key just for Claude), and you
+review them in pull or merge requests. Or, without any credential in the VM,
+fetch them from the host:
 
 ```sh
 git remote add claude-dev claude-dev:src/aslib
@@ -102,8 +105,8 @@ claude_vm_host_ports: [8929, 2224]       # GitLab's HTTP and SSH
 claude_vm_host_names: [gitlab.home.arpa]
 ```
 
-Claude's token for that account is a git credential in the VM after all: give
-it to Claude's own account only, never yours.
+Whichever server Claude pushes to, its credential belongs to an account of
+Claude's own, never yours, and the branches you merge from are protected.
 
 ## When the VM does not come up
 

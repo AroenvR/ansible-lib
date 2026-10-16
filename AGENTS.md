@@ -484,13 +484,28 @@ Last updated 2026-10-16, on accept, before v0.5.0's release.
   replaced the required `ansible_collections/aslib/infra` path, and both CI
   pipelines work in their checkout itself. Where it is hosted keeps changing
   (a self-hosted GitLab next), so documentation names no location: it says
-  `<repository>`, and `<version>` for a release in examples; galaxy.yml's
-  `repository` is the one copy of its URL. Once offline hosting works, every
-  URL becomes dynamic.
+  `<repository>`, and `<version>` for a release in examples. galaxy.yml names
+  none either (anonymised: no `repository`, the author without a profile URL);
+  a checkout's git remote is its source. Once offline hosting works, every URL
+  becomes dynamic.
 - Decided with the maintainer on 2026-10-16: several agents at once, each in an
   environment of its own, starting from `accept` on branches of their own;
   delivery by pushed branch (requests into accept only past the gates) or by
   zip. See Working with the maintainer.
+- Decided with the maintainer on 2026-10-16: the way to `main` is a branch of
+  one's own from `accept`, a pull or merge request into `accept`, accepted with
+  a green CI at the very least, and the maintainer merging `accept` into
+  `main`. A foundation the maintainer will extend
+  ([Branches and pull requests](CONTRIBUTING.md#branches-and-pull-requests)).
+- Decided with the maintainer on 2026-10-16: the security model allows a push
+  credential in claude_vm's VM: a key with which the agent there pushes its own
+  branches of aslib.infra's repository (main and accept stay the maintainer's).
+  Still no keys to servers. claude_vm's README says so.
+- Decided with the maintainer on 2026-10-16: every download source becomes a
+  role variable with an upstream default. Gaps to close: GitLab's image
+  (`__gitlab_image` in roles/gitlab/vars/main.yml), nvm's URL (`NVM_URL` only
+  in claude_code's Containerfile) and the UBI RPM repositories inside the image
+  builds of node_image and claude_code. A feature of its own, designed first.
 - In claude_vm's VM on the Pi (2026-10-16): `make setup`, `make lint` and
   `make images` pass; sudoers' server test passes as root, not rootless;
   node_setup's and claude_code's build-machine tests pass as root with
@@ -638,8 +653,8 @@ Last updated 2026-10-16, on accept, before v0.5.0's release.
   a VM of its own on a host with KVM (the maintainer's is a Raspberry Pi with
   Ubuntu Server 24.04, ARM64), never the maintainer's
   personal VM, which has no nested KVM and where Claude gets no root. What
-  matters is what the VM holds (only Claude's login: no keys to servers, no git
-  credentials; the maintainer fetches Claude's branches) and what it reaches
+  matters is what the VM holds (only Claude's login, and since 2026-10-16 a key
+  that pushes Claude's own branches, see above; no keys to servers) and what it reaches
   (the internet, not the local network, enforced by nftables on the host). Runs
   on the maintainer's Raspberry Pi 4 (ARM64); not yet on an x86_64 host with KVM
   or a RHEL host. On ARM64 the VM boots with UEFI firmware without Secure Boot

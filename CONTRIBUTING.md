@@ -18,14 +18,13 @@ make setup images   # on RHEL 9.6: dnf install python3.11 python3.12 first; on U
 ```
 
 `<repository>` is the URL of aslib.infra's git repository, wherever it is
-hosted. Clone it anywhere, as `aslib/`, but as a git checkout: Molecule finds
-`.config/molecule/` via the git root. make links the checkout into
-`.venv/self/ansible_collections/aslib/infra`, where Ansible finds it as
-aslib.infra, so lint and tests run on your checkout itself, never on an
-installed copy. `make setup` creates the venvs and installs the test-only
-collections, `make images` builds the test server containers
-([Make targets](#make-targets) says what each target runs); `make help` lists
-all targets.
+hosted. Clone it anywhere, under any name (`aslib/` by convention); it only has
+to be a git checkout, as Molecule finds `.config/molecule/` via the git root.
+Lint and tests always run on your checkout itself, never on a copy of
+aslib.infra installed elsewhere: make sees to that. `make setup` creates the
+venvs and installs the test-only collections, `make images` builds the test
+server containers ([Make targets](#make-targets) says what each target
+runs); `make help` lists all targets.
 
 `PYTHON_2.14=`, `PYTHON_2.16=` and `PYTHON_LINT=` point make at another Python
 (by default `python3.11`, `python3.12` and `python3.12`). claude_vm's VM
@@ -363,16 +362,23 @@ Each kind of documentation has one place:
 
 ## Branches and pull requests
 
-- `main` and `accept` are the maintainer's: nobody else pushes to them. Work
-  starts from `accept` (not main); the maintainer merges accept into main,
-  which CI then releases ([Releases](#releases)).
-- Work on branches of your own, named
-  `<kind>/<YYYY-MM-DD>-<at most three words>`, the words joined with
-  underscores, the kind such as `feature` or `hotfix`
-  (`feature/2026-10-16-gitlab_container`).
-- CI runs on every push to every branch. Open a pull or merge request into
-  `accept` only when the gates pass: every CI job green, the relevant tests
-  proven to pass, lint clean.
+Every change takes the same way to `main`. This is the foundation; the
+maintainer will extend it.
+
+1. Start a branch of your own from `accept` (not main), named
+   `<kind>/<YYYY-MM-DD>-<at most three words>`, the words joined with
+   underscores, the kind such as `feature` or `hotfix`
+   (`feature/2026-10-16-gitlab_container`).
+2. Push it: CI runs on every push to every branch. A commit with `[skip ci]` in
+   its message starts no pipeline, for work in progress you only want to keep
+   safe.
+3. Open a pull request (GitHub) or merge request (GitLab) into `accept`. It is
+   accepted only with a green CI, at the very least: every CI job green, the
+   relevant tests proven to pass, lint clean.
+4. The maintainer merges `accept` into `main`, which CI then releases
+   ([Releases](#releases)).
+
+`main` and `accept` are the maintainer's: nobody else pushes to them.
 
 ## CI
 
