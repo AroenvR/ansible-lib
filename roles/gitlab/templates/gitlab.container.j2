@@ -1,0 +1,70 @@
+{#
+  GitLab's Quadlet file, which aslib.infra.podman_service installs for the role
+  gitlab (podman_service_quadlet_template) as
+  /etc/containers/systemd/users/<the account's UID>/gitlab.container.
+
+  Unlike podman_service's own template, GitLab's image runs as root inside the
+  container (its services as users of their own) and writes outside its volumes
+  when it starts, so its root filesystem stays writable. Root inside is the
+  account outside: rootless Podman maps it to the account, and GitLab's service
+  users to the account's subordinate UIDs.
+#}
+# {{ podman_service_name }}, deployed by aslib.infra (roles gitlab and podman_service): the next deploy replaces this file.
+
+[Unit]
+Description=GitLab Community Edition {{ gitlab_version }}
+
+[Container]
+Image={{ podman_service_image }}
+ContainerName={{ podman_service_name }}
+HostName={{ gitlab_hostname }}
+PublishPort={{ podman_service_bind_address }}:{{ gitlab_http_port }}:{{ gitlab_http_port }}
+PublishPort={{ podman_service_bind_address }}:{{ gitlab_ssh_port }}:22
+# GITLAB_ROOT_PASSWORD, next to this file.
+EnvironmentFile={{ podman_service_name }}.env
+# aslib.infra's settings: config/gitlab.rb, read-only, read before /etc/gitlab/gitlab.rb.
+Environment="GITLAB_OMNIBUS_CONFIG=from_file('/etc/gitlab-aslib/gitlab.rb')"
+Volume={{ podman_service_dir }}/config:/etc/gitlab-aslib:ro,Z
+# GitLab's own volumes, in the service's directory: configuration and secrets
+# (gitlab-secrets.json, SSH host keys), logs, and data (database, repositories).
+Volume={{ podman_service_dir }}/etc:/etc/gitlab:Z
+Volume={{ podman_service_dir }}/logs:/var/log/gitlab:Z
+Volume={{ podman_service_dir }}/data:/var/opt/gitlab:Z
+# GitLab's metrics need more shared memory than the default 64 MB.
+ShmSize=256m
+{% if podman_service_memory | length > 0 %}
+# At most this much memory: past it, the kernel stops a process in the container
+# rather than elsewhere on the server.
+PodmanArgs=--memory={{ podman_service_memory }}
+{% endif %}
+# Health: the image's own check, every 10 seconds from the start until it passes
+# (the first start takes minutes), then every minute. systemd counts the service
+# as started once it passed; after 5 failures in a row Podman stops the container,
+# and systemd starts it again.
+HealthStartupCmd={{ podman_service_health_cmd }}
+HealthStartupInterval=10s
+HealthCmd={{ podman_service_health_cmd }}
+HealthInterval=60s
+HealthTimeout=30s
+HealthRetries=5
+HealthOnFailure=kill
+Notify=healthy
+# GitLab's entrypoint stops its services (and PostgreSQL) cleanly on SIGTERM,
+# whatever stop signal an image declares; give it time.
+StopSignal=SIGTERM
+StopTimeout=300
+# GitLab's output goes to the journal: journalctl _SYSTEMD_USER_UNIT={{ podman_service_name }}.service
+PodmanArgs=--log-driver=journald
+
+[Service]
+# GitLab's volumes, created by the account itself the first time.
+ExecStartPre=/usr/bin/mkdir -p {{ podman_service_dir }}/etc {{ podman_service_dir }}/logs
+Restart=always
+RestartSec=10
+# The first start, and one after an upgrade, migrate the database: allow for it.
+TimeoutStartSec=1800
+TimeoutStopSec=330
+
+[Install]
+# Start at boot.
+WantedBy=default.target

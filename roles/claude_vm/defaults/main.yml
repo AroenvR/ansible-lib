@@ -11,12 +11,19 @@ claude_vm_network_prefix: "192.168.123"
 # it still reaches the internet.
 claude_vm_lan_block: true
 
+# Ports of the host's own the VM may reach all the same, at <prefix>.1, such as
+# GitLab's (aslib.infra.gitlab: [8929, 2224]), and names that lead there from
+# inside the VM, such as GitLab's (gitlab.home.arpa).
+claude_vm_host_ports: []
+claude_vm_host_names: []
+
 # Public keys that may also log in as claude, such as your workstation's. The
 # machine that runs the playbook always may (with ~/.ssh/claude-dev).
 claude_vm_authorized_keys: []
 
-# Ubuntu 24.04's cloud image, checked against its published checksums.
-claude_vm_image_url: https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img
+# Ubuntu 24.04's cloud image, checked against its published checksums. Empty:
+# the one for the host's architecture (amd64 or arm64).
+claude_vm_image_url: ""
 claude_vm_image_checksum: sha256:https://cloud-images.ubuntu.com/releases/noble/release/SHA256SUMS
 
 # In the VM: Python 3.11 for the ansible-core 2.14 venvs of aslib.infra's
@@ -28,3 +35,12 @@ claude_vm_python_key_url: https://keyserver.ubuntu.com/pks/lookup?op=get&search=
 # is the channel: stable, or latest.
 claude_vm_claude_code_repository: https://downloads.claude.ai/claude-code/apt/stable
 claude_vm_claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc
+
+# Debugging. The entry point overview shows this many of the console's last
+# lines; boot_trial boots the VM once, with these changes (see ansible-doc).
+claude_vm_overview_console_lines: 20
+claude_vm_trial_firmware: ""
+claude_vm_trial_tpm: true
+claude_vm_trial_cdrom: true
+claude_vm_trial_reset_nvram: true
+claude_vm_trial_seconds: 300

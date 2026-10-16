@@ -9,13 +9,25 @@ __claude_vm_mac: "52:54:00:c1:a0:de"
 __claude_vm_ip: "{{ claude_vm_network_prefix }}.10"
 __claude_vm_images: /var/lib/libvirt/images
 __claude_vm_disk: /var/lib/libvirt/images/claude-dev.qcow2
-__claude_vm_base: /var/lib/libvirt/images/{{ claude_vm_image_url | basename }}
+# What cloud-init reads at the VM's first boot (NoCloud), as a CD of its own.
+__claude_vm_seed_iso: /var/lib/libvirt/images/claude-dev-seed.iso
+__claude_vm_base: /var/lib/libvirt/images/{{ __claude_vm_image_url | basename }}
+# The host's architecture as Ubuntu names it, and its cloud image.
+__claude_vm_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts.architecture] }}"
+__claude_vm_image_url: >-
+  {{ claude_vm_image_url or 'https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-'
+     ~ __claude_vm_arch ~ '.img' }}
 __claude_vm_config_dir: /etc/claude-vm
 
-# Packages on the host, by OS family.
+# Packages on the host, by OS family and architecture. An ARM64 VM boots with
+# UEFI, from the firmware of qemu-efi-aarch64 (Ubuntu) or edk2-aarch64 (RHEL).
 __claude_vm_host_packages:
-  Debian: [qemu-system-x86, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
-  RedHat: [qemu-kvm, qemu-img, libvirt, virt-install, xorriso, nftables]
+  Debian:
+    x86_64: [qemu-system-x86, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
+    aarch64: [qemu-system-arm, qemu-efi-aarch64, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
+  RedHat:
+    x86_64: [qemu-kvm, qemu-img, libvirt, virt-install, xorriso, nftables]
+    aarch64: [qemu-kvm, qemu-img, edk2-aarch64, libvirt, virt-install, xorriso, nftables]
 # libvirt's daemons: Ubuntu runs the classic one, RHEL 9 one per driver.
 __claude_vm_host_services:
   Debian: [libvirtd.service]
@@ -29,6 +41,24 @@ __claude_vm_guest_packages: [podman, git, make, python3-venv, python3.11, python
 
 # virsh and the key, on the machine that runs the playbook, that logs in as claude.
 __claude_vm_virsh: [virsh, --connect, "qemu:///system"]
+
+# Debugging (entry points overview and boot_trial). virt-xml comes with
+# virt-install; the VM's console goes to this file once a trial has set it up.
+__claude_vm_virt_xml: [virt-xml, --connect, "qemu:///system"]
+__claude_vm_console_log: /var/log/libvirt/qemu/claude-dev-console.log
+# UEFI firmware a trial can boot the VM with: Ubuntu's for ARM64 (qemu-efi-aarch64).
+# An x86_64 VM boots with BIOS (SeaBIOS) instead.
+__claude_vm_trial_firmware_files:
+  secure-ms: {code: /usr/share/AAVMF/AAVMF_CODE.ms.fd, vars: /usr/share/AAVMF/AAVMF_VARS.ms.fd}
+  secure-nokeys: {code: /usr/share/AAVMF/AAVMF_CODE.secboot.fd, vars: /usr/share/AAVMF/AAVMF_VARS.fd}
+  plain: {code: /usr/share/AAVMF/AAVMF_CODE.no-secboot.fd, vars: /usr/share/AAVMF/AAVMF_VARS.fd}
+# The overview shows these packages' versions, where installed.
+__claude_vm_overview_packages:
+  [qemu-system-arm, qemu-system-x86, qemu-kvm, qemu-efi-aarch64, edk2-aarch64, ovmf, edk2-ovmf, libvirt-daemon-system,
+   libvirt-daemon-kvm, virtinst, virt-install, swtpm]
+# Console lines that tell how far a boot got: UEFI, shim, Linux, cloud-init, login.
+__claude_vm_console_markers: >-
+  BdsDxe|Exception|Security Violation|[Ss]him|Booting Linux|EFI stub|Cloud-init v[.]|FAILED|login:
 __claude_vm_key: "{{ lookup('env', 'HOME') }}/.ssh/{{ __claude_vm_name }}"
 
 # How that machine reaches the VM: through the host, unless it is the host. The

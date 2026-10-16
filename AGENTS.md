@@ -98,6 +98,8 @@ explains the test layout and how releases are made.
 | `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
 | `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
 | `roles/claude_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`make test-vm-<version>`) |
+| `roles/gitlab/molecule/gitlab/` | Deploys and uses GitLab on the RHEL 9 test server; not part of `make test` (`make test-gitlab-<version>`). `mock/` is a stand-in for GitLab's image (`gitlab_test_real: false`) |
+| `dev/molecule/` | Plays shared by several scenarios, such as the preparation of the test server for podman_service |
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
 | `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
 | `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
@@ -132,6 +134,14 @@ their reasons here, and bring Status up to date before ending a block of work.
   or lacks is added, changed or deleted. With each zip, give a commit message:
   plain text, without attribution trailers (no Co-Authored-By, no session
   links).
+- **Debugging on the maintainer's machines.** When the agent cannot reproduce
+  a problem itself, each step it asks the maintainer to run is a playbook in the
+  collection, not loose shell commands: an `overview` entry point that changes
+  nothing, or a trial that changes only what its options say
+  (`aslib.infra.claude_vm_overview`, `aslib.infra.claude_vm_boot_trial`). They
+  stay, linted and documented like everything else, and add up to a debugging
+  toolkit; the field notes below are candidates. Meanwhile the agent runs lint
+  and small checks only, and the full suite once a fix is settled.
 - **Verify from a clean state** before delivering: fresh venvs, empty pip and
   Molecule caches, a git checkout. A cached pip wheel once hid a CI failure.
 - **Communication.** Be concise and end replies with a `TL;DR:` section. The
@@ -347,6 +357,64 @@ their reasons here, and bring Status up to date before ending a block of work.
   `PodmanArgs=--memory=`. Rootless, it needs the memory controller
   delegated to `user@.service`, which systemd 252 (RHEL 9) and 255 (Ubuntu
   24.04) do by default. A host with cgroup v1 can't apply it.
+- `role_path` in the `vars:` of an `import_role` is the imported role's when
+  it is evaluated there: the gitlab role sets a fact with its own path first.
+- Quadlet (5.4) passes `Environment="NAME=value"` on as `--env "NAME=value"`,
+  single quotes intact; without the double quotes, systemd would take single
+  quotes as its own quoting. `quadlet -dryrun -user` (with QUADLET_UNIT_DIRS)
+  shows the `podman run` a Quadlet file becomes.
+- An image's `STOPSIGNAL` is the container's stop signal (the sandbox's
+  stand-in images from systemd images declare SIGRTMIN+3, which a plain process
+  ignores, so a stop waited out its timeout). GitLab's entrypoint stops cleanly on
+  SIGTERM; the gitlab role sets `StopSignal=SIGTERM` and 300 seconds.
+- GitLab's image runs as root inside its container and writes outside its
+  volumes at every start (runit, Chef, SSH host keys): podman_service's hardened
+  template (user 1001, read-only, no capabilities) cannot run it. It reads
+  `GITLAB_OMNIBUS_CONFIG` (Ruby) before `/etc/gitlab/gitlab.rb`, copies
+  `gitlab.rb` there only when missing, and answers `/` with a redirect to its
+  `external_url`, which the server itself may not resolve.
+- Read in GitLab 19.4.1's source (the agent's sandbox cannot run GitLab, so CI
+  is the proof): `gitlab-healthcheck` passes without its settings file
+  (`/opt/gitlab/etc/gitlab-healthcheck-rc`) since 19.1, and `gitlab-ctl
+  reconfigure` writes that file at the end of every start, while Quadlet's
+  `--rm` starts each container without it: the health command tests for the
+  file first. Product usage events (to events.gitlab.net) are on by default and
+  independent of Service Ping; `GITLAB_PRODUCT_USAGE_DATA_ENABLED=false` in the
+  Rails environment turns them off. A rejected `initial_root_password` makes the
+  database seed `exit 1`, so reconfigure fails at every start (no root without a
+  password); the weak-password check also refuses parts of root's name and
+  email (Administrator, root, gitlab_admin_...@example.com).
+- QEMU reserves a VM's whole memory when it starts: a VM larger than the host
+  can give fails with "cannot set up guest memory" (seen on a 4 GB Raspberry Pi
+  with claude_vm's 4096 MiB), and virt-install leaves it defined, so a rerun
+  would only start it again: claude_vm checks the size first and undefines a
+  VM that did not start. An ARM64 VM (UEFI) keeps its variables in an NVRAM
+  file; `virsh undefine` refuses it without `--nvram`.
+- virt-install's `--cloud-init` runs the first boot with `on_reboot=destroy` and
+  a temporary seed CD, which the VM's saved definition leaves empty; with
+  `--noautoconsole` nothing starts the VM again. A restart during that boot
+  (most likely UEFI's, on an ARM64 Raspberry Pi) left claude-dev shut off,
+  never on its network, and without its account. claude_vm builds the NoCloud
+  seed itself (xorriso, label `cidata`) and keeps it attached; its test resets
+  the VM.
+- libvirt on Ubuntu ARM64 gives a new VM `AAVMF_CODE.ms.fd`
+  (`40-edk2-aarch64-secure-enrolled.json` comes first): Secure Boot enforced,
+  Microsoft's keys enrolled; virt-install adds an emulated TPM when swtpm is
+  installed. An x86_64 VM boots with BIOS. On the maintainer's Raspberry Pi 4
+  (Ubuntu 24.04, qemu-efi-aarch64 2024.02) that firmware crashes at every boot
+  as it starts Ubuntu's shim from the disk ("Synchronous Exception at
+  0x…DC296B98"); see Status.
+- virt-xml takes one kind of change per call. `--xml xpath.delete=` with an
+  attribute predicate (`disk[@device='cdrom']`) changes nothing ("XML did not
+  change"); `--remove-device --disk target=sda` and `--tpm all` work. Deleting
+  `<boot dev='hd'/>` is pointless: libvirt puts it back.
+- `userdel` removes the account's `/etc/subuid` and `/etc/subgid` ranges and
+  `useradd` takes the first free one: files of a removed account's subordinate
+  UIDs (GitLab's own users) match a new account only when nothing else took or
+  freed a range in between.
+- Rootless Quadlet units wait for the system's `network-online.target`
+  (`podman-user-wait-network-online.service`, up to 90 seconds each start); in
+  the agent's sandbox the target never comes up, so each start there takes 90 s.
 
 ## Looking inside a running service (field notes)
 
@@ -371,7 +439,33 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-09, on the VM branch after v0.4.0.
+Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
+
+- Open, debugged with the maintainer on their Raspberry Pi 4 (from 2026-10-16):
+  claude-dev's UEFI firmware (Secure Boot, Microsoft keys, a TPM) crashes as it
+  starts Ubuntu's shim from the disk, at the same address every boot, so the VM
+  never reaches Linux. A VM of the old role (virt-install `--cloud-init`) reached
+  a login prompt once, booting from the boot entry shim's fallback had written.
+  The address's page offset (`…B98`) matches LP #2145095 (Secure Boot ARM64
+  firmware; its reporter later saw Noble guests fail on a Raspberry Pi 4). Next:
+  boot trials with `secure-nokeys` and `plain` firmware, then without the TPM.
+
+- Decided with the maintainer on 2026-10-11: a GitLab of Claude's own, GitLab CE
+  as a rootless Podman service (role gitlab, a proof of concept) on the laptop
+  next to claude_vm's VM, so that GitLab stays out of Claude's reach and Claude
+  has an ordinary account. Plain HTTP (a home network). Collection playbooks with
+  settings in the user's inventory, not a project written by a setup (the shared
+  setup mechanism waits). Next, each a feature of its own:
+  - Backups, which the maintainer will copy to a NAS: `gitlab-backup create`
+    plus `gitlab-ctl backup-etc` (gitlab-secrets.json is not in the former),
+    restorable only on the same version. Until then the README says to copy
+    /opt/gitlab with GitLab stopped. A copy of /opt/gitlab belongs to the
+    account's UID and subordinate UIDs: a fixed `podman_service_uid` keeps a
+    redeploy on it working; podman_service hands a directory owned by another UID
+    to the account with `chown -R`, which would break GitLab's own owners.
+  - A runner in the VM (shell executor), matching GitLab's major.minor, from
+    packages.gitlab.com (key F6403F6544A38863DAA0B6E03F01618A51312F3F, URL
+    /gpgkey/gpg.key since March 2026), registered with a `glrt-` token.
 
 - Decided with the maintainer on 2026-10-09: Claude Code's policy has one
   aslib.infra base, claude_code's `files/managed-settings.json`, which every
@@ -479,12 +573,17 @@ Last updated 2026-10-09, on the VM branch after v0.4.0.
   Tests run it next to the Node.js service.
 - claude_vm, a proof of concept, decided with the maintainer: for development,
   where Claude needs root (Molecule's tests use rootful Podman), the boundary is
-  a VM of its own on a host with KVM (a spare laptop), never the maintainer's
+  a VM of its own on a host with KVM (the maintainer's is a Raspberry Pi with
+  Ubuntu Server 24.04, ARM64), never the maintainer's
   personal VM, which has no nested KVM and where Claude gets no root. What
   matters is what the VM holds (only Claude's login: no keys to servers, no git
   credentials; the maintainer fetches Claude's branches) and what it reaches
   (the internet, not the local network, enforced by nftables on the host). Not
-  yet run on real hardware or a RHEL host. The VM has Python 3.11 (deadsnakes)
+  yet run on real hardware, ARM64 or a RHEL host. On ARM64 the VM boots with
+  UEFI (qemu-efi-aarch64, which virt-install picks by default for aarch64) and
+  is ARM64 itself; whether deadsnakes builds Python 3.11 for arm64 is
+  unverified. GitLab next to it needs Podman 5 (podman_service): Ubuntu 24.04
+  has 4.9, 26.04 has 5.7. The VM has Python 3.11 (deadsnakes)
   next to Ubuntu's 3.12, for both test venvs. Without KVM, the alternative is
   Claude in an unprivileged account with a rootless test suite, not started.
 - The shared zone `/opt/containers/shared/`, decided with the maintainer: every

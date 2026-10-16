@@ -1,0 +1,21 @@
+---
+# Deploys GitLab CE on the RHEL 9 test server as a person would, then uses it:
+# an account, a project, pushes and clones over HTTP and SSH, a fork; checks its
+# settings, restarts it, removes it and deploys it again on the same data. With
+# the real image (vars/test.yml: gitlab_test_real) it needs Docker Hub, about
+# 4 GB of memory and 15 GB of disk, and takes about half an hour: not part of
+# `make test`, run it with `make test-gitlab-<ansible-core>`. With
+# gitlab_test_real: false, a stand-in (mock/) replaces GitLab and the test checks
+# the deploy's mechanics in minutes, offline.
+scenario:
+  name: gitlab
+platforms:
+  - name: rhel9
+    image: localhost/aslib-test/rhel9:latest
+    pre_build_image: true
+    command: /sbin/init
+    systemd: always
+    privileged: true
+    # Rootless Podman cannot keep its storage on the test server's own overlay
+    # filesystem, so /home lives on a volume.
+    volumes: [/home]

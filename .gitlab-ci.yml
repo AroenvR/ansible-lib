@@ -68,6 +68,15 @@ build-machine:
     - make test-build-machine-$ANSIBLE
     - make test-dist-$ANSIBLE
 
+gitlab:
+  stage: test
+  extends: .with-podman
+  parallel:
+    matrix:
+      - ANSIBLE: ["2.14", "2.16"]
+  script:
+    - make image-rhel9 test-gitlab-$ANSIBLE
+
 native:
   stage: test
   extends: .with-podman

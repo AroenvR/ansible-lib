@@ -1,0 +1,33 @@
+---
+# The service, its account and its directory (/opt/gitlab) are named gitlab, a
+# literal in the tasks: podman_service's handlers do not see this file's variables
+# in ansible-core 2.14.
+
+__gitlab_image: docker.io/gitlab/gitlab-ce:{{ gitlab_version }}-ce.0
+__gitlab_archive: "{{ gitlab_image_dir }}/gitlab-ce-{{ gitlab_version }}.tar"
+__gitlab_url: http://{{ gitlab_hostname }}:{{ gitlab_http_port }}
+# The image's own health check (its HEALTHCHECK), which Podman runs, once GitLab's
+# setup at the start (gitlab-ctl reconfigure) has written its settings: since 19.1
+# it passes without them, minutes before GitLab is ready.
+__gitlab_health_cmd: test -f /opt/gitlab/etc/gitlab-healthcheck-rc && /opt/gitlab/bin/gitlab-healthcheck --fail --max-time 10
+
+# The application settings GitLab keeps in its database, not in gitlab.rb, for a
+# private instance without email. Every deploy sets them;
+# gitlab_application_settings adds to them or changes them. Names and values as
+# in GitLab's application settings API (PUT /application/settings), except that
+# visibility levels are numbers: 0 private, 10 internal, 20 public.
+__gitlab_application_settings:
+  signup_enabled: false               # accounts come from an administrator
+  email_confirmation_setting: "off"   # no email to confirm with
+  version_check_enabled: false        # no calls to version.gitlab.com
+  gitlab_product_usage_data_enabled: false  # no events to events.gitlab.net
+  gravatar_enabled: false             # no avatars from gravatar.com
+  auto_devops_enabled: false          # no pipelines for projects without .gitlab-ci.yml
+  default_project_visibility: 0
+  default_group_visibility: 0
+  default_snippet_visibility: 0
+  restricted_visibility_levels: [20]  # only administrators can make anything public
+  max_attachment_size: 100            # MB per uploaded file (GitLab's default)
+  max_artifacts_size: 100             # MB per CI job's artifacts (GitLab's default)
+  receive_max_input_size: 1024        # MB per push (GitLab: no limit)
+  max_import_size: 1024               # MB per imported project (GitLab: no limit)

@@ -30,16 +30,22 @@ breaks it: a broken VM is rebuilt in minutes.
 | | |
 |---|---|
 | **Root** | Claude has sudo in the VM and nowhere else. Nothing of the host is shared with it: no folders, no keys |
-| **Network** | It reaches the internet, but not the local network (the private address ranges) nor the host's own services. The rules live on the host, out of the VM's reach |
+| **Network** | It reaches the internet, but not the local network (the private address ranges) nor the host's own services, except the ports you name (`claude_vm_host_ports`, such as GitLab's, below). The rules live on the host, out of the VM's reach |
 | **Secrets** | Only Claude's own login. Keep it that way: no keys to servers, no git credentials. Fetch Claude's work from the VM (below), review it, and push it yourself |
 | **Reset** | `ansible-playbook aslib.infra.claude_vm_remove`, then `aslib.infra.claude_vm` again: a fresh VM |
 
 ## The host
 
-Ubuntu 24.04 or RHEL 9.6 (or newer) on x86_64, with virtualization enabled in the
-firmware (`/dev/kvm`), headless is fine. The playbook installs QEMU/KVM,
-libvirt, virt-install and nftables where missing, and downloads Ubuntu 24.04's
-cloud image once, checked against its published checksums.
+Ubuntu 24.04 or RHEL 9.6 (or newer) on x86_64 or ARM64 (aarch64, such as a
+Raspberry Pi 5), with virtualization enabled in the firmware (`/dev/kvm`),
+headless is fine. The playbook installs QEMU/KVM, libvirt, virt-install and
+nftables where missing (on ARM64 also the UEFI firmware the VM boots with), and
+downloads Ubuntu 24.04's cloud image for the host's architecture once, checked
+against its published checksums. The VM has the host's architecture: on a
+Raspberry Pi, Claude works on ARM64, and the test images it builds are ARM64's.
+Mind the memory: the VM takes 4 GiB (`claude_vm_memory`) of the host's, all of
+it from the start. The playbook checks it fits with 1 GiB left for the host and
+says what does; on a Raspberry Pi with 4 GB, `-e claude_vm_memory=2560`.
 
 Run it on the host itself, where it needs no inventory, or from another machine
 with the host in an inventory; the VM is then reached through the host (SSH's
@@ -51,7 +57,7 @@ logs in as `claude`; `claude_vm_authorized_keys` lets more keys in.
 | The VM | `claude-dev`, 2 CPUs, 4 GiB, a 40 GiB disk on top of the cloud image (`virsh list`) |
 | Its network | `claude-vm`, NAT, bridge `virbr-claude`: the host is 192.168.123.1, the VM always 192.168.123.10 |
 | The firewall rules | `/etc/claude-vm/firewall.nft`, a table of their own (`nft list table inet claude_vm`), loaded by `claude-vm-firewall.service` before libvirt starts the VM at boot |
-| The disk and cloud image | `/var/lib/libvirt/images/` |
+| The disk, cloud image and cloud-init CD | `/var/lib/libvirt/images/` |
 
 ## In the VM
 
@@ -83,13 +89,48 @@ git remote add claude-dev claude-dev:src/ansible_collections/aslib/infra
 git fetch claude-dev
 ```
 
+**Or a GitLab on the host** ([gitlab](../gitlab/README.md)), where Claude has
+an account of its own and you review its pushes. The VM reaches only the ports
+you name, at the host's address, by the names you give the host:
+
+```yaml
+claude_vm_host_ports: [8929, 2224]       # GitLab's HTTP and SSH
+claude_vm_host_names: [gitlab.home.arpa]
+```
+
+Claude's token for that account is a git credential in the VM after all: give
+it to Claude's own account only, never yours.
+
+## When the VM does not come up
+
+Two playbooks find out why, run like the others:
+
+```sh
+ansible-playbook aslib.infra.claude_vm_overview --ask-become-pass       # changes nothing
+ansible-playbook aslib.infra.claude_vm_boot_trial --ask-become-pass \
+  -e claude_vm_trial_firmware=plain                                     # one boot, changed
+```
+
+The overview shows the host (model, kernel, virtualization packages) and the
+VM: its state, firmware, TPM, disks, DHCP leases and its console's last lines.
+A boot trial stops the VM, changes it as asked (other UEFI firmware, no TPM, no
+CD drive), boots it from fresh UEFI variables with its console recorded in
+`/var/log/libvirt/qemu/claude-dev-console.log`, and says how far it got: a
+login prompt, a crash, or nothing to boot. Its changes stay:
+`aslib.infra.claude_vm_remove`, then `aslib.infra.claude_vm`, bring back the
+VM as it was made.
+
 ## Limitations
 
 - A proof of concept: one VM per host, named `claude-dev`. Changing the network
   or the image needs a new VM.
-- Tested on an Ubuntu 24.04 host without KVM (QEMU's emulation, with a stand-in
-  for the cloud image), where the deadsnakes and Claude Code repositories were
-  out of reach: not yet on real hardware, on a RHEL host or in CI.
+- Tested on an Ubuntu 24.04 x86_64 host without KVM (QEMU's emulation, with a
+  stand-in for the cloud image), where the deadsnakes and Claude Code
+  repositories were out of reach: not yet on real hardware, on ARM64, on a RHEL
+  host or in CI.
+- On a Raspberry Pi 4 (ARM64), the VM's UEFI firmware crashes as it starts
+  Ubuntu's boot loader, so the VM never comes up: being worked out with the
+  playbooks above.
 - The firewall blocks the private address ranges. A local network on public
   addresses, or IPv6 global addresses, is not blocked.
 - Claude's login stays in the VM: a prompt injection could take it. Use an
@@ -97,5 +138,5 @@ git fetch claude-dev
 
 ## Options
 
-`ansible-doc -t role aslib.infra.claude_vm` (entry points `main`, `guest` and
-`remove`).
+`ansible-doc -t role aslib.infra.claude_vm` (entry points `main`, `guest`,
+`remove`, and for debugging `overview` and `boot_trial`).

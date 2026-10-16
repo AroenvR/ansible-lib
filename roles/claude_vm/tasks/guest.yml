@@ -27,6 +27,14 @@
     group: claude
     mode: "0600"
 
+# Next to the ports the host's firewall lets through (claude_vm_host_ports).
+- name: Make the names in claude_vm_host_names lead to the host
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} claude_vm (aslib.infra): names of the host, claude_vm_host_names"
+    block: "{{ claude_vm_network_prefix }}.1 {{ claude_vm_host_names | join(' ') }}"
+    state: "{{ 'present' if claude_vm_host_names | length > 0 else 'absent' }}"
+
 - name: Download the keys the VM's repositories are signed with
   ansible.builtin.get_url:
     url: "{{ __claude_vm_repository.key_url }}"

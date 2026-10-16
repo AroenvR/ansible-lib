@@ -19,6 +19,32 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   duplicates). Before, it only seeded new projects, so a change to it never
   reached a deployed container. claude_vm installs the same base in the VM. A
   new project's `config/managed-settings.json` starts as `{}`.
+- Added role `gitlab` and playbooks `aslib.infra.gitlab` and
+  `aslib.infra.gitlab_remove`, a proof of concept: GitLab CE 19.4.1 as the
+  rootless Podman service `gitlab`, with podman_service and a Quadlet file of its
+  own (GitLab's image runs as root inside its container). Set up for a private
+  instance on a small server without email: sign-ups off, private by default,
+  nothing public but by administrators, no Service Ping, version check, Auto
+  DevOps, registry, Pages or monitoring, size limits. Plain HTTP on port 8929,
+  SSH on 2224, at most 4 GB of memory. The deploy downloads the image as an
+  archive on the Ansible machine, so the server needs no access to Docker Hub.
+- claude_vm also runs on ARM64 hosts (aarch64, such as a Raspberry Pi 5): it
+  takes the cloud image of the host's architecture and, on ARM64, the UEFI
+  firmware the VM boots with. `claude_vm_image_url` is now empty by default,
+  for that image. The playbook checks the VM's memory fits in the host's, and
+  removes a VM again that did not start, so that a rerun creates it anew.
+  The VM's cloud-init data is a CD of its own that stays attached, so a restart
+  during its first boot (UEFI on ARM64) no longer leaves it shut off.
+- Added playbooks `aslib.infra.claude_vm_overview` and
+  `aslib.infra.claude_vm_boot_trial`, for a VM that does not come up: the first
+  shows the host and the VM and changes nothing; the second boots the VM once in
+  a changed form (other UEFI firmware, no TPM, no CD drive), with its console
+  recorded, and shows how far the boot got.
+- Added `claude_vm_host_ports` and `claude_vm_host_names`: ports of the host's
+  that claude_vm's VM may reach (such as GitLab's), and names that lead to the
+  host from inside the VM.
+- Changed: podman_service counts a redirect as the service's answer, and no
+  longer follows it (GitLab answers with one, to its own URL).
 
 ### Upgrading from 0.4
 

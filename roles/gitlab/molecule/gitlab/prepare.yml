@@ -1,0 +1,55 @@
+---
+- name: Prepare the RHEL 9 test server, as an administrator would
+  ansible.builtin.import_playbook: ../../../../dev/molecule/prepare-podman-server.yml
+
+- name: Give the test server git and SSH, to use GitLab as a person would
+  hosts: all
+  gather_facts: false
+  vars_files: [vars/test.yml]
+  tasks:
+    - name: Install git and the SSH client
+      ansible.builtin.dnf:
+        name: [git-core, openssh-clients]
+        state: present
+      when: gitlab_test_real | bool
+
+- name: Prepare what the deploy takes from the Ansible machine
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/test.yml]
+  tasks:
+    - name: Create the test's directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop: ["{{ gitlab_test_dir }}", "{{ gitlab_image_dir }}"]
+
+    # Not common, at least 8 characters and without "gitlab", as GitLab requires.
+    - name: Write the environment file with root's first password
+      ansible.builtin.copy:
+        content: GITLAB_ROOT_PASSWORD=Tq7-verify-Wb93-rn
+        dest: "{{ gitlab_env_file }}"
+        mode: "0600"
+
+    - name: Download GitLab's image as an archive, as the deploy would
+      ansible.builtin.include_role:
+        name: aslib.infra.gitlab
+        tasks_from: image
+      when: gitlab_test_real | bool
+
+    # Named as GitLab's image of the role's version, so the deploy finds its
+    # archive and skips the download.
+    - name: Build the stand-in for GitLab, and save it as GitLab's archive
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - [podman, build, --quiet, "--build-arg=BASE_IMAGE={{ gitlab_test_mock_base }}", "--tag={{ __gitlab_test_image }}",
+           "{{ playbook_dir }}/mock"]
+        - [podman, save, --format=oci-archive, "--output={{ gitlab_image_dir }}/gitlab-ce-{{ __gitlab_test_version }}.tar",
+           "{{ __gitlab_test_image }}"]
+      when: not gitlab_test_real | bool
+      changed_when: true
+      vars:
+        __gitlab_test_version: "{{ (lookup('ansible.builtin.file', playbook_dir ~ '/../../defaults/main.yml') | from_yaml).gitlab_version }}"
+        __gitlab_test_image: docker.io/gitlab/gitlab-ce:{{ __gitlab_test_version }}-ce.0

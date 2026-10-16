@@ -1,0 +1,18 @@
+#!/usr/bin/env node
+// The stand-in's `gitlab-rails runner /etc/gitlab-aslib/application_settings.rb`
+// (see Containerfile): keeps the settings in /var/opt/gitlab/mock-settings.json
+// and answers as the role's script does, after a line of its own, as Rails may print.
+const fs = require('fs');
+
+const script = process.argv[3];
+if (process.argv[2] !== 'runner' || !fs.existsSync(script)) {
+  console.error(`mock gitlab-rails: expected "runner <script>", got ${process.argv.slice(2).join(' ')}`);
+  process.exit(2);
+}
+const store = '/var/opt/gitlab/mock-settings.json';
+const wanted = JSON.parse(process.env.ASLIB_GITLAB_SETTINGS);
+const current = fs.existsSync(store) ? JSON.parse(fs.readFileSync(store, 'utf8')) : {};
+const changed = Object.keys(wanted).filter((name) => JSON.stringify(current[name]) !== JSON.stringify(wanted[name]));
+fs.writeFileSync(store, `${JSON.stringify({ ...current, ...wanted })}\n`);
+console.log('mock gitlab-rails: settings read');
+console.log(JSON.stringify({ changed, root_password: (process.env.GITLAB_ROOT_PASSWORD || '').length > 0 }));

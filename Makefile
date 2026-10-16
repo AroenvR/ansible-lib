@@ -95,6 +95,11 @@ test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections ## Test the build-ma
 test-dist-%: $(VENV)/ansible-% ## Test build.yml, in a git checkout and without git, e.g. make test-dist-2.14
 	PATH="$(CURDIR)/$(VENV)/ansible-$*/bin:$$PATH" ansible-playbook dev/test-build.yml
 
+# Not part of `test`: GitLab's image needs Docker Hub, about 4 GB of memory and
+# 15 GB of disk, and the test about half an hour (see roles/gitlab/molecule/gitlab/).
+test-gitlab-%: $(VENV)/ansible-% $(VENV)/collections ## Test GitLab on the RHEL 9 test server, e.g. make test-gitlab-2.16
+	$(call molecule,$*,gitlab)
+
 # Not part of `test`: it needs KVM, which the test containers lack.
 test-vm-%: $(VENV)/ansible-% $(VENV)/collections ## Test claude_vm's VM on this machine, which needs KVM, e.g. sudo make test-vm-2.14
 	$(call molecule,$*,vm)

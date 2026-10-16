@@ -34,6 +34,7 @@ taking another's account, UID or files.
 | `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
 | `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code`'s setup and image) | The machine running the tests | `make test-build-machine-<ansible-core>` |
 | `roles/claude_vm/molecule/vm/` | A host with KVM (`claude_vm`) | The machine running the tests, which needs KVM; not part of `make test` | `sudo make test-vm-<ansible-core>` |
+| `roles/gitlab/molecule/gitlab/` | A server running GitLab (`gitlab`) | The RHEL 9 test server; needs Docker Hub, about 4 GB of memory, 15 GB of disk and half an hour, so not part of `make test` (with `gitlab_test_real: false` in its `vars/test.yml`, a stand-in takes minutes, offline) | `make test-gitlab-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
 one ansible-core version: `2.14` (what RHEL 9.6 ships) or `2.16` (what

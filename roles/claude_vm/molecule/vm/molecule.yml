@@ -2,8 +2,9 @@
 # Creates claude-dev on this machine, which needs KVM, and checks it as a person
 # would use it: logged in as claude with sudo, with Podman, Python 3.11 and Claude
 # Code, reaching the internet but neither a machine on the local network (a
-# stand-in in a network namespace) nor the host's own services. Not part of
-# `make test`: run it with `sudo make test-vm-2.14` on a machine with KVM.
+# stand-in in a network namespace) nor the host's own services, except the one
+# port and name it is given (as for GitLab on the host). Not part of `make test`:
+# run it with `sudo make test-vm-2.14` on a machine with KVM.
 scenario:
   name: vm
   test_sequence: [cleanup, syntax, converge, idempotence, verify, cleanup]
@@ -15,3 +16,10 @@ driver:
       ansible_connection: local
 platforms:
   - name: localhost
+provisioner:
+  name: ansible
+  inventory:
+    host_vars:
+      localhost:
+        claude_vm_host_ports: [9997]
+        claude_vm_host_names: [host-service.home.arpa]

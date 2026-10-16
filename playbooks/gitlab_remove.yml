@@ -1,0 +1,15 @@
+---
+# Removes GitLab's service, account and image, keeping /opt/gitlab with its
+# configuration, secrets and data, unless podman_service_remove_workdir is true.
+# Run it like aslib.infra.gitlab:
+#   ansible-playbook aslib.infra.gitlab_remove --ask-become-pass
+#   ansible-playbook aslib.infra.gitlab_remove --ask-become-pass -e podman_service_remove_workdir=true
+- name: Remove GitLab's service
+  hosts: "{{ 'gitlab' if groups.get('gitlab') else 'localhost' }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove the service, its account, images and Quadlet file
+      ansible.builtin.import_role:
+        name: aslib.infra.gitlab
+        tasks_from: remove

@@ -1,0 +1,14 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml. The
+# service's own settings (its account, UID and directory) are
+# aslib.infra.podman_service's.
+gitlab_version: 19.4.1
+gitlab_hostname: gitlab.home.arpa
+gitlab_http_port: 8929
+gitlab_ssh_port: 2224
+gitlab_bind_address: 0.0.0.0
+gitlab_memory: 4g
+gitlab_env_file: "{{ lookup('env', 'PWD') }}/gitlab.env"
+gitlab_image_dir: "{{ lookup('env', 'PWD') }}/images"
+gitlab_application_settings: {}
+gitlab_config_extra: ""
