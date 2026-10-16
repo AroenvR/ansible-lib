@@ -1,119 +1,79 @@
 # AGENTS.md
 
-Instructions for AI coding agents working on this repository. Humans: see
-[README.md](README.md) (using the collection) and [CONTRIBUTING.md](CONTRIBUTING.md)
-(developing it). This file only adds what an agent needs on top of those.
+Instructions for AI coding agents working on this repository, as directives.
+[CONTRIBUTING.md](CONTRIBUTING.md) is part of these instructions: setup,
+repository layout, make targets, tests, rules for library code, branches, CI
+and releases are there, written for every developer. Read it before changing
+anything. This file adds what applies to agents: rules, pitfalls, decisions
+and status. What applies to every developer goes into CONTRIBUTING.md, a role
+README or `docs/`, and this file links to it instead of repeating it.
 
 ## What this is
 
-`aslib.infra` is an Ansible collection: a library of small, tested roles for
-RHEL 9.6 and Ubuntu 24.04 (and newer) servers, plus roles and ready-made
-playbooks that take a Node.js backend from project to running service
-(node_setup, node_image, node_deploy), an always-on Claude Code agent for root
-(claude_code), a VM where Claude Code may have root, for development
-(claude_vm), and GitLab CE as a rootless Podman service (gitlab). Roles are
-named by area: `podman_` roles work for any image, `node_` roles add what
-Node.js projects need (node_deploy is a thin layer over podman_service), and
-claude_code and gitlab are the same kind of layer for Claude Code and GitLab.
-Consumers install a release tarball that holds only runtime files; tests and
-tooling never ship (`build_ignore` in `galaxy.yml`).
+`aslib.infra` is an Ansible collection: small, tested roles for RHEL 9.6 and
+Ubuntu 24.04 (and newer) servers, and ready-made playbooks. Roles are named by
+area: `podman_` roles work for any image, and the `node_` roles (node_setup,
+node_image, node_deploy) take a Node.js backend from project to running
+service. claude_code runs an always-on Claude Code agent for root, claude_vm
+creates a VM where Claude Code may have root, for development, and gitlab runs
+GitLab CE as a rootless Podman service. node_deploy, claude_code and gitlab
+are thin layers over podman_service. Consumers install a release tarball that
+holds only runtime files; tests and tooling never ship (`build_ignore` in
+`galaxy.yml`). What it offers and how it is used: [README.md](README.md), and
+the guides and the reference in [docs/](docs/README.md).
 
 ## Non-negotiable constraints
 
-- **Runtime compatibility.** The oldest systems supported are RHEL 9.6 and
-  Ubuntu 24.04. Roles must run on the `ansible-core` they ship: 2.14.18 (RHEL
-  9.6, AppStream, on Python 3.11) and 2.16.3 (Ubuntu 24.04, universe, on Python
-  3.12), with RHEL 9.6's Podman 5.4 on servers and Ubuntu 24.04's Podman 4.9 on
-  build machines. Read module docs for the oldest version offline:
-  `.venv/ansible-2.14/bin/ansible-doc ansible.builtin.<module>`.
+- **Runtime compatibility.** Roles must run on the `ansible-core` the oldest
+  supported systems ship: 2.14.18 (RHEL 9.6, AppStream) and 2.16.3 (Ubuntu
+  24.04, universe), with Podman 5.4 on servers and 4.9 on build machines. Read
+  module docs for 2.14, offline, as [Compatibility](CONTRIBUTING.md#compatibility)
+  shows.
 - **Only `ansible.builtin`.** Any other collection is a dependency for every
   consumer; ask the maintainer first.
-- **Offline servers.** Never assume internet access. Every repository, key or
-  download URL is a role variable with an upstream default (npm's settings come
-  from the project's `.npmrc`), listed in the guide's "Download sources" table
-  (node_setup's README.md.j2) and node_image's README. Install packages only
-  when missing (the dnf module contacts every enabled repository even for
-  installed packages). Each role README states exactly what the server needs.
+- **Offline servers.** Never assume internet access: every repository, key or
+  download URL is a role variable with an upstream default, and packages are
+  installed only when missing ([Offline servers and
+  repositories](CONTRIBUTING.md#offline-servers-and-repositories)).
 - **Podman, never Docker.**
 - **The maintainer's server conventions for containers.** Root manages the
-  accounts, images and Quadlet files. Every service runs rootless as an account
-  of its own (`useradd`, `loginctl enable-linger`). Image archives live in
-  `/opt/containers/images/<service>/` and are loaded as that account (`runuser -u <user> --
-  env XDG_RUNTIME_DIR=/run/user/<uid> podman load`). Quadlet files live in
-  `/etc/containers/systemd/users/<UID>/`. The maintainer drives the account's
-  systemd with `systemctl --user -M <user>@ ...`; roles use the same `runuser`
-  prefix as for Podman (see Known pitfalls). A service's own directory is
-  `/opt/<service>/`: the app's, its working directory at the same path inside
-  the container, never touched by a deploy except `config/` in it; it
-  survives a removal unless asked (`podman_service_remove_workdir`).
-  `podman_service` implements this; build every container-based role on it.
+  accounts, images and Quadlet files; every service runs rootless as an account
+  of its own; `/opt/<service>/` is the app's, and a deploy touches nothing in
+  it but `config/`. podman_service implements them
+  ([Conventions](roles/podman_service/README.md#conventions)): build every
+  container-based role on it. The maintainer drives an account's systemd with
+  `systemctl --user -M <user>@ ...`; roles use the same `runuser` prefix as for
+  Podman (see Known pitfalls).
 - **Dependencies.** Development tools may be current but are pinned in
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
   enterprise-proven; prefer the OS repositories.
 - **KISS over edge cases.** Clarity and readability come first; do not add
-  complexity for a 1% case. SOLID applies at role level (see CONTRIBUTING.md).
-- **Checks in tests and at runtime (test first).** What a role promises is a
-  list of checks in its `verify` entry point (podman_service has the first):
-  its Molecule test runs it, and so does every deploy. Write the check first,
-  see it fail, then build. Between deploys, Podman's own health checks keep a
-  service honest: systemd counts it as started once it is healthy, and
-  restarts it when it is not.
-- **Documentation and linting are mandatory.** Every public role variable is
-  documented in `meta/argument_specs.yml` with the same default as
-  `defaults/main.yml`; `make lint` enforces it, and runs ShellCheck on our shell
-  scripts (not on the maintainer's `.tools/` and `libs/`). Each option and mechanism is
-  described once, by the role that owns it (podman_service for every service's
-  settings); other READMEs link to that section and name the option only where
-  a reader uses it. A new option then changes its own role, not every README.
+  complexity for a 1% case. SOLID applies at role level ([Role
+  design](CONTRIBUTING.md#role-design)).
+- **Checks in tests and at runtime (test first).** Write the check first, see
+  it fail, then build ([Writing a test](CONTRIBUTING.md#writing-a-test)). What
+  a role promises is a list of checks in its `verify` entry point, which its
+  Molecule test and every deploy run. Between deploys, Podman's own health
+  checks keep a service honest ([The Quadlet
+  file](roles/podman_service/README.md#the-quadlet-file)).
+- **Documentation and linting are mandatory.** Document every public variable
+  in `meta/argument_specs.yml`, and each option and mechanism once, by the role
+  that owns it, as [Documentation](CONTRIBUTING.md#documentation) says; `make
+  lint` must pass.
 
 ## Commands
 
-The repository may be cloned anywhere, as `aslib/`, but must be a git checkout
-(Molecule finds `.config/molecule/` via the git root). make links it into
-`.venv/self/ansible_collections/aslib/infra`, where Ansible finds it as
-aslib.infra.
+[Setup](CONTRIBUTING.md#setup) prepares a machine, [Make
+targets](CONTRIBUTING.md#make-targets) says what each target runs and which
+need root, and [Writing a test](CONTRIBUTING.md#writing-a-test) how to write a
+test. On top of those:
 
-```sh
-make setup images                          # once: venvs, test-only collections, test containers
-make lint                                  # ansible-lint (production profile) and dev/check_*.py
-make test-servers-2.14 ROLES=<role>        # roles that run on servers, in the test containers
-make test-build-machine-2.14 ROLES=<role>  # roles that run where Ansible runs
-make test-dist-2.14                        # build.yml, in a git checkout and without git
-make build                                 # lint, 2.14 and 2.16, native test (CI also runs GitLab's test)
-make dist                                  # tarball to try out in dist/ (runs build.yml)
-```
-
-CI runs the test targets as root (`sudo make ...`), with rootful Podman, which
-has images of its own. Run the server tests that way too, images included
-(`sudo make images test-servers-2.14 ROLES=<role>`): rootless, sudoers' test
-failed on the RHEL 9 test server (see Known pitfalls).
-
-Write the failing test first (`roles/<role>/molecule/<scenario>/verify.yml`),
-then the role. Name test tasks after what they check and end them with the test
-case; end each check with a `success_msg: PASSED <role> ...` line. Keep scenario
-playbooks free of Molecule-only variables: the native test runs them with plain
-`ansible-playbook`. A new role that supports Ubuntu goes into
-`UBUNTU_ROLES` in the Makefile, so the native test covers it. CONTRIBUTING.md
-explains the test layout and how releases are made.
-
-## Repository map
-
-| Path | Purpose |
-|---|---|
-| `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface |
-| `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
-| `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
-| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
-| `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
-| `roles/claude_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`sudo make test-vm-<ansible-core>`) |
-| `roles/gitlab/molecule/gitlab/` | Deploys and uses GitLab on the RHEL 9 test server; not part of `make test` (`make test-gitlab-<ansible-core>`). `mock/` is a stand-in for GitLab's image (`gitlab_test_real: false`) |
-| `dev/molecule/` | Plays shared by several scenarios, such as the preparation of the test server for podman_service |
-| `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
-| `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
-| `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
-| `dev/` | ansible-core pins per version, test images, the checks `make lint` adds, native test, CI helper scripts. Never shipped |
-| `.config/molecule/config.yml` | Molecule settings shared by all roles |
-| `.github/workflows/ci.yml`, `.gitlab-ci.yml` | CI; both only call make targets |
+- Run the server tests as root, as CI does, images included (`sudo make images
+  test-servers-2.14 ROLES=<role>`): rootful Podman has images of its own, and
+  rootless, sudoers' test failed on the RHEL 9 test server (see Known
+  pitfalls).
+- Verify from a clean state before delivering (see Working with the
+  maintainer).
 
 ## Working with the maintainer
 
@@ -134,9 +94,8 @@ and bring Status up to date before ending a block of work.
   `accept` (not main) and never pushes to either; the maintainer merges accept
   into main. On top of accept, every file of the repository, CI's included, is
   the agent's to change as the work needs. Each agent works on branches of its
-  own, named `<kind>/<YYYY-MM-DD>-<at most three words>`, the words joined with
-  underscores, the kind such as `feature` or `hotfix`
-  (`feature/2026-10-16-gitlab_container`).
+  own, named as [Branches and pull
+  requests](CONTRIBUTING.md#branches-and-pull-requests) says.
 - **Never touch the maintainer's own tooling**: `.tools/`, `libs/` (their Bash
   library, a git subtree), `.env.example` and personal files like them. They
   stay exactly as the branch has them, in a pushed branch and in a zip; the
@@ -499,6 +458,17 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 Last updated 2026-10-16, on accept, before v0.5.0's release.
 
+- Decided with the maintainer on 2026-10-16: each kind of reader has one place.
+  README.md is a short landing page (what aslib.infra is, who it is for, a
+  quick start, how to install, links onwards). `docs/` holds the users' guides,
+  one per job, and the install page, the reference and the status; it ships
+  with the collection (it is not in `build_ignore`), so its relative links work
+  in an installed copy too. The role READMEs stay each role's reference.
+  CONTRIBUTING.md is the developers' documentation: setup, repository layout,
+  make targets, tests, rules, branches, CI and releases. AGENTS.md holds
+  directives, pitfalls, decisions and status for agents, and links to
+  CONTRIBUTING.md and `docs/` instead of repeating them
+  ([Documentation](CONTRIBUTING.md#documentation)).
 - Decided with the maintainer on 2026-10-16: the repository is aslib (formerly
   ansible-lib), cloned as `aslib/`, anywhere; make's link in `.venv/self/`
   replaced the required `ansible_collections/aslib/infra` path, and both CI
@@ -535,7 +505,8 @@ Last updated 2026-10-16, on accept, before v0.5.0's release.
   setup mechanism waits). Next, each a feature of its own:
   - Backups, which the maintainer will copy to a NAS: `gitlab-backup create`
     plus `gitlab-ctl backup-etc` (gitlab-secrets.json is not in the former),
-    restorable only on the same version. Until then the README says to copy
+    restorable only on the same version. Until then [gitlab's
+    README](roles/gitlab/README.md#backups) says to copy
     /opt/gitlab with GitLab stopped. A copy of /opt/gitlab belongs to the
     account's UID and subordinate UIDs: a fixed `podman_service_uid` keeps a
     redeploy on it working; podman_service hands a directory owned by another UID
@@ -572,7 +543,8 @@ Last updated 2026-10-16, on accept, before v0.5.0's release.
   reach: CI checks it, and so did claude_vm's VM (2026-10-16, above). So far
   only CI checks the memory limits (the cloud sandbox has cgroup v1);
   claude_vm's VM could (cgroup v2) but has not yet.
-- Not tested yet (README "Status" lists them for users): a deploy over SSH with
+- Not tested yet ([docs/status.md](docs/status.md#not-tested-yet) lists them
+  for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
   whether the runner can start containers).

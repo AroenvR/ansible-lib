@@ -53,6 +53,9 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Fixed: README's `requirements.yml` example for a release lacked the
   repository's address. README's examples now write `<repository>` for the URL
   of aslib.infra's repository and `<version>` for a release.
+- Changed: the documentation is reorganised. README.md is a short landing page;
+  the guides, one per job, and the reference of roles, playbooks and plugins
+  are in `docs/`, which ships with the collection.
 
 ### Upgrading from 0.4
 
