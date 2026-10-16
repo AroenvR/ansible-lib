@@ -5,8 +5,8 @@ Shows root what runs on a server: every rootless Podman service in
 [podman_service](../podman_service/README.md)), with its account, state, image,
 ports and the command that shows its log, and the latest log lines of each
 service that does not run. It changes nothing. The playbook
-`aslib.infra.overview` runs it, as part of everything aslib.infra runs on the
-servers; `aslib.infra.podman_overview` runs it alone.
+`aslib.infra.overview`, which shows everything aslib.infra runs on the servers,
+runs it; `aslib.infra.podman_overview` runs it alone.
 
 ```sh
 ansible-playbook aslib.infra.overview                  # this server, or every server in the inventory
@@ -71,9 +71,10 @@ playbooks that check on services:
 ```
 
 Each dictionary has `name`, `account`, `uid`, `state` and `substate` (systemd's
-ActiveState and SubState; `unknown` and `-` when the account or its systemd is gone),
-`since`, `restarts`, `image`, `ports` (a list), `log` (a list of lines; empty
-for a service that runs) and `log_command`. All options: `ansible-doc -t role aslib.infra.podman_overview`.
+ActiveState and SubState; `unknown` and `-` when the account or its systemd is
+gone), `since`, `restarts`, `image`, `ports` (a list), `log` (a list of lines;
+empty for a service that runs) and `log_command`. All options:
+`ansible-doc -t role aslib.infra.podman_overview`.
 
 ## What a server needs
 

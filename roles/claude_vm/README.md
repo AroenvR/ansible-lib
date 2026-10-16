@@ -38,12 +38,12 @@ breaks it: a broken VM is rebuilt in minutes.
 
 Ubuntu 24.04 or RHEL 9.6 (or newer) on x86_64 or ARM64 (aarch64, such as a
 Raspberry Pi 5), with virtualization enabled in the firmware (`/dev/kvm`),
-headless is fine. The playbook installs QEMU/KVM, libvirt, virt-install and
-nftables where missing (on ARM64 also the UEFI firmware the VM boots with,
-without Secure Boot), and
-downloads Ubuntu 24.04's cloud image for the host's architecture once, checked
-against its published checksums. The VM has the host's architecture: on a
-Raspberry Pi, Claude works on ARM64, and the test images it builds are ARM64's.
+headless is fine. The playbook installs QEMU/KVM, libvirt, virt-install,
+xorriso (for the cloud-init CD) and nftables where missing (on ARM64 also the
+UEFI firmware the VM boots with, without Secure Boot), and downloads Ubuntu
+24.04's cloud image for the host's architecture once, checked against its
+published checksums. The VM has the host's architecture: on a Raspberry Pi,
+Claude works on ARM64, and the test images it builds are ARM64's.
 Mind the memory: the VM takes 4 GiB (`claude_vm_memory`) of the host's, all of
 it from the start. The playbook checks it fits with 1 GiB left for the host and
 says what does; on a Raspberry Pi with 4 GB, `-e claude_vm_memory=2560`.
@@ -77,7 +77,8 @@ base, the one Claude Code's container starts from too
 change that file, and both get it with their next run. Claude can change it with
 sudo, so here it sets defaults; the VM is the boundary.
 
-aslib.infra's tests run there as in CI:
+aslib.infra's tests run there as in CI (`<repository>` is the URL of the
+aslib.infra repository you use):
 
 ```sh
 git clone <repository> ~/src/aslib && cd $_
@@ -128,10 +129,11 @@ VM as it was made.
 - A proof of concept: one VM per host, named `claude-dev`. Changing the network
   or the image needs a new VM.
 - Runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04, ARM64, KVM) with
-  `-e claude_vm_memory=2560`. Its test runs on an Ubuntu 24.04 x86_64 host
-  without KVM (QEMU's emulation, a stand-in for the cloud image, without the
-  deadsnakes and Claude Code repositories); not yet on an x86_64 host with KVM,
-  a RHEL host or in CI.
+  `-e claude_vm_memory=2560`. Its test needs KVM (`sudo make test-vm-2.14`):
+  it ran on an Ubuntu 24.04 x86_64 host without KVM only in a changed form
+  (QEMU's emulation, a stand-in for the cloud image, without the deadsnakes and
+  Claude Code repositories); not yet on an x86_64 host with KVM, a RHEL host or
+  in CI.
 - An ARM64 VM boots without Secure Boot. Enforced, as libvirt would have it,
   Ubuntu's boot loader crashes on a Raspberry Pi 4; in a VM where Claude has
   root, it would protect nothing.

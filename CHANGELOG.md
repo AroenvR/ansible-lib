@@ -50,6 +50,9 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   host from inside the VM.
 - Changed: podman_service counts a redirect as the service's answer, and no
   longer follows it (GitLab answers with one, to its own URL).
+- Fixed: README's `requirements.yml` example for a release lacked the
+  repository's address. README's examples now write `<repository>` for the URL
+  of aslib.infra's repository and `<version>` for a release.
 
 ### Upgrading from 0.4
 

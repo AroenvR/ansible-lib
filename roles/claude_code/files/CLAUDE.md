@@ -27,9 +27,9 @@ the humans: the image, your policy, and other services' data.
   ssh, curl, jq, rsync. What you install yourself goes in `~/.local/bin`, which
   is on PATH.
 - Outbound HTTPS works. What you serve is reachable only inside the container.
-- Every deploy restarts the container: a new Claude Code release, a policy
-  change, a reboot. That ends every running process and empties `/tmp`; your
-  files and conversations stay. Make long jobs restartable.
+- The container restarts with a new Claude Code release, a policy change or a
+  reboot. That ends every running process and empties `/tmp`; your files and
+  conversations stay. Make long jobs restartable.
 
 ## Where things live
 

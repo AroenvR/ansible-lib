@@ -9,26 +9,29 @@ Your machine needs `git`, `make`, Podman, Python 3.11 (for ansible-core 2.14,
 as on RHEL 9.6) and Python 3.12 (for 2.16 and linting, as on Ubuntu 24.04).
 
 ```sh
-git clone https://github.com/AroenvR/aslib.git
+git clone <repository> aslib
 cd aslib
 make setup images   # on RHEL 9.6: dnf install python3.11 python3.12 first; on Ubuntu 24.04: install Python 3.11 too
 ```
 
-`PYTHON_2.14=`, `PYTHON_2.16=` and `PYTHON_LINT=` point make at another Python.
-
-Clone it anywhere. make links the checkout into
+`<repository>` is the URL of aslib.infra's git repository, wherever it is
+hosted. Clone it anywhere, as `aslib/`. make links the checkout into
 `.venv/self/ansible_collections/aslib/infra`, where Ansible finds it as
 aslib.infra, so lint and tests run on your checkout itself, never on an
 installed copy. `make help` lists all targets.
 
+`PYTHON_2.14=`, `PYTHON_2.16=` and `PYTHON_LINT=` point make at another Python.
+claude_vm's VM already has Python 3.11 (from deadsnakes); adding the deadsnakes
+PPA a second time there breaks `apt-get update`.
+
 ## How the tests are organized
 
-Every role has one Molecule scenario, named after where the role runs.
-podman_service and podman_overview are tested through node_deploy's, which
-deploys a service with them, next to Claude Code (claude_code's deploy, with
-the stand-in for Claude Code in `roles/claude_code/molecule/mock/`) on the same
-test server: every service the library provides must run side by side without
-taking another's account, UID or files.
+Every role but podman_service and podman_overview has one Molecule scenario,
+named after where the role runs. Those two are tested through node_deploy's,
+which deploys a service with them, next to Claude Code (claude_code's deploy,
+with the stand-in for Claude Code in `roles/claude_code/molecule/mock/`) on the
+same test server: every service the library provides must run side by side
+without taking another's account, UID or files.
 
 | Scenario | For roles that run on | Runs in | Make target |
 |---|---|---|---|
@@ -39,7 +42,8 @@ taking another's account, UID or files.
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
 one ansible-core version: `2.14` (what RHEL 9.6 ships) or `2.16` (what
-Ubuntu 24.04 ships), pinned with Molecule in `dev/requirements-ansible-<version>.txt`.
+Ubuntu 24.04 ships), pinned with Molecule in
+`dev/requirements-ansible-<ansible-core>.txt`.
 The log has a banner per role (`##### node_image: build_machine tests,
 ansible-core 2.14 #####`); task names end with the test case they belong to,
 and every check ends with a `PASSED <role>: ...` line saying what it proved.
@@ -69,9 +73,10 @@ Three more checks complete the picture:
 
 Versions to support are test data, not code. `node_image` builds, runs and
 queries every app listed in `roles/node_image/molecule/build_machine/vars/apps.yml`
-(today NestJS 10, 11, 12 and NestJS's default branch, on Node.js 22 and 24). To
-cover another version, add an entry there. Cover each version once rather than
-every combination: the list grows by one line per case instead of multiplying.
+(today NestJS 10, 11, 12 and NestJS's default branch, on Node.js 22 and 24, and
+an app with a native (C) module). To cover another version, add an entry there.
+Cover each version once rather than every combination: the list grows by one
+line per case instead of multiplying.
 
 Test containers (`dev/images/`) mimic default server installs. The RHEL one is
 based on UBI, whose repositories hold a subset of RHEL. On a subscribed RHEL
@@ -83,9 +88,15 @@ role needs beyond it (acl), the role installs when missing.
 ## Workflow (test first)
 
 1. Describe the desired state in `roles/<role>/molecule/<scenario>/verify.yml`.
-2. Watch it fail: `make test-servers-2.14 ROLES=<role>` (or `test-build-machine-2.14`).
+2. Watch it fail: `sudo make images test-servers-2.14 ROLES=<role>` (or
+   `make test-build-machine-2.14`). CI runs the tests as root, with rootful
+   Podman, which has images of its own; rootless, a server test can fail where
+   it passes as root, as sudoers' did on the RHEL 9 test server under rootless
+   Podman 4.9 (see AGENTS.md, Known pitfalls).
 3. Implement in `roles/<role>/` until it passes.
-4. Before pushing: `make build` (lint, both ansible-core versions, native test).
+4. Before pushing, what `make build` runs (lint, both ansible-core versions,
+   native test), with the tests as root as in step 2: `make lint`, then
+   `sudo make images test test-native`.
 
 For faster iterations keep the test containers running:
 
@@ -98,6 +109,9 @@ molecule converge -s server   # create the containers once, apply the role
 molecule verify -s server     # run the checks
 molecule destroy -s server    # clean up when done
 ```
+
+This runs rootless: when a server scenario fails here, check it as root with the
+make target of step 2 before debugging the role.
 
 ## Rules for library code
 
@@ -119,8 +133,9 @@ molecule destroy -s server    # clean up when done
 - Install packages only when they are missing (see `roles/sudoers/tasks/main.yml`).
   The dnf module contacts every enabled repository even when the package is
   already installed, which fails on offline hosts.
-- Each role README has a "What a server needs" (or "What the build machine
-  needs") section saying exactly what it needs and when.
+- Each role README says exactly what the machines it runs on need, and when, in
+  a section of its own ("What a server needs", "What the build machine needs",
+  "Requirements", or claude_vm's "The host").
 
 ### Role design
 
@@ -164,18 +179,20 @@ schedule under Build > Pipeline schedules). GitHub also runs them for pull reque
 | Job | Make target | Needs |
 |---|---|---|
 | lint | `make lint` | Python 3.10+ |
-| server roles · ansible-core 2.14 / 2.16 | `make images test-servers-<version>` | Podman that can start privileged containers |
-| build-machine roles · ansible-core 2.14 / 2.16 | `make test-build-machine-<version>`, `make test-dist-<version>` | Same, plus access to Red Hat's registry, npm and GitHub |
+| server roles · ansible-core 2.14 / 2.16 | `make images test-servers-<ansible-core>` | Podman that can start privileged containers |
+| build-machine roles · ansible-core 2.14 / 2.16 | `make test-build-machine-<ansible-core>`, `make test-dist-<ansible-core>` | Same, plus access to Red Hat's registry, Anthropic's repository, npm and GitHub |
 | Ubuntu 24.04's own ansible-core and Podman | `make test-native` | Same |
+| GitLab · ansible-core 2.14 / 2.16 | `make image-rhel9 test-gitlab-<ansible-core>` | As server roles, plus Docker Hub, about 4 GB of memory and 15 GB of disk |
 | branch build (every branch but main) | `make dist BRANCH=<branch>` | All jobs above green |
 | release (main) | `make dist-release` | All jobs above green |
 
-GitHub-hosted runners have Podman, so everything runs there as is. On GitLab
-the test jobs start containers inside the job container, which the runner has to
-allow. The `runner-check` job reports what the runner offers (OS, user,
-privileges, Podman) and the test jobs only start once it passes. If it fails,
-its log says what the runner admin needs to change. Until then GitLab publishes
-nothing, on purpose: nothing ships untested.
+GitHub-hosted runners have Podman, so everything runs there as is; the test
+jobs run make with sudo (rootful Podman runs the systemd test containers
+reliably there). On GitLab the test jobs start containers inside the job
+container, which the runner has to allow. The `runner-check` job reports what
+the runner offers (OS, user, privileges, Podman) and the test jobs only start
+once it passes. If it fails, its log says what the runner admin needs to
+change. Until then GitLab publishes nothing, on purpose: nothing ships untested.
 
 ## Releases
 
@@ -193,11 +210,12 @@ never anything untested:
   artifact, kept 7 days.
 - **main: a release.** CI gives it the next patch version after the latest
   `vX.Y.Z` tag (`dev/ci/next-version.sh`), creates that tag and publishes
-  `aslib-infra-X.Y.Z.tar.gz`: as a GitHub release, or in GitLab's package
+  `aslib-infra-<version>.tar.gz`: as a GitHub release, or in GitLab's package
   registry with a GitLab release linking to it. To release a new minor or major
   version, raise `version` in `galaxy.yml`: CI uses it when it is higher than
-  the next patch version. A breaking interface change means a new major version;
-  add a `CHANGELOG.md` entry for anything users notice.
+  the next patch version. A breaking interface change means a new major version
+  (before 1.0.0, a new minor one); add a `CHANGELOG.md` entry for anything users
+  notice.
 
 Either tarball holds runtime files only (see `build_ignore` in `galaxy.yml`)
 and installs with `ansible-galaxy collection install --force <file>`.

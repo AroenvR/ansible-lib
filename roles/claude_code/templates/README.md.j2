@@ -40,9 +40,11 @@ ansible-playbook build-and-deploy.yml    # add --ask-become-pass if sudo asks fo
 This runs `image.yml`, then `deploy.yml`.
 
 **The image** (`image.yml`) needs Podman 4.9 or newer (RHEL 9.6 or Ubuntu 24.04) and
-access to the [download sources](#download-sources). It lands in `images/` as `{{ __claude_code_name }}-<version>.tar`, with the
-newest version of the repository's channel unless `claude_code_version` pins one.
-A build without a new version or a changed Containerfile leaves everything as it was.
+access to the [download sources](#download-sources). It lands in `images/` as
+`{{ __claude_code_name }}-<version>.tar`, with the newest version of the
+repository's channel unless `claude_code_version` pins one. A build without a
+new version, a new base image or a changed Containerfile leaves everything as
+it was.
 
 **The deploy** (`deploy.yml`) works as root (through sudo) and, on each server,
 runs the image as the always-on service `{{ __claude_code_name }}`, as an account of
@@ -50,7 +52,8 @@ its own whose home is `{{ __claude_code_dir }}/`. Claude keeps its login, histor
 memory and notes there. `../config/` becomes `config/` in it, read-only for
 Claude, who finds it as `/etc/claude-code/`. With `podman_service_shared`, Claude
 also works in the shared zone, `/opt/containers/shared/`, which every service of
-aslib.infra may read and write. It installs the command `{{ __claude_code_name }}` for root.
+aslib.infra with that setting may read and write. It installs the command
+`{{ __claude_code_name }}` for root.
 
 **Without permission prompts:** `ansible-playbook deploy.yml -e
 claude_code_bypass_permissions=true`, or the setting in `group_vars/all/project.yml`,
@@ -119,10 +122,10 @@ zone) from the server's repositories when it is missing.
 
 | What | Set in the project | Set on the machine that builds |
 |---|---|---|
-| Red Hat's UBI 9 image, from `registry.access.redhat.com` | `claude_code_base_image` | `registries.conf` |
-| Claude Code, from `downloads.claude.ai` | `claude_code_repository`, `claude_code_key_url` | |
+| Red Hat's UBI 9 image, by default from `registry.access.redhat.com` | `claude_code_base_image` | `registries.conf` |
+| Claude Code, by default from `downloads.claude.ai` | `claude_code_repository`, `claude_code_key_url` | |
 | The tools in the Containerfile | | Red Hat's UBI repositories, as set up in the base image |
-| nvm, from `raw.githubusercontent.com` | `NVM_URL` in `../Containerfile` | |
+| nvm, by default from `raw.githubusercontent.com` | `NVM_URL` in `../Containerfile` (aslib.infra's file: an update keeps your change as `Containerfile.bak`, to merge back) | |
 
 Claude itself needs `api.anthropic.com` and, to sign in, `claude.ai`, `claude.com`
 and `platform.claude.com`.

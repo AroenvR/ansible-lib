@@ -10,10 +10,10 @@ cd ~/infra                                              # where gitlab.env is (a
 ansible-playbook aslib.infra.gitlab --ask-become-pass   # then http://gitlab.home.arpa:8929, as root
 ```
 
-Without an inventory it deploys to the machine it runs on; with one, to the
-hosts in its group `gitlab`. It downloads GitLab's image to `images/` there
-first (about 1.5 GB), unless it is there: the server itself needs no access to
-Docker Hub.
+Without an inventory, or without a group `gitlab` in it, it deploys to the
+machine it runs on; otherwise to the hosts in that group. First it downloads
+GitLab's image (about 1.5 GB) to `images/` in the directory it runs from,
+unless the archive is there: the server itself needs no access to Docker Hub.
 
 ## Before the first deploy
 
@@ -69,9 +69,8 @@ GitLab keeps settings in two places, and the role sets both with every deploy.
 `GITLAB_OMNIBUS_CONFIG` before GitLab's own `/etc/gitlab/gitlab.rb`, which stays
 GitLab's template: the URL and SSH port; no email (there is no mail server);
 no Service Ping or product usage data; no container registry, Pages, KAS or
-monitoring; Puma in
-single mode and fewer Sidekiq threads, as GitLab's guide for small servers has
-it. More lines: `gitlab_config_extra`.
+monitoring; Puma in single mode and fewer Sidekiq threads, as GitLab's guide
+for small servers has it. More lines: `gitlab_config_extra`.
 
 **Application settings**, which GitLab keeps in its database and shows in its
 Admin area. The role sets these ([vars/main.yml](vars/main.yml)) once GitLab is
