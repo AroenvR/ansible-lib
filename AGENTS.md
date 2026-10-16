@@ -89,6 +89,16 @@ and bring Status up to date before ending a block of work.
   explains the trade-offs and asks one question at a time, then builds. When the
   maintainer wants to talk something through, talk; build once asked to. Work
   in steps, with a task list and a local commit per step.
+- **Work survives an interruption.** An agent can be cut off at any moment (its
+  credits run out, its machine reboots), so nothing lives only in its context:
+  - Commit every step locally, and push work in progress to the agent's own
+    branch with `[skip ci]` in the commit message (GitHub and GitLab start no
+    pipeline for it); the finished commit replaces it later.
+  - Keep notes, results and a handoff (what is done, what comes next, open
+    questions for the maintainer) in files outside `/tmp`: Ubuntu, claude_vm's
+    VM included, empties `/tmp` at every boot (systemd-tmpfiles, `D /tmp`).
+  - Before a long or costly step, make sure a new session could continue from
+    the repository, the handoff and this file alone.
 
 - **Branches.** `main` and `accept` are the maintainer's: an agent starts from
   `accept` (not main) and never pushes to either; the maintainer merges accept
