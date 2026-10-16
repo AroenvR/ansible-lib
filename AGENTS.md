@@ -152,6 +152,8 @@ the entry says it is likely or not verified yet.
   compatibility. Only the Molecule tests and the native test do.
 - ansible-lint cannot parse GitLab's `!reference` tag; use YAML anchors.
 - `meta-runtime[unsupported-version]` is skipped on purpose (2.14 is supported).
+- `galaxy[no-repository]` is skipped on purpose: galaxy.yml names no repository
+  (anonymised, 2026-10-16) and aslib.infra is not published on Galaxy.
 - Role argument validation evaluates every default before the first task, so a
   default with a failing lookup (e.g. reading package.json) breaks the role with
   an unreadable error. Read files in tasks instead.
