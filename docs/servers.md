@@ -17,8 +17,8 @@ it shows that server; from a directory with an inventory, every server in it:
 ansible-playbook aslib.infra.overview
 ```
 
-It changes nothing. podman_overview's README shows its output, the options
-(one server, a password for sudo), and how to look by hand as root ([Why root
+It changes nothing. podman_overview's README shows its output, how to look at
+one server or give sudo's password, and how to look by hand as root ([Why root
 needs this](../roles/podman_overview/README.md#why-root-needs-this)). One
 service's status and log: [Check a
 service](../roles/podman_service/README.md#check-a-service).
@@ -27,7 +27,8 @@ service](../roles/podman_service/README.md#check-a-service).
 
 On the servers every deploy follows the same fixed conventions:
 
-- an account per service, named after it, whose services start at boot;
+- an account per service, by default named after it, whose services start at
+  boot;
 - image archives in `/opt/containers/images/<service>/`;
 - Quadlet files in `/etc/containers/systemd/users/<UID>/`, the account's UID;
 - the service's own directory, its working directory, in `/opt/<service>/`;

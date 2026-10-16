@@ -3,8 +3,8 @@
 An Ansible collection of tested building blocks (roles and ready-made playbooks)
 for RHEL 9.6 and Ubuntu 24.04 (or newer) servers: rootless Podman services,
 building and deploying Node.js backends as such services, an always-on Claude
-Code agent for root, a VM where Claude Code may have root, for development, and
-a GitLab of your own. It uses only `ansible.builtin`, and its tarball holds only
+Code agent for root, and, as proofs of concept, a VM where Claude Code may have
+root, for development, and a GitLab of your own. It uses only `ansible.builtin`, and its tarball holds only
 what runs: no tests, no dev tooling.
 
 ## Who it is for
@@ -24,7 +24,7 @@ what runs: no tests, no dev tooling.
 ## Quick start
 
 With a release tarball on the machine that runs Ansible (where to get one:
-[Install](#install)), from the root of a Node.js project, such as a NestJS
+[Get it](docs/install.md#get-it)), from the root of a Node.js project, such as a NestJS
 backend:
 
 ```sh
@@ -36,14 +36,16 @@ ansible-playbook aslib.infra.overview           # what runs on the servers
 ```
 
 Before the first deploy, look at `ansible/inventory.yml`, the servers (this
-machine by default), and `ansible/group_vars/all/project.yml`, the settings.
-The guide [Deploy a Node.js backend](docs/nodejs-backend.md) goes through it
-step by step.
+machine by default), `ansible/group_vars/all/project.yml`, the settings, and
+`ansible/container.env`, the app's environment. Add `--ask-become-pass` when
+sudo asks for a password. What the machines need, and every step: [Deploy a
+Node.js backend](docs/nodejs-backend.md#before-you-start).
 
 ## Install
 
 Install aslib.infra on the control node, the machine that runs Ansible, from a
-tarball: a release (`aslib-infra-<version>.tar.gz`, `<version>` being X.Y.Z), a
+tarball: a release (`aslib-infra-<version>.tar.gz`, `<version>` being X.Y.Z, a GitHub
+release or in GitLab's package registry), a
 branch build or your own build of a checkout. Installing it needs no network,
 so an offline control node only needs the file copied over.
 
@@ -79,7 +81,7 @@ table and versions: [Install aslib.infra](docs/install.md).
   where each role's options are. Each role's README is that role's reference.
 - [Status](docs/status.md): what the tests cover, what they do not yet, and
   known limits.
-- [CHANGELOG.md](CHANGELOG.md): every change, with how to upgrade.
+- [CHANGELOG.md](CHANGELOG.md): every notable change, and how to upgrade.
 - [CONTRIBUTING.md](CONTRIBUTING.md), for developing aslib.infra, and
   [AGENTS.md](AGENTS.md), for AI coding agents, are in the repository only, not
   in the tarball.

@@ -18,8 +18,7 @@ job from start to end.
 | [claude_vm](../roles/claude_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (RHEL 9.6+, Ubuntu 24.04+) | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
 | [gitlab](../roles/gitlab/README.md) | GitLab Community Edition as a rootless Podman service, with podman_service, set up for a private instance without email (proof of concept) | Servers (RHEL 9.6+) | The Ansible machine: Docker Hub, for the image. The server: no |
 
-Every role documents its variables; read them offline with
-`ansible-doc -t role aslib.infra.<role>`. See [Role options](#role-options).
+Each role's options: [Role options](#role-options).
 
 ## Ready-made playbooks
 
@@ -56,10 +55,12 @@ needed. The playbooks node_setup writes import them.
 Every role documents its variables in its `meta/argument_specs.yml`, for each
 of its entry points (`main`, and others such as `remove`), with the same
 defaults as its `defaults/main.yml`. Read them offline with
-`ansible-doc -t role aslib.infra.<role>`. Each option is described once, in the
-README of the role that owns it:
+`ansible-doc -t role aslib.infra.<role>`. Each option is described once, by the
+role that owns it (podman_service for every service's settings): in its
+`meta/argument_specs.yml`, and in its README where a reader needs more. Where
+each README covers its options:
 
-| Role | Where its README describes its options |
+| Role | Where its README covers its options |
 |---|---|
 | sudoers | [Interface](../roles/sudoers/README.md#interface), and an [example](../roles/sudoers/README.md#example) |
 | node_setup | [Options](../roles/node_setup/README.md#options) |

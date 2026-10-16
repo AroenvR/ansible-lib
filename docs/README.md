@@ -1,7 +1,8 @@
 # Documentation
 
 The documentation of aslib.infra: guides by job, and the reference. It ships
-with the collection, so these links work in an installed copy too. The landing
+with the collection, so it works in an installed copy too; only the files for
+developers stay in the repository. The landing
 page is [README.md](../README.md).
 
 ## Guides
@@ -44,7 +45,7 @@ to the role READMEs for every option and mechanism.
   its `ansible/` directory.
 - [Status](status.md): what the tests cover, what they do not yet, and known
   limits.
-- [CHANGELOG.md](../CHANGELOG.md): every change, with how to upgrade.
+- [CHANGELOG.md](../CHANGELOG.md): every notable change, and how to upgrade.
 
 ## For developers
 

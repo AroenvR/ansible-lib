@@ -24,9 +24,9 @@ Each tarball holds only what runs: no tests, no dev tooling.
   checksum, `aslib-infra-<version>.tar.gz.sha256`; with both in one directory,
   `sha256sum --check aslib-infra-<version>.tar.gz.sha256` checks the download.
 - **Branch builds** (`aslib-infra.<branch>.<commit>.<time>.tgz`), to try out
-  work in progress: the newest build of each branch is an artifact of its CI
-  run (GitHub: Actions > the run > Artifacts; GitLab: the `branch-build` job's
-  artifacts) for 7 days.
+  work in progress: an artifact of the branch's CI run, kept for 7 days
+  (GitHub: Actions > the run > Artifacts, only the newest build of each branch;
+  GitLab: the `branch-build` job's artifacts, every pipeline's).
 - **Your own build**, of any checkout of this repository, for example before CI
   has published one. From the repository root, with any ansible-core 2.14 or newer:
 
@@ -41,8 +41,9 @@ Each tarball holds only what runs: no tests, no dev tooling.
 
 ## Install it
 
-The control node needs `ansible-core`, from its OS: `sudo dnf install
-ansible-core` on RHEL, `sudo apt install ansible-core` on Ubuntu. Then install
+The control node needs `ansible-core` 2.14 or newer; on RHEL and Ubuntu, the
+OS package: `sudo dnf install ansible-core` (RHEL), `sudo apt install
+ansible-core` (Ubuntu). Then install
 the tarball. `--force` replaces an installed copy, also one with the same
 version (branch builds carry the version of their `galaxy.yml`):
 
@@ -68,9 +69,8 @@ variables means a new major version (before 1.0.0, a new minor version).
 version asks for it, what to do when upgrading ("Upgrading from ...").
 
 To upgrade, install the newer tarball as above. A project that `node_setup` or
-`claude_setup` wrote then brings aslib.infra's files in its `ansible/`
-directory up to date, from that directory, keeping a changed one as
-`<file>.bak` ([node_setup](../roles/node_setup/README.md),
+`claude_setup` wrote then runs this from its `ansible/` directory, which brings
+aslib.infra's files there up to date ([node_setup](../roles/node_setup/README.md),
 [claude_code](../roles/claude_code/README.md#the-project)):
 
 ```sh

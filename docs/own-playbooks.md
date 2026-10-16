@@ -33,15 +33,20 @@ Where each kind of tarball comes from: [Get it](install.md#get-it).
 ## Call a role
 
 Call a role by its full name, `aslib.infra.<role>`: under `roles:`, or with
-`ansible.builtin.import_role` in `tasks:`. A role with more than one entry point
-takes the others with `tasks_from:`, such as podman_service's `restart`,
-`remove` and `verify`. Plays to start from: the examples in the READMEs of
+`ansible.builtin.import_role` in `tasks:`. An entry point other than `main`,
+such as podman_service's `restart`, `remove` and `verify`, needs
+`ansible.builtin.import_role` with `tasks_from:`. Under `roles:`, `tasks_from:`
+is ignored and `main` runs. Plays to start from: the examples in the READMEs of
 [sudoers](../roles/sudoers/README.md#example),
 [podman_service](../roles/podman_service/README.md) and
 [podman_overview](../roles/podman_overview/README.md#in-a-playbook), and the
 ready-made playbooks in [playbooks/](../playbooks/), which only call roles,
 such as [node_restart.yml](../playbooks/node_restart.yml). The list of
 roles, and what each needs: [Reference](reference.md#roles).
+
+Roles that work on servers do so as root: their plays set `become: true`, as
+the examples do. What a server needs: [What a managed server
+needs](servers.md#what-a-managed-server-needs).
 
 ## Options of a role
 
@@ -54,6 +59,8 @@ ansible-doc -t role aslib.infra.podman_service              # one role, every en
 ansible-doc -t role -e restart aslib.infra.podman_service   # one entry point
 ```
 
-The same options are in each role's `meta/argument_specs.yml`, with the
-defaults of its `defaults/main.yml`. They are aslib.infra's interface: a
-breaking change to one means a new major version ([Versions](install.md#versions)).
+Each role's README describes its options in prose; which section, role by
+role: [Role options](reference.md#role-options). The options, in each role's
+`meta/argument_specs.yml`, are aslib.infra's interface: a breaking change to one
+means a new major version, before 1.0.0 a new minor one
+([Versions](install.md#versions)).

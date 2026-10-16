@@ -46,7 +46,8 @@ In CI:
   every service change what any other wrote there; who writes what is up to the
   apps.
 - To review for security: how a pipeline gets `container.env` to the deploy (a
-  secret variable written to a file, see "In a pipeline" in the project's guide,
-  `ansible/README.md`), and the project's `.npmrc`, which the build stage copies
+  secret variable written to a file, see "In a pipeline" in a Node.js project's
+  guide, `ansible/README.md`, [its template](../roles/node_setup/templates/README.md.j2)),
+  and the project's `.npmrc`, which the build stage copies
   in: it stays in the layers of the build stage's image (`<name>:build`, the
   build machine's cache), though not in the image that is deployed.
