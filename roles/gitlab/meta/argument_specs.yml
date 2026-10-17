@@ -31,7 +31,7 @@ argument_specs:
         type: str
         default: docker.io/gitlab/gitlab-ce
         description:
-          - Where GitLab CE's image comes from, without its tag: Docker Hub's by default, or a mirror's (a registry
+          - Where GitLab CE's image comes from, without its tag. Docker Hub's by default, or a mirror's (a registry
             proxy, such as a Nexus). A mirror for docker.io in registries.conf works as well.
       gitlab_hostname:
         type: str
@@ -98,7 +98,7 @@ argument_specs:
         type: str
         default: docker.io/gitlab/gitlab-ce
         description:
-          - Where GitLab CE's image comes from, without its tag (<version>-ce.0): Docker Hub's by default, or a
+          - Where GitLab CE's image comes from, without its tag (<version>-ce.0). Docker Hub's by default, or a
             mirror's.
       gitlab_image_dir:
         type: path

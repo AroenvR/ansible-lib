@@ -67,9 +67,9 @@ argument_specs:
         image only when that version, the base image or the Containerfile changed, so every build is also the update.
       - Keeps only that archive in images/, and only that image of the project on this machine.
       - Needs Podman 4.9 or newer (RHEL 9.6, Ubuntu 24.04) and access to the base image's registry and dnf
-        repositories (Red Hat's UBI repositories), Anthropic's repository and GitHub (nvm), or to mirrors of them:
-        I(claude_code_base_image) or registries.conf, I(claude_code_rpm_repos), I(claude_code_repository) and
-        I(claude_code_key_url), I(claude_code_nvm_url).
+        repositories (Red Hat's UBI repositories), Anthropic's repository and GitHub (nvm), or to mirrors of them
+        (I(claude_code_base_image) or registries.conf, I(claude_code_rpm_repos), I(claude_code_repository) and
+        I(claude_code_key_url), I(claude_code_nvm_url)).
     options:
       claude_code_ansible_dir:
         type: str
@@ -98,7 +98,7 @@ argument_specs:
         type: str
         default: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh
         description:
-          - nvm, the Node.js version manager, in the image: one script of a release (the Containerfile's NVM_URL), or a
+          - nvm, the Node.js version manager, in the image. One script of a release (the Containerfile's NVM_URL), or a
             mirror of it.
           - A newer release needs I(claude_code_nvm_sha256) changed too; a mirror of the same file keeps it.
       claude_code_nvm_sha256:
