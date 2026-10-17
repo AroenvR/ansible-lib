@@ -40,6 +40,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __podman_service_account_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __podman_service_account_uid }}/bus
 
     - name: Stop the service, {{ podman_service_name }}
       ansible.builtin.command:

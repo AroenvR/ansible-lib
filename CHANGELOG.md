@@ -50,6 +50,10 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   host from inside the VM.
 - Changed: podman_service counts a redirect as the service's answer, and no
   longer follows it (GitLab answers with one, to its own URL).
+- Fixed: podman_service and podman_overview run Podman as a service's account
+  with that account's own D-Bus session bus. Over SSH as root they kept root's,
+  and a command in a service's container failed (`cgroup.procs: Permission
+  denied`): gitlab's application settings, and `podman exec` in the checks.
 - Fixed: the `requirements.yml` example for a release (README's, now in
   `docs/own-playbooks.md`) lacked the repository's address. The examples now
   write `<repository>` for the URL of aslib.infra's repository and `<version>`

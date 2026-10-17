@@ -15,20 +15,46 @@ dependency:
 driver:
   name: podman
 
+# Each test server publishes its SSH port on 127.0.0.1 of the test machine.
+# AUDIT_CONTROL lets sshd's PAM stack (pam_loginuid) open a session, as on a real
+# server; without it every login ends at once. A scenario that redefines a
+# platform keeps the port (a privileged container has the capability anyway).
 platforms:
   - name: ubuntu2404
     image: localhost/aslib-test/ubuntu2404:latest
     pre_build_image: true
     command: /sbin/init
     systemd: always
+    capabilities: [AUDIT_CONTROL]
+    published_ports: ["127.0.0.1:52201:22"]
   - name: rhel9
     image: localhost/aslib-test/rhel9:latest
     pre_build_image: true
     command: /sbin/init
     systemd: always
+    capabilities: [AUDIT_CONTROL]
+    published_ports: ["127.0.0.1:52202:22"]
 
+# Ansible reaches the test servers over SSH as root, as it reaches a real server,
+# not through Podman: root's key goes in with dev/molecule/test-server-ssh.yml,
+# which every server scenario's prepare.yml imports first. Host variables, never
+# group variables of all: those would also apply to localhost, which tasks
+# delegate to.
 provisioner:
   name: ansible
+  inventory:
+    host_vars:
+      ubuntu2404: &test_server
+        ansible_connection: ssh
+        ansible_host: 127.0.0.1
+        ansible_port: 52201
+        ansible_user: root
+        ansible_ssh_private_key_file: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/test-server-key"
+        ansible_ssh_common_args: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+        aslib_test_container: "{{ inventory_hostname }}"
+      rhel9:
+        <<: *test_server
+        ansible_port: 52202
 
 verifier:
   name: ansible

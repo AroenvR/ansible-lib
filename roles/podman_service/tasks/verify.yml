@@ -27,6 +27,7 @@
       - --
       - env
       - XDG_RUNTIME_DIR=/run/user/{{ ansible_facts.getent_passwd[__podman_service_user][1] }}
+      - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ ansible_facts.getent_passwd[__podman_service_user][1] }}/bus
 
 - name: Check the service
   ansible.builtin.import_tasks: checks.yml

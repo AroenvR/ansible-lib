@@ -64,9 +64,12 @@ Fix the UIDs of all services on a server, or of none: a service without one take
 the next free UID, which may be the one another service is to get later.
 
 The account's Podman and systemd are driven with `runuser -u <account> -- env
-XDG_RUNTIME_DIR=/run/user/<UID> ...` rather than `systemctl --user -M <account>@`:
-`-M` needs a D-Bus session bus for the account, which minimal systems such as
-Red Hat's UBI images lack.
+XDG_RUNTIME_DIR=/run/user/<UID> DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<UID>/bus
+...` rather than `systemctl --user -M <account>@`: `-M` needs a D-Bus session bus
+for the account, which minimal systems such as Red Hat's UBI images lack. The bus
+address is the account's own because runuser keeps the caller's environment: a
+root login (over SSH, or `su`) brings root's, with which `podman exec` fails
+(`cgroup.procs: Permission denied`).
 
 ## The service's directory
 

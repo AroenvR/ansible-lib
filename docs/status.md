@@ -8,9 +8,9 @@ limits. The changes of each version are in [CHANGELOG.md](../CHANGELOG.md).
 In CI:
 
 - every role but claude_vm with ansible-core 2.14 and 2.16, on test containers
-  that mimic default RHEL 9.6 and Ubuntu 24.04 installs, and the roles that
-  support Ubuntu also with the ansible-core 2.16.3 and Podman 4.9 packages of
-  Ubuntu 24.04 itself;
+  that mimic default RHEL 9.6 and Ubuntu 24.04 installs, reached over SSH as
+  root, as Ansible reaches a real server; and the roles that support Ubuntu also
+  with the ansible-core 2.16.3 and Podman 4.9 packages of Ubuntu 24.04 itself;
 - node_image with NestJS 10, 11 and 12 and NestJS's default branch;
 - a service's deploy, update, overview, removal and redeploy as another
   account, on a RHEL 9.6 test container, next to Claude Code (with a stand-in for
@@ -28,11 +28,11 @@ In CI:
 
 ## Not tested yet
 
-- a deploy over SSH with sudo to another machine: the tests reach their test
-  containers through Podman;
-- SELinux in enforcing mode: the test containers run without it, and only a RHEL
+- a real RHEL server or VM: the test servers are containers on the machine that
+  runs the tests, sharing its kernel. They run without SELinux, and only a RHEL
   server with SELinux enforcing proves the relabelling (`:Z`) of the service's
   directory;
+- a deploy as an account that uses sudo: the tests connect as root;
 - claude_vm: its test needs KVM and is not part of CI. The role runs on a
   Raspberry Pi 4 (Ubuntu 24.04, ARM64), not yet on an x86_64 host with KVM or a
   RHEL host;

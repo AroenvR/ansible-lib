@@ -68,7 +68,7 @@ root there, away from the host and the local network. See
 | `dev/` | ansible-core pins per version, test images, the checks `make lint` adds, native test, CI helper scripts. Never shipped |
 | `dev/requirements-*.txt`, `dev/collections.yml` | The pinned venvs (`ansible-2.14`, `ansible-2.16`, `lint`) and the test-only collections |
 | `dev/images/` | The test containers: `rhel9` and `ubuntu2404`, and `ubuntu2404-native` for the native test |
-| `dev/molecule/` | Plays shared by several scenarios, such as the preparation of the test server for podman_service |
+| `dev/molecule/` | Plays shared by several scenarios: SSH access to the test servers, the preparation of the test server for podman_service |
 | `dev/ci/` | CI helper scripts: the next release version, the GitLab runner check, pruning older GitHub branch builds |
 | `.config/molecule/config.yml` | Molecule settings shared by all roles |
 | `.ansible-lint` | ansible-lint's settings: production profile, offline |
@@ -108,10 +108,9 @@ not be on one.
 
 Root: CI runs every test target as root (`sudo make ...`), with rootful
 Podman, which has images of its own, so run `sudo make images` before them.
-Run the tests that way too, the server tests above all: rootless, a server
-test can fail where it passes as root, as sudoers' did on the RHEL 9 test
-server under rootless Podman 4.9 (see
-[AGENTS.md, Known pitfalls](AGENTS.md#known-pitfalls)).
+Run the tests that way too, the server tests above all: CI proves only that
+way, and a rootless run has failed where a rootful one passed (the causes found
+so far are in [AGENTS.md, Known pitfalls](AGENTS.md#known-pitfalls)).
 `make test-vm-<ansible-core>` needs root in any case
 (`sudo make test-vm-2.14`). `setup`, `lint`, `dist` and `version` run as
 yourself.
@@ -187,6 +186,11 @@ Test first: write the check, see it fail, then build the role
 - `prepare.yml` gives the test server only what a default install has, the way
   an administrator would ([Test data](#test-data)); what a role needs beyond
   that, the role installs itself when it is missing.
+- A server scenario's `prepare.yml` first imports
+  `dev/molecule/test-server-ssh.yml`, which lets the test machine in over SSH
+  as root and checks Ansible gets there that way. A test that restarts its test
+  server resets the connection and waits for it (`meta: reset_connection`,
+  `wait_for_connection`): an `until` loop does not retry an unreachable host.
 - Keep `prepare.yml`, `converge.yml` and `verify.yml` free of Molecule-only
   variables: the native test runs them with plain `ansible-playbook`.
 - A new role that supports Ubuntu goes into `UBUNTU_ROLES` in the Makefile, so
@@ -204,7 +208,12 @@ line per case instead of multiplying.
 
 Test containers (`dev/images/`) mimic default server installs. The RHEL one is
 based on UBI, whose repositories hold a subset of RHEL. On a subscribed RHEL
-host Podman gives it the full RHEL repositories. A test that needs more than a
+host Podman gives it the full RHEL repositories. Both run OpenSSH's server, and
+the tests reach them over SSH as root, as Ansible reaches a real server
+(`.config/molecule/config.yml`): on 127.0.0.1, port 52201 (Ubuntu) and 52202
+(RHEL). Root's key goes in with `podman exec`, as a cloud image's would through
+cloud-init. What a container needs for SSH logins that a real server does not
+(a capability, the mode of `/etc/shadow`) is explained where it is set. A test that needs more than a
 default install (`node_deploy` needs Podman) installs it in its `prepare.yml`,
 the way an administrator would, and only what a default RHEL install has: what a
 role needs beyond it (acl), the role installs when missing.
@@ -242,8 +251,8 @@ Test first:
 2. Describe the desired state in `roles/<role>/molecule/<scenario>/verify.yml`.
 3. Watch it fail: `sudo make images test-servers-2.14 ROLES=<role>` (or
    `make test-build-machine-2.14 ROLES=<role>`). CI runs the tests as root, with
-   rootful Podman, which has images of its own; rootless, a server test can fail
-   where it passes as root (see [Make targets](#make-targets)).
+   rootful Podman, which has images of its own, and proves only that way (see
+   [Make targets](#make-targets)).
 4. Implement in `roles/<role>/` until it passes.
 5. Document it where it belongs ([Documentation](#documentation)), with a
    `CHANGELOG.md` entry for anything users notice.
@@ -375,7 +384,10 @@ maintainer will extend it.
    (`feature/2026-10-16-gitlab_container`).
 2. Push it: CI runs on every push to every branch. A commit with `[skip ci]` in
    its message starts no pipeline, for work in progress you only want to keep
-   safe.
+   safe: push such commits to a backup branch of your own, never to the branch
+   you open the request from. GitHub's suggested squash message lists every
+   commit message of that branch, and a marker in it skips the pipeline of
+   `accept`. On GitLab, `git push -o ci.skip` skips a pipeline without a marker.
 3. Open a pull request (GitHub) or merge request (GitLab) into `accept`. It is
    accepted only with a green CI, at the very least: every CI job green, the
    relevant tests proven to pass, lint clean.
