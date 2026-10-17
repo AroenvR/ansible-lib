@@ -60,10 +60,13 @@ project holds what is the same everywhere, each machine what differs:
 |---|---|---|
 | Red Hat's `ubi9/nodejs-<major>` and `-minimal` images, by default from `registry.access.redhat.com` | `node_image_registry` | `/etc/containers/registries.conf` (rootless: `~/.config/containers/registries.conf`), which Podman applies to these names too |
 | Everything npm downloads: packages, the Node.js headers for native modules (`disturl=`), prebuilt binaries (e.g. `sqlite3_binary_host_mirror=`) | `.npmrc`, which wins | `node_image_npmrc`: the `~/.npmrc` of the user who builds |
-| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | | Red Hat's UBI repositories, as set up in the base images |
+| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | `node_image_rpm_repos`: a directory of `.repo` files, e.g. a mirror's (in the project, or anywhere on the build machine) | Without it, Red Hat's UBI repositories, as set up in the base images; a subscribed RHEL host adds its subscription |
 
 In the image build, the build machine's `~/.npmrc` is mounted for the install
-only (a build secret) and never stored in an image. npm 11 and newer warn that settings it does not
+only (a build secret) and never stored in an image. `node_image_rpm_repos` is
+mounted over the images' `/etc/yum.repos.d` for the build's steps only: its
+repositories replace the images' own rather than adding to them, and the image
+keeps its own. npm 11 and newer warn that settings it does not
 know itself (`disturl`, `sqlite3_binary_host_mirror`) "will stop working in the
 next major version"; they work until then. Packages that cannot download their
 prebuilt binaries compile from source, which needs only the Node.js headers.

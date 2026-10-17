@@ -24,7 +24,12 @@ In CI:
   package up to date;
 - GitLab 19.4.1, deployed and used as a person would: an account and token, a
   private project, pushes and clones over HTTP and SSH, a fork, its settings, a
-  restart, and a removal and new deploy on the data it left.
+  restart, and a removal and new deploy on the data it left;
+- claude_vm, with ansible-core 2.16 on an x86_64 Ubuntu 24.04 host with KVM
+  (GitHub's runners): the VM created and set up, a hard reset survived, logged in
+  as claude with sudo, Podman, Python 3.11 and Claude Code there, the internet
+  reachable but not the local network nor the host's services, apart from the
+  port it is given, and a second run that changes nothing.
 
 ## Not tested yet
 
@@ -33,9 +38,8 @@ In CI:
   server with SELinux enforcing proves the relabelling (`:Z`) of the service's
   directory;
 - a deploy as an account that uses sudo: the tests connect as root;
-- claude_vm: its test needs KVM and is not part of CI. The role runs on a
-  Raspberry Pi 4 (Ubuntu 24.04, ARM64), not yet on an x86_64 host with KVM or a
-  RHEL host;
+- claude_vm on an ARM64 host in CI: it runs on a Raspberry Pi 4 (Ubuntu 24.04),
+  checked by hand;
 - GitLab CI: `.gitlab-ci.yml` is written but has not run.
 
 ## Known limits and open work

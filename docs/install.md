@@ -9,7 +9,7 @@ needs](servers.md#what-a-managed-server-needs).
 
 | | Supported |
 |---|---|
-| Ansible control node | The `ansible-core` package of RHEL 9.6 (2.14) or Ubuntu 24.04 (2.16), or newer |
+| Ansible control node | The `ansible-core` package of RHEL 9.6 (2.14) or Ubuntu 24.04 (2.16), or newer. `claude_vm`: 2.16 or newer, as its host and VM run Ubuntu 24.04 (Python 3.12) |
 | Managed servers | RHEL 9.6, Ubuntu 24.04. `podman_service`, `podman_overview`, `node_deploy`, `claude_code` and `gitlab`: RHEL 9.6 or newer with its Podman (5.4) |
 | Image build machines | RHEL 9.6, Ubuntu 24.04, with their Podman (5.4, 4.9) |
 | Other collections | None. Only `ansible.builtin` is used. |

@@ -152,7 +152,9 @@ settings). Keep it with the backup, away from anyone who should not have it.
 - The server: what podman_service needs (RHEL 9.6 or newer with its Podman),
   x86_64 or arm64, with the memory and disk above.
 - The Ansible machine: Podman 4.9 or newer and Docker Hub, to download the
-  image; or the archive copied into `images/` (`gitlab-ce-<version>.tar`).
+  image, or a mirror of it (`gitlab_image`, or a mirror for docker.io in
+  `registries.conf`); or the archive copied into `images/`
+  (`gitlab-ce-<version>.tar`).
 
 ## Limitations
 

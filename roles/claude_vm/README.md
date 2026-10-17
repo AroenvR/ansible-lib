@@ -36,9 +36,11 @@ breaks it: a broken VM is rebuilt in minutes.
 
 ## The host
 
-Ubuntu 24.04 or RHEL 9.6 (or newer) on x86_64 or ARM64 (aarch64, such as a
-Raspberry Pi 5), with virtualization enabled in the firmware (`/dev/kvm`),
-headless is fine. The playbook installs QEMU/KVM, libvirt, virt-install,
+Ubuntu 24.04 (or newer) on x86_64 or ARM64 (aarch64, such as a Raspberry Pi
+4), with virtualization enabled in the firmware (`/dev/kvm`), headless is fine.
+The machine that runs the playbook needs ansible-core 2.16 or newer (Ubuntu
+24.04's): the host and the VM have Python 3.12, which 2.14 does not support on
+managed machines. The playbook installs QEMU/KVM, libvirt, virt-install,
 xorriso (for the cloud-init CD) and nftables where missing (on ARM64 also the
 UEFI firmware the VM boots with, without Secure Boot), and downloads Ubuntu
 24.04's cloud image for the host's architecture once, checked against its
@@ -131,12 +133,10 @@ VM as it was made.
 
 - A proof of concept: one VM per host, named `claude-dev`. Changing the network
   or the image needs a new VM.
-- Runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04, ARM64, KVM) with
-  `-e claude_vm_memory=2560`. Its test needs KVM (`sudo make test-vm-2.14`):
-  it ran on an Ubuntu 24.04 x86_64 host without KVM only in a changed form
-  (QEMU's emulation, a stand-in for the cloud image, without the deadsnakes and
-  Claude Code repositories); not yet on an x86_64 host with KVM, a RHEL host or
-  in CI.
+- Ubuntu hosts only. Its test (`sudo make test-vm-2.16`, which needs KVM) runs
+  in CI on GitHub's x86_64 Ubuntu 24.04 runners, which have KVM. On ARM64 it
+  runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04) with
+  `-e claude_vm_memory=2560`, checked by hand.
 - An ARM64 VM boots without Secure Boot. Enforced, as libvirt would have it,
   Ubuntu's boot loader crashes on a Raspberry Pi 4; in a VM where Claude has
   root, it would protect nothing.

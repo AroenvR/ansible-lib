@@ -44,7 +44,9 @@ when that version, the base image or the Containerfile did. A new image also has
 every package update of its day (`dnf upgrade`), so a pinned version also pins
 the packages, until the base image changes. Needs Podman 4.9 or newer, Red Hat's
 registry and UBI repositories, Anthropic's repository and GitHub (nvm), or
-mirrors of them.
+mirrors of them (`claude_code_base_image` or `registries.conf`,
+`claude_code_rpm_repos`, `claude_code_repository`, `claude_code_nvm_url`: the
+project guide's "Download sources").
 
 ## On the server
 

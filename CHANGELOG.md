@@ -8,10 +8,11 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 
 - Added role `claude_vm` and playbooks `aslib.infra.claude_vm` and
   `aslib.infra.claude_vm_remove`, a proof of concept: `claude-dev`, a VM from
-  Ubuntu 24.04's cloud image on a host with KVM (RHEL 9.6 or Ubuntu 24.04, or
-  newer), where Claude Code has sudo and aslib.infra's tests run (Python 3.11
-  next to 3.12, for both ansible-core versions), which reaches the internet but
-  not the local network (nftables rules on the host).
+  Ubuntu 24.04's cloud image on an Ubuntu host with KVM (24.04 or newer, x86_64
+  or ARM64; ansible-core 2.16 or newer), where Claude Code has sudo and
+  aslib.infra's tests run (Python 3.11 next to 3.12, for both ansible-core
+  versions), which reaches the internet but not the local network (nftables
+  rules on the host). Its test runs in CI on GitHub's runners, which have KVM.
 - Changed: Claude Code's policy has one base for the container and the VM.
   claude_code's `files/managed-settings.json` is aslib.infra's base, which
   every deploy now merges with the container's own settings and the project's
@@ -50,6 +51,19 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   host from inside the VM.
 - Changed: podman_service counts a redirect as the service's answer, and no
   longer follows it (GitLab answers with one, to its own URL).
+- Added: every download source of a build can come from a mirror (a Nexus, say):
+  - `gitlab_image`, where GitLab CE's image comes from (Docker Hub's by default);
+  - `claude_code_nvm_url` and `claude_code_nvm_sha256`, nvm's script and its
+    checksum, which image.yml passes to the Containerfile, so a mirror needs no
+    change to it;
+  - `node_image_rpm_repos` and `claude_code_rpm_repos`, a directory of dnf
+    repository files, such as a mirror's, which replaces the base images' own
+    repositories while an image builds (mounted over `/etc/yum.repos.d` for the
+    build only, never stored in the image).
+- Changed: claude_code's Containerfile imports Anthropic's key into rpm's
+  database and installs Claude Code with `--repofrompath`, so the image no
+  longer has `/etc/yum.repos.d/claude-code.repo`. `update-playbooks.yml` brings
+  the new Containerfile, keeping a changed one as `Containerfile.bak`.
 - Fixed: podman_service and podman_overview run Podman as a service's account
   with that account's own D-Bus session bus. Over SSH as root they kept root's,
   and a command in a service's container failed (`cgroup.procs: Permission

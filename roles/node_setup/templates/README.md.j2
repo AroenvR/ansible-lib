@@ -191,7 +191,7 @@ everywhere, each machine what differs:
 |---|---|---|
 | Red Hat's Node.js images, by default from `registry.access.redhat.com` | `node_image_registry` | `/etc/containers/registries.conf` (or `~/.config/containers/registries.conf`) |
 | Everything npm downloads: packages, Node.js headers for native modules, prebuilt binaries | `.npmrc` (wins) | `~/.npmrc` of the user who runs the playbook |
-| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | | Red Hat's UBI repositories, as set up in the base images |
+| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | `node_image_rpm_repos`: a directory of `.repo` files, e.g. a mirror's (in the project, or anywhere on the build machine) | Without it, Red Hat's UBI repositories, as set up in the base images; a subscribed RHEL host adds its subscription |
 
 Offline checklist for a build machine:
 
@@ -215,6 +215,21 @@ Offline checklist for a build machine:
   npm 11 and newer warn that settings it does not know itself (`disturl`,
   `sqlite3_binary_host_mirror`) "will stop working in the next major version";
   they work until then.
+
+- RPMs, if the project installs any: a directory of `.repo` files for your
+  mirror's UBI repositories, set as `node_image_rpm_repos` (relative to
+  `ansible/`), for example `rpm-repos/ubi9.repo`:
+
+  ```ini
+  [ubi9-baseos-mirror]
+  name = UBI 9 BaseOS, from the mirror
+  baseurl = http://mirror.example.com/repository/ubi9-baseos/
+  gpgcheck = 1
+  gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+  ```
+
+  and the same for AppStream. They replace the images' own repositories for the
+  build only.
 
 ## In a pipeline
 
