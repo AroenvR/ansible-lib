@@ -128,6 +128,14 @@
     group: root
     mode: "0644"
 
+# A reset soon after (UEFI may restart an ARM64 VM; the test resets it on
+# purpose) loses what ext4 has not written out yet, up to 30 seconds' worth: a
+# new file then comes back empty, as the policy did in CI 19 seconds after it was
+# written.
+- name: Write everything to the VM's disk
+  ansible.builtin.command: sync
+  changed_when: false
+
 - name: Show how to use the VM
   ansible.builtin.debug:
     msg:

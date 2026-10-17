@@ -32,10 +32,16 @@ RUN {% if __node_image_machine_npmrc %}--mount=type=secret,id=npmrc,uid=1001 exp
 # files belong to root and only root may write them, so the app cannot change its own code.
 FROM {{ __node_image_runtime }}
 {% if node_image_runtime_packages %}
-# Repositories as in the build stage.
+# Repositories as in the build stage.{% if node_image_rpm_repos %} microdnf (librhsm) writes redhat.repo
+# into /etc/yum.repos.d, mounted read-only here, unless /var/lib/rhsm exists:
+# it is there for this step only.{% endif %}
+
 USER 0
-RUN microdnf install --assumeyes --nodocs {{ node_image_runtime_packages | join(' ') }} \
- && microdnf clean all
+RUN {% if node_image_rpm_repos %}if [ ! -e /var/lib/rhsm ]; then mkdir /var/lib/rhsm && made_rhsm=1; fi \
+ && {% endif %}microdnf install --assumeyes --nodocs {{ node_image_runtime_packages | join(' ') }} \
+ && microdnf clean all{% if node_image_rpm_repos %} \
+ && if [ -n "${made_rhsm:-}" ]; then rmdir /var/lib/rhsm; fi{% endif %}
+
 {% endif %}
 USER 1001
 WORKDIR /opt/app-root/src

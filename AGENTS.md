@@ -407,6 +407,17 @@ the entry says it is likely or not verified yet.
   header, and in CI a second run got a different answer for deadsnakes' key,
   so claude_vm's idempotence step failed. claude_vm downloads its repository
   keys only where missing and proves them by fingerprint.
+- A hard reset of a VM (`virsh reset`) loses what ext4 has not written out
+  yet, up to 30 seconds' worth: a new file comes back empty. claude_vm's test
+  resets the VM first thing; on GitHub's fast runners that came 19 seconds after
+  the policy was written, which then was empty (CI, 2026-10-17). claude_vm ends
+  its guest setup with `sync`.
+- microdnf (librhsm) in UBI's minimal images writes `redhat.repo` into
+  `/etc/yum.repos.d` at every run, unless `/var/lib/rhsm` exists (then it leaves
+  that to subscription-manager). With node_image_rpm_repos mounted read-only
+  there, it failed ("Read-only file system"); the runtime stage creates
+  `/var/lib/rhsm` for that step only. dnf with its subscription-manager plugin
+  (the full images) does not mind.
 - claude_vm's VM gets Python 3.11 from a deadsnakes source of claude_vm's own
   (`/etc/apt/sources.list.d/deadsnakes.list`, signed by
   `/etc/apt/keyrings/deadsnakes.asc`). Adding the PPA a second time with
