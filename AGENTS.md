@@ -92,9 +92,14 @@ and bring Status up to date before ending a block of work.
   in steps, with a task list and a local commit per step.
 - **Work survives an interruption.** An agent can be cut off at any moment (its
   credits run out, its machine reboots), so nothing lives only in its context:
-  - Commit every step locally, and push work in progress to the agent's own
-    branch with `[skip ci]` in the commit message (GitHub and GitLab start no
-    pipeline for it); the finished commit replaces it later.
+  - Commit every step locally, and push work in progress to a backup branch
+    of the agent's own (`backup/<branch>`) with `[skip ci]` in the commit
+    message (GitHub and GitLab start no pipeline for it). The branch a pull
+    request comes from gets only finished commits, without the marker:
+    GitHub's suggested squash message lists every commit message, and on
+    2026-10-17 a squash merge with it gave `accept` no pipeline. Build that
+    branch from accept with the work squashed in (`git merge --squash`),
+    never with a force push.
   - Keep notes, results and a handoff (what is done, what comes next, open
     questions for the maintainer) in files outside `/tmp`: Ubuntu, claude_vm's
     VM included, empties `/tmp` at every boot (systemd-tmpfiles, `D /tmp`).
@@ -366,6 +371,27 @@ the entry says it is likely or not verified yet.
   fails the same way under rootless Podman (4.9.3) and passes under rootful
   Podman. Run as root (`sudo make images test-servers-2.14 ROLES=sudoers`), the
   test passes on both test servers.
+- sshd in a test container (2026-10-17): the PAM session of RHEL's and
+  Ubuntu's sshd requires pam_loginuid, which writes `/proc/self/loginuid` and
+  needs `CAP_AUDIT_CONTROL`. A rootful container without it ends every login at
+  once (`pam_open_session(): Cannot make/remove an entry for the specified
+  session`, ssh exit status 254). The test servers get `capabilities:
+  [AUDIT_CONTROL]`; privileged ones have it anyway.
+- Ubuntu 24.04's AppArmor profile `unix-chkpwd` attaches by path to RHEL's
+  `/usr/sbin/unix_chkpwd` in any unconfined container (privileged, or rootless)
+  on an Ubuntu host, and denies it `dac_read_search` and `dac_override`: it is
+  written for Debian's `/etc/shadow` (0640, group shadow), not RHEL's (0000).
+  PAM's account check then fails (`unix_chkpwd: could not obtain user info
+  (root)`, `Access denied for user root by PAM account configuration`), and
+  OpenSSH 9.9 penalizes the failed attempts. Seen in the kernel log
+  (`apparmor="DENIED" ... profile="unix-chkpwd"`) on claude_vm's VM, with
+  node_deploy's privileged test server. The RHEL test image makes `/etc/shadow`
+  0400, which root reads as its owner; useradd, usermod and userdel keep that
+  mode. Likely also the cause of the rootless sudo failure above (not verified
+  yet).
+- `podman restart` of a test server breaks Ansible's SSH connection; the next
+  task fails as unreachable, which an `until` loop does not retry. Reset the
+  connection and `wait_for_connection` first (node_deploy's verify).
 - claude_vm's VM gets Python 3.11 from a deadsnakes source of claude_vm's own
   (`/etc/apt/sources.list.d/deadsnakes.list`, signed by
   `/etc/apt/keyrings/deadsnakes.asc`). Adding the PPA a second time with
@@ -523,6 +549,23 @@ Last updated 2026-10-17, for accept, before v0.5.0's release.
   names a directory of `.repo` files that replaces the image's repositories for
   the build instead of adding to them. The details are the feature's design.
   Later, a Sonatype Nexus repository, to test it all and to store images.
+- Decided with the maintainer on 2026-10-17: aslib's consumers are root on the
+  servers they manage, mostly RHEL VMs (bare-metal machines are mostly Ubuntu).
+  Managing services remotely on RHEL 9.6 VMs comes first; RHEL as a build
+  machine is not needed. Since then the server tests reach their test servers
+  over SSH as root (`dev/molecule/test-server-ssh.yml`). SELinux enforcing and a
+  real kernel need a real RHEL 9.6 VM, which the maintainer will set up for
+  regression runs from claude-dev, without KVM tests; pin it to 9.6, as UBI's
+  repositories already serve 9.8 packages. A dedicated sudo account (issue #14)
+  is closed as not planned.
+- Decided with the maintainer on 2026-10-17: claude_vm supports one path, an
+  Ubuntu VM on an Ubuntu host, until hosting the VM on RHEL is needed. Its
+  supported hosts narrow to Ubuntu, and its VM test moves into GitHub CI, whose
+  standard Linux runners have `/dev/kvm` since April 2024 (an x86_64 host; ARM64
+  stays proven by hand on the Pi). A branch of its own, next.
+- Since 2026-10-17 claude-dev also holds a GitHub CLI login of Claude's own
+  account (device flow, approved by the maintainer), to open pull requests and
+  read issues. It reaches what the push key reaches.
 - In claude_vm's VM on the Pi (2026-10-16): `make setup`, `make lint` and
   `make images` pass; sudoers' server test passes as root, not rootless;
   node_setup's and claude_code's build-machine tests pass as root with
@@ -586,10 +629,10 @@ Last updated 2026-10-17, for accept, before v0.5.0's release.
   only CI checks the memory limits (the cloud sandbox has cgroup v1);
   claude_vm's VM could (cgroup v2) but has not yet.
 - Not tested yet ([docs/status.md](docs/status.md#not-tested-yet) lists them
-  for users): a deploy over SSH with
-  sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
-  without it; look at it later); GitLab CI (the `runner-check` job will report
-  whether the runner can start containers).
+  for users): a real RHEL server or VM, with SELinux enforcing (the
+  maintainer's RHEL server runs without it; the RHEL 9.6 VM above is for this);
+  a deploy as an account that uses sudo; GitLab CI (the `runner-check` job will
+  report whether the runner can start containers).
 - To do: a security review of how pipelines get `container.env`, and of the
   project's `.npmrc`, which stays in the layers of the `<name>:build` image on
   the build machine.
