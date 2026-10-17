@@ -27,19 +27,11 @@ __claude_vm_boot:
   x86_64: hd
   aarch64: uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no
 
-# Packages on the host, by OS family and architecture. An ARM64 VM boots with
-# UEFI, from the firmware of qemu-efi-aarch64 (Ubuntu) or edk2-aarch64 (RHEL).
+# Packages on the host (Ubuntu), by architecture. An ARM64 VM boots with UEFI,
+# from the firmware of qemu-efi-aarch64.
 __claude_vm_host_packages:
-  Debian:
-    x86_64: [qemu-system-x86, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
-    aarch64: [qemu-system-arm, qemu-efi-aarch64, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
-  RedHat:
-    x86_64: [qemu-kvm, qemu-img, libvirt, virt-install, xorriso, nftables]
-    aarch64: [qemu-kvm, qemu-img, edk2-aarch64, libvirt, virt-install, xorriso, nftables]
-# libvirt's daemons: Ubuntu runs the classic one, RHEL 9 one per driver.
-__claude_vm_host_services:
-  Debian: [libvirtd.service]
-  RedHat: [virtqemud.socket, virtnetworkd.socket, virtstoraged.socket, virtlogd.socket]
+  x86_64: [qemu-system-x86, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
+  aarch64: [qemu-system-arm, qemu-efi-aarch64, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
 
 # The keys the VM's repositories are signed with.
 __claude_vm_python_key_fingerprint: F23C5A6CF475977595C89F51BA6932366A755776
@@ -62,8 +54,7 @@ __claude_vm_trial_firmware_files:
   plain: {code: /usr/share/AAVMF/AAVMF_CODE.no-secboot.fd, vars: /usr/share/AAVMF/AAVMF_VARS.fd}
 # The overview shows these packages' versions, where installed.
 __claude_vm_overview_packages:
-  [qemu-system-arm, qemu-system-x86, qemu-kvm, qemu-efi-aarch64, edk2-aarch64, ovmf, edk2-ovmf, libvirt-daemon-system,
-   libvirt-daemon-kvm, virtinst, virt-install, swtpm]
+  [qemu-system-arm, qemu-system-x86, qemu-efi-aarch64, ovmf, libvirt-daemon-system, virtinst, swtpm]
 # Console lines that tell how far a boot got: UEFI, shim, Linux, cloud-init, login.
 __claude_vm_console_markers: >-
   BdsDxe|Exception|Security Violation|[Ss]him|Booting Linux|EFI stub|Cloud-init v[.]|FAILED|login:
