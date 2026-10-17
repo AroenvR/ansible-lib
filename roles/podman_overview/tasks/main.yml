@@ -44,6 +44,7 @@
       - --
       - env
       - XDG_RUNTIME_DIR=/run/user/{{ __podman_overview_quadlet | dirname | basename }}
+      - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __podman_overview_quadlet | dirname | basename }}/bus
       - systemctl
       - --user
       - show

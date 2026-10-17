@@ -100,6 +100,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ item.uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ item.uid }}/bus
           - systemctl
           - --user
           - is-active
@@ -120,6 +121,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_uid }}/bus
           - podman
           - exec
           - deploy-test-app
@@ -137,6 +139,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
           - podman
           - exec
           - claude-code
@@ -157,6 +160,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_uid }}/bus
           - podman
           - exec
           - deploy-test-app
@@ -175,6 +179,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
           - podman
           - exec
           - claude-code
@@ -197,6 +202,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_uid }}/bus
           - podman
           - exec
           - deploy-test-app
@@ -218,6 +224,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
           - podman
           - exec
           - claude-code
@@ -324,6 +331,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_uid }}/bus
           - podman
           - exec
           - deploy-test-app
@@ -343,6 +351,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
           - podman
           - exec
           - claude-code
@@ -387,6 +396,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
           - podman
           - exec
           - claude-code
@@ -449,7 +459,7 @@
   gather_facts: false
   vars_files: [vars/project.yml]
   vars:
-    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, systemctl, --user]
+    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3001/bus", systemctl, --user]
   tasks:
     - name: Run podman_overview
       ansible.builtin.include_role:
@@ -573,6 +583,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
           - podman
           - inspect
           - --format=json
@@ -608,6 +619,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/3001
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3001/bus
           - podman
           - images
           - --format={% raw %}{{.Repository}}:{{.Tag}}{% endraw %}
@@ -695,7 +707,7 @@
   vars_files: [vars/project.yml]
   vars:
     __node_deploy_test_unhealthy: /opt/deploy-test-app/data/unhealthy
-    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, systemctl, --user]
+    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3001/bus", systemctl, --user]
   tasks:
     - name: Check the Node.js service, as podman_service's entry point verify does
       ansible.builtin.include_role:
@@ -735,6 +747,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/{{ item.uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ item.uid }}/bus
           - podman
           - exec
           - "{{ item.account }}"
@@ -954,6 +967,7 @@
           - --
           - env
           - XDG_RUNTIME_DIR=/run/user/3005
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3005/bus
           - podman
           - exec
           - deploy-test-app
