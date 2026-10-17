@@ -1,140 +1,128 @@
 # AGENTS.md
 
-Instructions for AI coding agents working on this repository. Humans: see
-[README.md](README.md) (using the collection) and [CONTRIBUTING.md](CONTRIBUTING.md)
-(developing it). This file only adds what an agent needs on top of those.
+Instructions for AI coding agents working on this repository, as directives.
+[CONTRIBUTING.md](CONTRIBUTING.md) is part of these instructions: setup,
+repository layout, make targets, tests, rules for library code, branches, CI
+and releases are there, written for every developer. Read it before changing
+anything. This file adds what applies to agents: rules, pitfalls, decisions
+and status. What applies to every developer goes into CONTRIBUTING.md, a role
+README or `docs/`, and this file links to it instead of repeating it.
 
 ## What this is
 
-`aslib.infra` is an Ansible collection: a library of small, tested roles for
-RHEL 9.6 and Ubuntu 24.04 (and newer) servers, plus roles and ready-made playbooks that take a
-Node.js backend from project to running service (node_setup, node_image,
-node_deploy), an always-on Claude Code agent for root (claude_code), and a VM
-where Claude Code may have root, for development (claude_vm). Roles
-are named by area: `podman_` roles work for any image, `node_` roles add what
-Node.js projects need (node_deploy is a thin layer over podman_service), and
-claude_code is the same kind of layer for Claude Code. Consumers install a release tarball that holds only runtime
-files; tests and tooling never ship (`build_ignore` in `galaxy.yml`).
+`aslib.infra` is an Ansible collection: small, tested roles for RHEL 9.6 and
+Ubuntu 24.04 (and newer) servers, and ready-made playbooks. Roles are named by
+area: `podman_` roles work for any image, and the `node_` roles (node_setup,
+node_image, node_deploy) take a Node.js backend from project to running
+service. claude_code runs an always-on Claude Code agent for root, claude_vm
+creates a VM where Claude Code may have root, for development, and gitlab runs
+GitLab CE as a rootless Podman service. node_deploy, claude_code and gitlab
+are thin layers over podman_service. Consumers install a release tarball that
+holds only runtime files; tests and tooling never ship (`build_ignore` in
+`galaxy.yml`). What it offers and how it is used: [README.md](README.md), and
+the guides and the reference in [docs/](docs/README.md).
 
 ## Non-negotiable constraints
 
-- **Runtime compatibility.** The oldest systems supported are RHEL 9.6 and
-  Ubuntu 24.04. Roles must run on the `ansible-core` they ship: 2.14.18 (RHEL
-  9.6, AppStream, on Python 3.11) and 2.16.3 (Ubuntu 24.04, universe, on Python
-  3.12), with RHEL 9.6's Podman 5.4 on servers and Ubuntu 24.04's Podman 4.9 on
-  build machines. Read module docs for the oldest version offline:
-  `.venv/ansible-2.14/bin/ansible-doc ansible.builtin.<module>`.
+- **Runtime compatibility.** Roles must run on the `ansible-core` the oldest
+  supported systems ship: 2.14.18 (RHEL 9.6, AppStream) and 2.16.3 (Ubuntu
+  24.04, universe), with Podman 5.4 on servers and 4.9 on build machines. Read
+  module docs for 2.14, offline, as [Compatibility](CONTRIBUTING.md#compatibility)
+  shows.
 - **Only `ansible.builtin`.** Any other collection is a dependency for every
   consumer; ask the maintainer first.
-- **Offline servers.** Never assume internet access. Every repository, key or
-  download URL is a role variable with an upstream default (npm's settings come
-  from the project's `.npmrc`), listed in the guide's "Download sources" table
-  (node_setup's README.md.j2) and node_image's README. Install packages only
-  when missing (the dnf module contacts every enabled repository even for
-  installed packages). Each role README states exactly what the server needs.
+- **Offline servers.** Never assume internet access: every repository, key or
+  download URL is a role variable with an upstream default (three gaps remain,
+  see Status), and packages are installed only when missing ([Offline servers
+  and repositories](CONTRIBUTING.md#offline-servers-and-repositories)).
 - **Podman, never Docker.**
 - **The maintainer's server conventions for containers.** Root manages the
-  accounts, images and Quadlet files. Every service runs rootless as an account
-  of its own (`useradd`, `loginctl enable-linger`). Image archives live in
-  `/opt/containers/images/<service>/` and are loaded as that account (`runuser -u <user> --
-  env XDG_RUNTIME_DIR=/run/user/<uid> podman load`). Quadlet files live in
-  `/etc/containers/systemd/users/<UID>/`. The maintainer drives the account's
-  systemd with `systemctl --user -M <user>@ ...`; roles use the same `runuser`
-  prefix as for Podman (see Known pitfalls). A service's own directory is
-  `/opt/<service>/`: the app's, its working directory at the same path inside
-  the container, never touched by a deploy except `config/` in it; it
-  survives a removal unless asked (`podman_service_remove_workdir`). `podman_service` implements this; build every
-  container-based role on it.
+  accounts, images and Quadlet files; every service runs rootless as an account
+  of its own; `/opt/<service>/` is the app's, and a deploy touches nothing in
+  it but `config/`. podman_service implements them
+  ([Conventions](roles/podman_service/README.md#conventions)): build every
+  container-based role on it. The maintainer drives an account's systemd with
+  `systemctl --user -M <user>@ ...`; roles use the same `runuser` prefix as for
+  Podman (see Known pitfalls).
 - **Dependencies.** Development tools may be current but are pinned in
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
   enterprise-proven; prefer the OS repositories.
 - **KISS over edge cases.** Clarity and readability come first; do not add
-  complexity for a 1% case. SOLID applies at role level (see CONTRIBUTING.md).
-- **Checks in tests and at runtime (test first).** What a role promises is a
-  list of checks in its `verify` entry point (podman_service has the first):
-  its Molecule test runs it, and so does every deploy. Write the check first,
-  see it fail, then build. Between deploys, Podman's own health checks keep a
-  service honest: systemd counts it as started once it is healthy, and
-  restarts it when it is not.
-- **Documentation and linting are mandatory.** Every public role variable is
-  documented in `meta/argument_specs.yml` with the same default as
-  `defaults/main.yml`; `make lint` enforces it, and runs ShellCheck on our shell
-  scripts (not on the maintainer's `.tools/` and `libs/`). Each option and mechanism is
-  described once, by the role that owns it (podman_service for every service's
-  settings); other READMEs link to that section and name the option only where
-  a reader uses it. A new option then changes its own role, not every README.
+  complexity for a 1% case. SOLID applies at role level ([Role
+  design](CONTRIBUTING.md#role-design)).
+- **Checks in tests and at runtime (test first).** Write the check first, see
+  it fail, then build ([Writing a test](CONTRIBUTING.md#writing-a-test)). What
+  a role promises is a list of checks in its `verify` entry point, which its
+  Molecule test and every deploy run. Between deploys, Podman's own health
+  checks keep a service honest ([The Quadlet
+  file](roles/podman_service/README.md#the-quadlet-file)).
+- **Documentation and linting are mandatory.** Document every public variable
+  in `meta/argument_specs.yml`, and each option and mechanism once, by the role
+  that owns it, as [Documentation](CONTRIBUTING.md#documentation) says; `make
+  lint` must pass.
 
 ## Commands
 
-The repository may be cloned anywhere, as `aslib/`, but must be a git checkout
-(Molecule finds `.config/molecule/` via the git root). make links it into
-`.venv/self/ansible_collections/aslib/infra`, where Ansible finds it as
-aslib.infra.
+[Setup](CONTRIBUTING.md#setup) prepares a machine, [Make
+targets](CONTRIBUTING.md#make-targets) says what each target runs and which
+need root, and [Writing a test](CONTRIBUTING.md#writing-a-test) how to write a
+test. On top of those:
 
-```sh
-make setup images                          # once: venvs, test-only collections, test containers
-make lint                                  # ansible-lint (production profile) + interface check
-make test-servers-2.14 ROLES=<role>        # roles that run on servers, in the test containers
-make test-build-machine-2.14 ROLES=<role>  # roles that run where Ansible runs
-make test-dist-2.14                        # build.yml, in a git checkout and without git
-make build                                 # everything CI runs: lint, 2.14 and 2.16, native test
-make dist                                  # tarball to try out in dist/ (runs build.yml)
-```
-
-Write the failing test first (`roles/<role>/molecule/<scenario>/verify.yml`),
-then the role. Name test tasks after what they check and end them with the test
-case; end each check with a `success_msg: PASSED <role> ...` line. Keep scenario
-playbooks free of Molecule-only variables: the native test runs them with plain
-`ansible-playbook`. A new role that supports Ubuntu goes into
-`UBUNTU_ROLES` in the Makefile, so the native test covers it. CONTRIBUTING.md
-explains the test layout and how releases are made.
-
-## Repository map
-
-| Path | Purpose |
-|---|---|
-| `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface |
-| `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
-| `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
-| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
-| `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
-| `roles/claude_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`make test-vm-<version>`) |
-| `roles/gitlab/molecule/gitlab/` | Deploys and uses GitLab on the RHEL 9 test server; not part of `make test` (`make test-gitlab-<version>`). `mock/` is a stand-in for GitLab's image (`gitlab_test_real: false`) |
-| `dev/molecule/` | Plays shared by several scenarios, such as the preparation of the test server for podman_service |
-| `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
-| `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
-| `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
-| `dev/` | ansible-core pins per version, test images, native test, CI helper scripts. Never shipped |
-| `.config/molecule/config.yml` | Molecule settings shared by all roles |
-| `.github/workflows/ci.yml`, `.gitlab-ci.yml` | CI; both only call make targets |
+- Run the server tests as root, as CI does, images included (`sudo make images
+  test-servers-2.14 ROLES=<role>`): rootful Podman has images of its own, and
+  rootless, sudoers' test failed on the RHEL 9 test server (see Known
+  pitfalls).
+- Verify from a clean state before delivering (see Working with the
+  maintainer).
 
 ## Working with the maintainer
 
-The maintainer and the agent work in **separate environments**. The
-maintainer's repositories (GitHub `AroenvR/aslib`, later GitLab) are the
-source of truth, and this file is the project's memory: a new session, in any
-tool, must be able to continue from the repository alone. Record decisions and
-their reasons here, and bring Status up to date before ending a block of work.
+Several agents work on the project at the same time, each in **an environment
+of its own**, separate from the maintainer's. The maintainer's repository is the
+source of truth. It has moved between names and hosts and will move again, so
+files call it `<repository>`, and galaxy.yml names none: a checkout's git
+remote is its source.
+This file is the project's memory: a new session, in any tool, must be able to
+continue from the repository alone. Record decisions and their reasons here,
+and bring Status up to date before ending a block of work.
 
 - **Roles.** The maintainer decides; the agent is the architect: it proposes,
   explains the trade-offs and asks one question at a time, then builds. When the
   maintainer wants to talk something through, talk; build once asked to. Work
   in steps, with a task list and a local commit per step.
+- **Work survives an interruption.** An agent can be cut off at any moment (its
+  credits run out, its machine reboots), so nothing lives only in its context:
+  - Commit every step locally, and push work in progress to the agent's own
+    branch with `[skip ci]` in the commit message (GitHub and GitLab start no
+    pipeline for it); the finished commit replaces it later.
+  - Keep notes, results and a handoff (what is done, what comes next, open
+    questions for the maintainer) in files outside `/tmp`: Ubuntu, claude_vm's
+    VM included, empties `/tmp` at every boot (systemd-tmpfiles, `D /tmp`).
+  - Before a long or costly step, make sure a new session could continue from
+    the repository, the handoff and this file alone.
 
-- **Start from the maintainer's branch.** Pull the branch they name (usually
-  `main`) and work on top of it: then every file of the repository, CI's
-  included, is the agent's to change as the work needs.
+- **Branches.** `main` and `accept` are the maintainer's: an agent starts from
+  `accept` (not main) and never pushes to either; the maintainer merges accept
+  into main. On top of accept, every file of the repository, CI's included, is
+  the agent's to change as the work needs. Each agent works on branches of its
+  own, named as [Branches and pull
+  requests](CONTRIBUTING.md#branches-and-pull-requests) says.
 - **Never touch the maintainer's own tooling**: `.tools/`, `libs/` (their Bash
   library, a git subtree), `.env.example` and personal files like them. They
-  stay in the zip exactly as the branch has them; the release tarball leaves
-  them out (`build_ignore`). Private directories outside git (e.g. `tmp/`) are
-  theirs too.
-- **Deliver every change as a complete zip** of the repository root (`git
-  archive` of the agent's branch). The maintainer replaces their tree with it,
-  keeping `.git/`, so the zip is taken exactly as it is: what it adds, changes
-  or lacks is added, changed or deleted. With each zip, give a commit message:
-  plain text, without attribution trailers (no Co-Authored-By, no session
-  links).
+  stay exactly as the branch has them, in a pushed branch and in a zip; the
+  release tarball leaves them out (`build_ignore`). Private directories outside
+  git (e.g. `tmp/`) are theirs too.
+- **Delivery is hybrid**, as the maintainer asks, and may take forms not
+  written down here yet. In every form, commit messages are plain text, without
+  attribution trailers (no Co-Authored-By, no session links).
+  - A pushed branch. An agent with push access pushes its branches (CI runs on
+    every push). It may open a pull or merge request into accept only when the
+    gates pass: every CI job green, the relevant tests proven to pass, lint
+    clean.
+  - A complete zip of the repository root (`git archive` of the agent's
+    branch). The maintainer replaces their tree with it, keeping `.git/`, so
+    the zip is taken exactly as it is: what it adds, changes or lacks is added,
+    changed or deleted. With each zip, give a commit message.
 - **Debugging on the maintainer's machines.** When the agent cannot reproduce
   a problem itself, each step it asks the maintainer to run is a playbook in the
   collection, not loose shell commands: an `overview` entry point that changes
@@ -152,7 +140,10 @@ their reasons here, and bring Status up to date before ending a block of work.
   Nothing the agent writes carries a mark of its tool (no attribution lines,
   session links or tool names in commits, files or comments).
 
-## Known pitfalls (all verified)
+## Known pitfalls
+
+All verified (seen, reproduced, or read in documentation or source), unless
+the entry says it is likely or not verified yet.
 
 - Molecule 6.0.3 searches `~/.ansible/collections` before `ANSIBLE_COLLECTIONS_PATH`,
   so a stale installed copy can shadow the code under test. Hence `prerun: false`
@@ -162,12 +153,15 @@ their reasons here, and bring Status up to date before ending a block of work.
   compatibility. Only the Molecule tests and the native test do.
 - ansible-lint cannot parse GitLab's `!reference` tag; use YAML anchors.
 - `meta-runtime[unsupported-version]` is skipped on purpose (2.14 is supported).
+- `galaxy[no-repository]` is skipped on purpose: galaxy.yml names no repository
+  (anonymised, 2026-10-16) and aslib.infra is not published on Galaxy.
 - Role argument validation evaluates every default before the first task, so a
   default with a failing lookup (e.g. reading package.json) breaks the role with
   an unreadable error. Read files in tasks instead.
-- The agent's sandbox cannot reach Red Hat's registry, nodejs.org or GitHub
-  tarballs. `node_image` was verified there with stand-in images and locally
-  served samples; only CI exercises real UBI and GitHub.
+- The cloud sandbox some agents use cannot reach Red Hat's registry, nodejs.org
+  or GitHub tarballs. `node_image` was verified there with stand-in images and
+  locally served samples. claude_vm's VM reaches them, but has not run
+  node_image's test yet: so far only CI exercises it with real UBI and GitHub.
 - A role called from a loop shares the caller's `item`. Loops inside roles use
   their own `loop_var` (`__<role>_<name>`), and so do loops calling a role.
 - NestJS's default branch is `master`, not `main`. Its samples have no lockfile
@@ -185,12 +179,16 @@ their reasons here, and bring Status up to date before ending a block of work.
 - Red Hat's ubi-init image (the RHEL test server) cannot run an account's
   systemd instance (user@.service) as it is: systemd-logind is masked (`loginctl`
   fails with "Could not activate remote peer") and the PAM stack of user@.service
-  fails, after which /run/user/<uid> disappears again. node_deploy's test fixes
-  both in prepare.yml and prints the journal of user@.service if it still fails.
-- node_deploy's test runs rootless Podman inside the RHEL 9 test container:
-  privileged, with `/home` on a volume (no overlay on overlay). In the agent's
-  sandbox it only works with an Ubuntu 24.04 stand-in for the server and
-  `--cgroups=disabled` (the sandbox has cgroup v1); CI is the real check.
+  fails, after which /run/user/<uid> disappears again. The tests of node_deploy
+  and gitlab fix both in their shared prepare play
+  (`dev/molecule/prepare-podman-server.yml`); if the account's systemd still
+  does not start, podman_service's error names the command that shows why
+  (`journalctl --unit user@<uid>.service`).
+- node_deploy's test runs rootless Podman inside the RHEL 9 test container, and
+  so does gitlab's: privileged, with `/home` on a volume (no overlay on
+  overlay). In the cloud sandbox node_deploy's only works with an Ubuntu 24.04
+  stand-in for the server and `--cgroups=disabled` (that sandbox has cgroup
+  v1); CI is the real check.
 - An `until` loop with `failed_when: false` never fails, even when its retries
   run out: put the real condition in `failed_when`.
 - `--userns=keep-id:uid=1001,gid=0` fails (crun: invalid gid_map); podman_service maps
@@ -204,8 +202,10 @@ their reasons here, and bring Status up to date before ending a block of work.
 - `runuser` keeps the caller's working directory, which the account usually
   cannot enter (Ansible's is under /root): Podman then fails with "cannot chdir".
   Run such commands with `chdir: /`.
-- Never try `podman image prune` or `podman system reset` on the sandbox host's
-  own storage: it holds the test and stand-in images. Test them in a container.
+- Never try `podman image prune` or `podman system reset` on the storage of the
+  machine that runs the tests (the cloud sandbox, claude_vm's VM): it holds the
+  test images, and the cloud sandbox's stand-in images. Test them in a
+  container.
 - `.nvmrc` LTS aliases (`lts/*`, `lts/<codename>`) map to majors in
   `roles/node_image/vars/main.yml`; add a line when a new LTS gets its codename.
 - Podman's `--env-file` (and Quadlet's `EnvironmentFile=`) keeps quotes and
@@ -341,14 +341,36 @@ their reasons here, and bring Status up to date before ending a block of work.
   need `%%`. Podman 5.8.2 fixed double quotes in it, so avoid them.
 - `getent` replaces the whole `ansible_facts.getent_<database>`: a later lookup
   of the full passwd database removes the key looked up earlier, and the other way round.
-- A cloud sandbox may lack what the tests assume (the agent's had cgroup v1, no
-  systemd as PID 1, no Red Hat subscription, no KVM). What made the suite run
-  there, in a throwaway copy only: `PodmanArgs=--cgroups=disabled` in the
-  Quadlet template; an Ubuntu image standing in for `aslib-test/rhel9` (so
-  `package` and Ubuntu's package names in the server prepare); local stand-ins
-  for the UBI Node.js images (`node_image_registry`) and for Claude Code's base
-  (`claude_code_test_real: false`); NestJS's tarballs from a local web server
-  the containers can reach.
+- An agent's environment may lack what the tests assume. Two are known: a
+  cloud sandbox and claude_vm's VM.
+  - The cloud sandbox some agents use had cgroup v1, no systemd as PID 1, no
+    Red Hat subscription and no KVM. What made the suite run there, in a
+    throwaway copy only: `PodmanArgs=--cgroups=disabled` in the Quadlet
+    template; an Ubuntu image standing in for `aslib-test/rhel9` (so `package`
+    and Ubuntu's package names in the server prepare); local stand-ins for the
+    UBI Node.js images (`node_image_registry`) and for Claude Code's base
+    (`claude_code_test_real: false`); NestJS's tarballs from a local web server
+    the containers can reach.
+  - claude_vm's VM `claude-dev` on the maintainer's Raspberry Pi 4 (Ubuntu
+    24.04 ARM64, 2 vCPUs, 2.4 GiB of memory; verified 2026-10-16) has cgroup v2
+    with cpu, memory and pids delegated to user@.service, and reaches Red Hat's
+    registry, nodejs.org, GitHub, PyPI, Ansible Galaxy and npm. `make setup`,
+    `make lint` and `make images` pass there; run the server tests as root (see
+    below). It has no /dev/kvm (no nested KVM), so `make test-vm-*` cannot run
+    there.
+- Run the server tests as root, as CI does (`sudo make images
+  test-servers-2.14`). Rootless, in claude_vm's VM, `make test-servers-2.14
+  ROLES=sudoers` failed on the RHEL 9 test server: `sudo --list
+  --other-user=deploy` gave "sudo: PAM account management error: Authentication
+  service cannot retrieve authentication info". A plain ubi-init:9.6 container
+  fails the same way under rootless Podman (4.9.3) and passes under rootful
+  Podman. Run as root (`sudo make images test-servers-2.14 ROLES=sudoers`), the
+  test passes on both test servers.
+- claude_vm's VM gets Python 3.11 from a deadsnakes source of claude_vm's own
+  (`/etc/apt/sources.list.d/deadsnakes.list`, signed by
+  `/etc/apt/keyrings/deadsnakes.asc`). Adding the PPA a second time with
+  `add-apt-repository ppa:deadsnakes/ppa` broke `apt-get update` there
+  ("Conflicting values set for option Signed-By"): use the source it has.
 - A default ACL replaces the umask, but not the mode a program asks for: a file
   created 0600 (Python's tempfile) gets `group::---`, whatever the default ACL
   gives the group. A shell's `>` (0666) gets `group::rw-` even with umask 077.
@@ -365,17 +387,17 @@ their reasons here, and bring Status up to date before ending a block of work.
   single quotes intact; without the double quotes, systemd would take single
   quotes as its own quoting. `quadlet -dryrun -user` (with QUADLET_UNIT_DIRS)
   shows the `podman run` a Quadlet file becomes.
-- An image's `STOPSIGNAL` is the container's stop signal (the sandbox's
-  stand-in images from systemd images declare SIGRTMIN+3, which a plain process
-  ignores, so a stop waited out its timeout). GitLab's entrypoint stops cleanly on
-  SIGTERM; the gitlab role sets `StopSignal=SIGTERM` and 300 seconds.
+- An image's `STOPSIGNAL` is the container's stop signal (the cloud sandbox's
+  stand-in images, built on systemd images, declare SIGRTMIN+3, which a plain
+  process ignores, so a stop waited out its timeout). GitLab's entrypoint stops
+  cleanly on SIGTERM; the gitlab role sets `StopSignal=SIGTERM` and 300 seconds.
 - GitLab's image runs as root inside its container and writes outside its
   volumes at every start (runit, Chef, SSH host keys): podman_service's hardened
   template (user 1001, read-only, no capabilities) cannot run it. It reads
   `GITLAB_OMNIBUS_CONFIG` (Ruby) before `/etc/gitlab/gitlab.rb`, copies
   `gitlab.rb` there only when missing, and answers `/` with a redirect to its
   `external_url`, which the server itself may not resolve.
-- Read in GitLab 19.4.1's source (the agent's sandbox cannot run GitLab, so CI
+- Read in GitLab 19.4.1's source (the cloud sandbox cannot run GitLab, so CI
   is the proof): `gitlab-healthcheck` passes without its settings file
   (`/opt/gitlab/etc/gitlab-healthcheck-rc`) since 19.1, and `gitlab-ctl
   reconfigure` writes that file at the end of every start, while Quadlet's
@@ -422,7 +444,7 @@ their reasons here, and bring Status up to date before ending a block of work.
   freed a range in between.
 - Rootless Quadlet units wait for the system's `network-online.target`
   (`podman-user-wait-network-online.service`, up to 90 seconds each start); in
-  the agent's sandbox the target never comes up, so each start there takes 90 s.
+  the cloud sandbox the target never comes up, so each start there takes 90 s.
 
 ## Looking inside a running service (field notes)
 
@@ -447,21 +469,75 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
+Last updated 2026-10-17, for accept, before v0.5.0's release.
 
-- Decided with the maintainer on 2026-10-16: the repository is
-  `AroenvR/aslib` (formerly ansible-lib), cloned as `aslib/`, anywhere; make's
-  link in `.venv/self/` replaced the required `ansible_collections/aslib/infra`
-  path, and both CI pipelines work in their checkout itself.
+- Decided with the maintainer on 2026-10-16: each kind of reader has one place.
+  README.md is a short landing page (what aslib.infra is, who it is for, a
+  quick start, how to install, links onwards). `docs/` holds the users' guides,
+  one per job, and the install page, the reference and the status; it ships
+  with the collection (it is not in `build_ignore`), so its relative links work
+  in an installed copy too. The role READMEs stay each role's reference.
+  CONTRIBUTING.md is the developers' documentation: setup, repository layout,
+  make targets, tests, rules, branches, CI and releases. AGENTS.md holds
+  directives, pitfalls, decisions and status for agents, and links to
+  CONTRIBUTING.md and `docs/` instead of repeating them
+  ([Documentation](CONTRIBUTING.md#documentation)).
+- Decided with the maintainer on 2026-10-16: the repository is aslib (formerly
+  ansible-lib), cloned as `aslib/`, anywhere; make's link in `.venv/self/`
+  replaced the required `ansible_collections/aslib/infra` path, and both CI
+  pipelines work in their checkout itself. Where it is hosted keeps changing
+  (a self-hosted GitLab next), so documentation names no location: it says
+  `<repository>`, and `<version>` for a release in examples. galaxy.yml names
+  none either (anonymised: no `repository`, the author without a profile URL);
+  a checkout's git remote is its source. Once offline hosting works, every URL
+  becomes dynamic.
+- Decided with the maintainer on 2026-10-16: several agents at once, each in an
+  environment of its own, starting from `accept` on branches of their own;
+  delivery by pushed branch (requests into accept only past the gates) or by
+  zip. See Working with the maintainer.
+- Decided with the maintainer on 2026-10-16: the way to `main` is a branch of
+  one's own from `accept`, a pull or merge request into `accept`, accepted with
+  a green CI at the very least, and the maintainer merging `accept` into
+  `main`. A foundation the maintainer will extend
+  ([Branches and pull requests](CONTRIBUTING.md#branches-and-pull-requests)).
+- Decided with the maintainer on 2026-10-16: the security model allows a push
+  credential in claude_vm's VM: a key with which the agent there pushes its own
+  branches of aslib.infra's repository (main and accept stay the maintainer's).
+  Still no keys to servers. claude_vm's README says so.
+- Decided with the maintainer on 2026-10-16: every download source becomes a
+  role variable with an upstream default. Gaps to close: GitLab's image
+  (`__gitlab_image` in roles/gitlab/vars/main.yml), nvm's URL (`NVM_URL` only
+  in claude_code's Containerfile) and the UBI RPM repositories inside the image
+  builds of node_image and claude_code. A feature of its own, designed first.
+- Decided with the maintainer on 2026-10-17, for those gaps and every download
+  source: follow each tool's own configuration and its own order, never a layer
+  of aslib's on top, and default to what the developer or the machine already
+  provides. For npm the project's `.npmrc` comes before the build machine's
+  `~/.npmrc`; for images a role variable names the image and the build
+  machine's `registries.conf` says where it comes from. aslib adds a setting
+  only where a container build cuts a tool off from its own configuration,
+  defaults it to where the tool looks, carries the file into the build step
+  only (never into the image) and merges nothing. On a subscribed RHEL build
+  machine Podman already gives UBI builds the host's repositories. Where no
+  convention exists (an RPM mirror for any other build machine), one setting
+  names a directory of `.repo` files that replaces the image's repositories for
+  the build instead of adding to them. The details are the feature's design.
+  Later, a Sonatype Nexus repository, to test it all and to store images.
+- In claude_vm's VM on the Pi (2026-10-16): `make setup`, `make lint` and
+  `make images` pass; sudoers' server test passes as root, not rootless;
+  node_setup's and claude_code's build-machine tests pass as root with
+  ansible-core 2.14, the latter building the real Claude Code image (2.1.292,
+  `dnf upgrade` included) on ARM64; no nested KVM, so no `make test-vm-*` there
+  (see Known pitfalls).
 
 - Debugged with the maintainer on their Raspberry Pi 4 (2026-10-16), with the
   new claude_vm_overview and claude_vm_boot_trial: claude-dev's firmware crashed
   in Ubuntu's shim whenever Secure Boot was enforced (libvirt's ARM64 default;
-  see Pitfalls). The page offset of the address (`…B98`) matches LP #2145095,
-  whose reporter saw Noble guests fail on a Raspberry Pi 4. Fixed by booting an
-  ARM64 VM without Secure Boot. Then claude_vm created and set up claude-dev on
-  the Pi in one run (cloud-init from the CD, deadsnakes' Python 3.11 for arm64,
-  Claude Code): its first run on real hardware.
+  see Known pitfalls). The page offset of the address (`…B98`) matches
+  LP #2145095, whose reporter saw Noble guests fail on a Raspberry Pi 4. Fixed
+  by booting an ARM64 VM without Secure Boot. Then claude_vm created and set up
+  claude-dev on the Pi in one run (cloud-init from the CD, deadsnakes' Python
+  3.11 for arm64, Claude Code): its first run on real hardware.
 
 - Decided with the maintainer on 2026-10-11: a GitLab of Claude's own, GitLab CE
   as a rootless Podman service (role gitlab, a proof of concept) on the laptop
@@ -471,7 +547,8 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   setup mechanism waits). Next, each a feature of its own:
   - Backups, which the maintainer will copy to a NAS: `gitlab-backup create`
     plus `gitlab-ctl backup-etc` (gitlab-secrets.json is not in the former),
-    restorable only on the same version. Until then the README says to copy
+    restorable only on the same version. Until then [gitlab's
+    README](roles/gitlab/README.md#backups) says to copy
     /opt/gitlab with GitLab stopped. A copy of /opt/gitlab belongs to the
     account's UID and subordinate UIDs: a fixed `podman_service_uid` keeps a
     redeploy on it working; podman_service hands a directory owned by another UID
@@ -493,7 +570,7 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   services), `dnf upgrade` in claude_code's Containerfile, and memory limits
   (`podman_service_memory`, no limit by default; a role restricts its own
   service by default, as claude_code does with 4g, and the deployer can always
-  lift it). A sticky bit for the zone's README stays out (see Pitfalls).
+  lift it). A sticky bit for the zone's README stays out (see Known pitfalls).
 - Decided with the maintainer on 2026-10-08: the oldest systems supported are
   RHEL 9.6 and Ubuntu 24.04, so the tests run ansible-core 2.14 and 2.16 (2.12
   and Ubuntu 22.04 are gone); ShellCheck joins `make lint`; Podman's own health
@@ -501,12 +578,15 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   Podman 5, so RHEL 9.6's servers) watch each service that has one; each role's
   promises become a `verify` entry point, starting with podman_service.
 
-- GitHub Actions passed everything up to v0.3.0, and the maintainer's
-  regression tests on their RHEL server pass: the NestJS project and Claude Code
-  side by side. Only CI checks the memory limits (the agent's sandbox has cgroup
-  v1) and the real Claude Code image's `dnf upgrade` (Red Hat's registry is out
-  of the sandbox's reach).
-- Not tested yet (README "Status" lists them for users): a deploy over SSH with
+- GitHub Actions passed everything up to v0.4.0 (CI tags a release only once
+  every job passed), and the maintainer's regression tests on their RHEL server
+  pass: the NestJS project and Claude Code side by side. The real Claude Code
+  image's `dnf upgrade` needs Red Hat's registry, out of the cloud sandbox's
+  reach: CI checks it, and so did claude_vm's VM (2026-10-16, above). So far
+  only CI checks the memory limits (the cloud sandbox has cgroup v1);
+  claude_vm's VM could (cgroup v2) but has not yet.
+- Not tested yet ([docs/status.md](docs/status.md#not-tested-yet) lists them
+  for users): a deploy over SSH with
   sudo to another machine; SELinux enforcing (the maintainer's RHEL server runs
   without it; look at it later); GitLab CI (the `runner-check` job will report
   whether the runner can start containers).
@@ -515,8 +595,9 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   the build machine.
 - Releases, decided with the maintainer: CI runs on every push to every branch
   (main and accept get their own pipelines later). A passing branch publishes a
-  7-day branch build (only the newest kept); a passing main publishes the next
-  patch version as a release with its tag.
+  7-day branch build (GitHub keeps only the newest); a passing main publishes
+  the next version (one patch above the latest tag, or galaxy.yml's version
+  when that is higher) as a release with its tag.
 - Roles by area, decided with the maintainer: `podman_` roles work for any image
   (podman_service deploys, podman_overview shows root what runs), `node_` roles
   add what Node.js projects need. A future language gets `<language>_` roles on
@@ -581,24 +662,24 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   update rewrites them, keeping a changed one as `.bak`, and merging is the
   project maintainer's. config/ (the project's part of the policy, CLAUDE.md)
   is the project's, written once from aslib.infra's templates; the deploy merges
-  aslib.infra's base policy into it (see Status). `claude_code_bypass_permissions`
-  is the POC's way to autonomy.
+  aslib.infra's base policy into it (see the 2026-10-09 decision above).
+  `claude_code_bypass_permissions` is the POC's way to autonomy.
   Tests run it next to the Node.js service.
 - claude_vm, a proof of concept, decided with the maintainer: for development,
   where Claude needs root (Molecule's tests use rootful Podman), the boundary is
   a VM of its own on a host with KVM (the maintainer's is a Raspberry Pi with
   Ubuntu Server 24.04, ARM64), never the maintainer's
   personal VM, which has no nested KVM and where Claude gets no root. What
-  matters is what the VM holds (only Claude's login: no keys to servers, no git
-  credentials; the maintainer fetches Claude's branches) and what it reaches
+  matters is what the VM holds (only Claude's login, and since 2026-10-16 a key
+  that pushes Claude's own branches, see above; no keys to servers) and what it reaches
   (the internet, not the local network, enforced by nftables on the host). Runs
   on the maintainer's Raspberry Pi 4 (ARM64); not yet on an x86_64 host with KVM
   or a RHEL host. On ARM64 the VM boots with UEFI firmware without Secure Boot
-  (qemu-efi-aarch64; see Pitfalls) and is ARM64 itself, deadsnakes' Python 3.11
-  included. GitLab next to it needs Podman 5 (podman_service): Ubuntu 24.04
-  has 4.9, 26.04 has 5.7. The VM has Python 3.11 (deadsnakes)
-  next to Ubuntu's 3.12, for both test venvs. Without KVM, the alternative is
-  Claude in an unprivileged account with a rootless test suite, not started.
+  (qemu-efi-aarch64; see Known pitfalls) and is ARM64 itself. The VM has Python
+  3.11 (deadsnakes, ARM64 included) next to Ubuntu's 3.12, for both test venvs.
+  GitLab next to it needs Podman 5 (podman_service): Ubuntu 24.04 has 4.9,
+  26.04 has 5.7. Without KVM, the alternative is Claude in an unprivileged
+  account with a rootless test suite, not started.
 - The shared zone `/opt/containers/shared/`, decided with the maintainer: every
   service reads and writes it; a default ACL gives the group the access an app's
   mode asks for, whatever its umask ("tighten later, once the flows work"). A
@@ -610,7 +691,7 @@ Last updated 2026-10-16, on the VM branch after v0.4.0, with GitLab.
   replace it until the next deploy, so its checksum sits in
   `/opt/containers/shared-checksums/` (root's, mounted read-only): Claude's
   CLAUDE.md says to check it first, and `verify` checks it. The maintainer
-  asked for the checksum; a sticky bit is out (see Pitfalls).
+  asked for the checksum; a sticky bit is out (see Known pitfalls).
 - Claude's CLAUDE.md: aslib.infra ships the template (claude_code/files/CLAUDE.md),
   each project adjusts its copy in config/. Positive, short, facts Claude can't
   infer; nothing Claude Code's own prompt already covers. The policy denies edits

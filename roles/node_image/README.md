@@ -28,9 +28,10 @@ The same builder image also installs node_modules for development, see
   with `npm ci`, exactly as locked; without it `npm install` resolves them anew
   on every build, so two builds of the same code can differ.
 - Optional: `.nvmrc` with the Node.js version, e.g. `22`, `v24.3.0`, `lts/*` or
-  `lts/krypton`. Without it, and for `lts/*`, the build uses Node.js 24, the
-  newest LTS release Red Hat publishes images for. Only the major version counts:
-  Red Hat's image brings its own latest patch release.
+  `lts/krypton`. Without it, and for `lts/*`, the build uses
+  `node_image_node_version`, by default Node.js 24, the newest LTS release Red
+  Hat publishes images for. Only the major version counts: Red Hat's image
+  brings its own latest patch release.
 - The server listens on port 3000 (or `process.env.PORT`) on all interfaces, as
   NestJS does by default. An app listening only on `localhost` is unreachable
   from outside the container.
@@ -47,7 +48,7 @@ The same builder image also installs node_modules for development, see
 - Podman 4.9 or newer, ansible-core and this collection. RHEL 9.6
   (`dnf install podman ansible-core`) and Ubuntu 24.04
   (`apt install podman ansible-core`) both work. Then install the collection as
-  described in the [collection README](../../README.md#get-it).
+  described in the [install guide](../../docs/install.md).
 - Access to the download sources below, or to mirrors of them.
 
 ## Download sources
@@ -57,12 +58,12 @@ project holds what is the same everywhere, each machine what differs:
 
 | What | In the project | On the build machine |
 |---|---|---|
-| Red Hat's `ubi9/nodejs-<major>` and `-minimal` images, from `registry.access.redhat.com` | `node_image_registry` | `/etc/containers/registries.conf` (rootless: `~/.config/containers/registries.conf`), which Podman applies to these names too |
+| Red Hat's `ubi9/nodejs-<major>` and `-minimal` images, by default from `registry.access.redhat.com` | `node_image_registry` | `/etc/containers/registries.conf` (rootless: `~/.config/containers/registries.conf`), which Podman applies to these names too |
 | Everything npm downloads: packages, the Node.js headers for native modules (`disturl=`), prebuilt binaries (e.g. `sqlite3_binary_host_mirror=`) | `.npmrc`, which wins | `node_image_npmrc`: the `~/.npmrc` of the user who builds |
 | RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | | Red Hat's UBI repositories, as set up in the base images |
 
-The build machine's `~/.npmrc` is mounted for the install only (a build secret)
-and never stored in an image. npm 11 and newer warn that settings it does not
+In the image build, the build machine's `~/.npmrc` is mounted for the install
+only (a build secret) and never stored in an image. npm 11 and newer warn that settings it does not
 know itself (`disturl`, `sqlite3_binary_host_mirror`) "will stop working in the
 next major version"; they work until then. Packages that cannot download their
 prebuilt binaries compile from source, which needs only the Node.js headers.
@@ -76,7 +77,8 @@ ansible-playbook image.yml    # or: ansible-playbook aslib.infra.node_image
 ```
 
 The result lands in `ansible/images/`, which keeps itself out of git: the image
-as `<name>-<version>.tar`, plus the generated `Containerfile` for reference. The
+as `<name>-<version>.tar` (a leading `@` dropped, a `/` in the name becoming
+`-`), plus the generated `Containerfile` for reference. The
 image is labelled with the name, the version and the git commit it was built
 from (`org.opencontainers.image.title`, `.version`, `.revision`). The build
 machine keeps two images of the project: `<name>:<version>` and `<name>:build`,
@@ -106,19 +108,20 @@ ansible-playbook prebuild.yml    # or: ansible-playbook aslib.infra.node_prebuil
 Installing dependencies runs code from every package (install scripts). This
 runs npm (`npm ci`, or `npm install` without a lockfile, devDependencies
 included) in a throwaway container of the builder image instead of on your
-machine. The container gets copies of `package.json`, `package-lock.json` and
-`.npmrc` and nothing else: no mounts, no capabilities. `node_modules` is copied
-out of it, and it is removed. Only then is the current
-`node_modules` saved as `node_modules.<UTC yyyymmddHHMMSS>.bak.tgz` and
-replaced, so a failed install changes nothing. To go back to a backup:
+machine. The container gets copies of `package.json`, `package-lock.json`,
+`.npmrc` and the build machine's own npm settings (`node_image_npmrc`), and
+nothing else: no mounts, no capabilities, and it is removed afterwards. Only
+once `node_modules` is copied out of it is the current `node_modules` saved as
+`node_modules.<UTC yyyymmddHHMMSS>.bak.tgz` and replaced, so a failed install
+changes nothing. To go back to a backup, from the project root:
 
 ```sh
 rm -rf node_modules && tar -xzf node_modules.20261003141502.bak.tgz
 ```
 
 Native modules are compiled in the container, for Linux with glibc 2.34 or
-newer and the Node.js version of `.nvmrc`. The backups are never sent to the
-image build; keep them out of git as well.
+newer and the Node.js major version of `.nvmrc`. The backups are never sent to
+the image build; keep them out of git as well.
 
 ## Options
 

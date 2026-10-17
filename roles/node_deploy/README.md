@@ -61,16 +61,16 @@ container's `/tmp`, in memory and emptied on every restart.
 The project's `ansible/templates/service.container.j2` (from
 [node_setup](../node_setup/README.md)) is the template of the Quadlet file
 ([what it sets](../podman_service/README.md#the-quadlet-file)): change it for
-anything the settings do not cover, such as a memory limit or a network. It
-belongs to aslib.infra: an update replaces it and keeps the project's version as
+anything the settings do not cover, such as a network. It belongs to
+aslib.infra: an update replaces it and keeps the project's version as
 `service.container.j2.bak`, so a change every project could use belongs in
 aslib.infra. The deploy restarts the service when the result changes.
 
 ## Deploy a new version
 
 Build the new version and run the deploy again, from the project's `ansible/`
-directory: `ansible-playbook build-and-deploy.yml` does both. The deploy replaces the image,
-restarts the service and removes the previous version.
+directory: `ansible-playbook build-and-deploy.yml` does both. The deploy
+replaces the image, restarts the service and removes the previous version.
 To go back, check out the previous version of the project and deploy that.
 
 ## Restart the service

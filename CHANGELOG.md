@@ -50,6 +50,16 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   host from inside the VM.
 - Changed: podman_service counts a redirect as the service's answer, and no
   longer follows it (GitLab answers with one, to its own URL).
+- Fixed: the `requirements.yml` example for a release (README's, now in
+  `docs/own-playbooks.md`) lacked the repository's address. The examples now
+  write `<repository>` for the URL of aslib.infra's repository and `<version>`
+  for a release.
+- Changed: the documentation is reorganised. README.md is a short landing page;
+  installing (compatibility, where to get a tarball, versions), a guide per job,
+  the reference of roles, playbooks and plugins, and what the tests cover are in
+  `docs/` (index: `docs/README.md`), which ships with the collection.
+- Changed: galaxy.yml names no repository URL and no profile URL for its
+  author: where aslib.infra is hosted keeps changing.
 
 ### Upgrading from 0.4
 

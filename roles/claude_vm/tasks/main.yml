@@ -49,7 +49,7 @@
 - name: Look up the installed packages
   ansible.builtin.package_facts:
 
-- name: Install QEMU/KVM, libvirt, virt-install and nftables where missing
+- name: Install QEMU/KVM, libvirt, virt-install, xorriso and nftables where missing
   ansible.builtin.package:
     name: "{{ __claude_vm_missing }}"
     state: present

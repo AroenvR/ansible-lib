@@ -103,8 +103,8 @@ argument_specs:
         description:
           - The most memory the container may use, e.g. C(4g); /tmp counts toward it. Past it, the kernel stops a
             process in the container rather than elsewhere on the server.
-          - Empty, the default, sets no limit. node_deploy and claude_code set this from node_deploy_memory and
-            claude_code_memory.
+          - Empty, the default, sets no limit. node_deploy, claude_code and gitlab set this from node_deploy_memory,
+            claude_code_memory and gitlab_memory.
       podman_service_shared:
         type: bool
         default: true
@@ -150,8 +150,9 @@ argument_specs:
     short_description: Check that a service aslib.infra.podman_service deployed keeps what the deploy promised
     description:
       - Checks, changing nothing, that the service's Quadlet file is installed, its account may run it at boot
-        (lingering), it is active, its container passed its latest health check (if it has one), and it answers HTTP
-        on its port (if it has one). Fails, saying which, if not. The deploy and the restart run the same checks.
+        (lingering), it is active, its container passed its latest health check (if it has one), it answers HTTP
+        on its port (if it has one), and, with the shared zone, the zone's README.md matches its checksum. Fails,
+        saying which, if not. The deploy and the restart run the same checks.
       - Works as root on the server, like the deploy.
     options:
       podman_service_name:

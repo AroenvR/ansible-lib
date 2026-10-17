@@ -122,7 +122,7 @@ dist-release: $(VENV)/lint ## Build a release, as CI does from main: dist/aslib-
 version: ## Print the collection's version (from galaxy.yml)
 	@echo $(VERSION)
 
-build: lint test test-native ## Everything CI runs before a release
+build: lint test test-native ## What CI runs before a release, except GitLab's test (test-gitlab-%)
 
 clean: ## Remove venvs and build output
 	rm -rf $(VENV) dist

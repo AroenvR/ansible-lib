@@ -86,9 +86,10 @@ argument_specs:
     description:
       - Installs the dependencies, devDependencies included, without running npm or the packages' install scripts on
         this machine. They run in a container of the builder image the image build uses (ubi9/nodejs-<major>, the
-        major version from .nvmrc), which gets package.json, package-lock.json and .npmrc and nothing else of this
-        machine, has no capabilities, and is removed afterwards. C(npm ci) with package-lock.json, otherwise
-        C(npm install); npm takes its settings from the project's .npmrc and, below that, I(node_image_npmrc).
+        major version from .nvmrc), which gets package.json, package-lock.json, .npmrc and I(node_image_npmrc) and
+        nothing else of this machine, has no capabilities, and is removed afterwards. C(npm ci) with
+        package-lock.json, otherwise C(npm install); npm takes its settings from the project's .npmrc and, below
+        that, I(node_image_npmrc).
       - Only once the install has succeeded, the current node_modules is saved as
         node_modules.<UTC yyyymmddHHMMSS>.bak.tgz in the project and replaced by the new one.
       - The result is for this machine if it runs Linux with glibc 2.34 or newer (RHEL 9, Ubuntu 24.04) and the

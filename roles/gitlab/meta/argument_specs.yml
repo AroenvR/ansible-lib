@@ -37,7 +37,7 @@ argument_specs:
       gitlab_http_port:
         type: int
         default: 8929
-        description: The HTTP port, the same on the server and in the container, where GitLab's NGINX listens on it.
+        description: The HTTP port, the same on the server and in the container, where GitLab's NGINX listens.
       gitlab_ssh_port:
         type: int
         default: 2224
