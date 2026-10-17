@@ -1,0 +1,6 @@
+# claude_vm (aslib.infra): written by every run. The key of the machine that runs
+# the playbook, then claude_vm_authorized_keys.
+{{ lookup('file', __claude_vm_key ~ '.pub') }}
+{% for __claude_vm_authorized_key in claude_vm_authorized_keys %}
+{{ __claude_vm_authorized_key }}
+{% endfor %}

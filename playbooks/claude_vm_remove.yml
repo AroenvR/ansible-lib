@@ -1,0 +1,14 @@
+---
+# Removes the VM claude-dev, its disk, network and firewall rules from the host;
+# Ubuntu's cloud image and the key ~/.ssh/claude-dev stay for the next one. Run
+# it like aslib.infra.claude_vm, then that one again for a fresh VM:
+#   ansible-playbook aslib.infra.claude_vm_remove --ask-become-pass
+- name: Remove the VM claude-dev from the host
+  hosts: "{{ 'all' if groups['all'] else 'localhost' }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove the VM
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_vm
+        tasks_from: remove

@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+// The stand-in's health check (see Containerfile): healthy once its GitLab answers.
+const fs = require('fs');
+const http = require('http');
+
+const start = JSON.parse(fs.readFileSync('/var/opt/gitlab/mock-start.json', 'utf8'));
+http.get(`http://localhost:${new URL(start.url).port}/`, () => process.exit(0)).on('error', () => process.exit(1));

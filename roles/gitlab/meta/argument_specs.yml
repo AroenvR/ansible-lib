@@ -1,0 +1,102 @@
+---
+argument_specs:
+  main:
+    short_description: Run GitLab Community Edition as a rootless Podman service (proof of concept)
+    description:
+      - Deploys GitLab CE, the official image of I(gitlab_version), as the service gitlab with
+        aslib.infra.podman_service, rootless, as an account of its own whose directory is /opt/gitlab. Its
+        conventions apply, and its settings for the account (podman_service_user, podman_service_uid) and the
+        directory (podman_service_dir); see C(ansible-doc -t role aslib.infra.podman_service).
+      - First downloads the image from Docker Hub as an archive on the Ansible machine, in I(gitlab_image_dir),
+        unless it is there; the server needs no access to Docker Hub.
+      - GitLab's settings come from the role, as config/gitlab.rb (read-only in the container, read before
+        /etc/gitlab/gitlab.rb), for a private instance on a small server without email - Service Ping, product usage
+        data, the container registry, Pages, KAS and monitoring are off, Puma and Sidekiq are sized for little memory. GitLab's
+        own volumes are etc/ (configuration, gitlab-secrets.json, SSH host keys), logs/ and data/ in /opt/gitlab.
+      - Once GitLab is healthy, sets the application settings it keeps in its database - sign-ups off, private
+        by default, nothing public but by administrators, no version check, no Auto DevOps, size limits - plus
+        I(gitlab_application_settings), and checks that root has a password.
+      - Refuses a directory that belongs to another UID than the account's, as GitLab's files there belong to that
+        UID and its subordinate UIDs; set podman_service_uid to keep one.
+      - A proof of concept, for a few users. Plain HTTP; no email; no backups yet.
+    options:
+      gitlab_version:
+        type: str
+        default: 19.4.1
+        description:
+          - The GitLab version, the image docker.io/gitlab/gitlab-ce:<version>-ce.0.
+          - To upgrade, raise it one required upgrade stop at a time (x.2, x.5, x.8, x.11; see GitLab's Upgrade Path
+            tool) and let the background migrations finish in between. Back up first.
+      gitlab_hostname:
+        type: str
+        default: gitlab.home.arpa
+        description:
+          - The name GitLab is reached by, in its URL (http://<name>:<gitlab_http_port>) and clone URLs. Every machine
+            that uses GitLab must resolve it to this server (DNS or /etc/hosts); C(.home.arpa) is meant for home
+            networks.
+      gitlab_http_port:
+        type: int
+        default: 8929
+        description: The HTTP port, the same on the server and in the container, where GitLab's NGINX listens on it.
+      gitlab_ssh_port:
+        type: int
+        default: 2224
+        description: The port of GitLab's SSH on the server (for git over SSH); 22 in the container.
+      gitlab_bind_address:
+        type: str
+        default: 0.0.0.0
+        description: The server's address GitLab's ports listen on; 0.0.0.0 makes them reachable from other machines.
+      gitlab_memory:
+        type: str
+        default: 4g
+        description: The most memory GitLab's container may use (podman_service_memory); empty for no limit.
+      gitlab_env_file:
+        type: path
+        default: "{{ lookup('env', 'PWD') }}/gitlab.env"
+        description:
+          - The container's environment variables on the Ansible machine, one C(KEY=value) per line, never in git.
+          - C(GITLAB_ROOT_PASSWORD) is root's first password, used only when GitLab creates its database - at least 8
+            characters, not a common password, without gitlab, devops, root, admin or example; GitLab fails to start
+            with one it rejects. Without it, GitLab writes a random one to /opt/gitlab/etc/initial_root_password and
+            deletes it after 24 hours.
+      gitlab_image_dir:
+        type: path
+        default: "{{ lookup('env', 'PWD') }}/images"
+        description: Where the image archive is kept on the Ansible machine, as gitlab-ce-<version>.tar.
+      gitlab_application_settings:
+        type: dict
+        default: {}
+        description:
+          - >-
+            More application settings, or other values for the role's (see vars/main.yml), as named in GitLab's API
+            (PUT /application/settings), e.g. C({max_artifacts_size: 500}). Visibility levels are numbers - 0
+            private, 10 internal, 20 public. An unknown name stops the deploy.
+      gitlab_config_extra:
+        type: str
+        default: ""
+        description: >-
+          More gitlab.rb lines (Ruby), added after the role's, e.g. C(gitlab_rails['time_zone'] = 'Europe/Amsterdam').
+  image:
+    short_description: Download GitLab's image as an archive
+    description:
+      - On the machine that runs it, downloads docker.io/gitlab/gitlab-ce:<gitlab_version>-ce.0 and saves it as
+        I(gitlab_image_dir)/gitlab-ce-<version>.tar, removing archives of other versions. Does nothing when the
+        archive is there. The entry point main runs it on the Ansible machine.
+      - Needs Podman 4.9 or newer and access to Docker Hub.
+    options:
+      gitlab_version:
+        type: str
+        default: 19.4.1
+        description: The GitLab version.
+      gitlab_image_dir:
+        type: path
+        default: "{{ lookup('env', 'PWD') }}/images"
+        description: Where the archive is kept.
+  remove:
+    short_description: Remove GitLab's service, keeping its data
+    description:
+      - Removes the service gitlab with aslib.infra.podman_service - its account, image, Quadlet and environment
+        files. /opt/gitlab, with GitLab's configuration, secrets and data, stays unless podman_service_remove_workdir
+        is true.
+      - A deploy afterwards uses that data again only under the same UID (podman_service_uid) and subordinate UIDs.
+    options: {}

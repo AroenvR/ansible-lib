@@ -40,7 +40,7 @@ replaces an installed copy, also one with the same version (branch builds carry
 the version of their `galaxy.yml`):
 
 ```sh
-ansible-galaxy collection install --force aslib-infra-0.4.0.tar.gz   # or the .tgz of a branch build
+ansible-galaxy collection install --force aslib-infra-0.5.0.tar.gz   # or the .tgz of a branch build
 ```
 
 **Offline control node:** copy the tarball over; installing it needs no network.
@@ -106,6 +106,26 @@ shared zone. Every build is also the update to Claude Code's newest version;
 `-e claude_code_bypass_permissions=true` deploys it without permission prompts.
 See [claude_code](roles/claude_code/README.md).
 
+**For development**, where Claude needs root (aslib.infra's own tests, for one), a
+VM of its own on a host with KVM, such as a spare laptop, keeps that root away
+from the host and the local network (a proof of concept):
+
+```sh
+ansible-playbook aslib.infra.claude_vm --ask-become-pass   # on the host; ends with how to log in
+```
+
+See [claude_vm](roles/claude_vm/README.md).
+
+**A GitLab of your own**, for git and CI configuration with Claude in that VM:
+GitLab Community Edition as a rootless Podman service, on the VM's host or any
+server (a proof of concept: plain HTTP, no email, no backups yet):
+
+```sh
+ansible-playbook aslib.infra.gitlab --ask-become-pass   # from the directory with gitlab.env; then http://gitlab.home.arpa:8929
+```
+
+See [gitlab](roles/gitlab/README.md).
+
 ## What runs on a server
 
 Every service runs rootless as an account of its own, so root's `systemctl` and
@@ -127,19 +147,19 @@ A project that writes its own playbooks pins aslib.infra in a `requirements.yml`
 ```yaml
 collections:
   # A release on GitHub. From GitLab's package registry it is:
-  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.4.0/aslib-infra-0.4.0.tar.gz
-  - name: /releases/download/v0.4.0/aslib-infra-0.4.0.tar.gz
+  # https://<gitlab>/api/v4/projects/<id>/packages/generic/aslib-infra/0.5.0/aslib-infra-0.5.0.tar.gz
+  - name: /releases/download/v0.5.0/aslib-infra-0.5.0.tar.gz
     type: url
 ```
 
 `ansible-galaxy collection install -r requirements.yml` installs it. To use a
 tarball file instead, such as a branch build or your own build, or a release
-downloaded from a private repository (`gh release download v0.4.0 --repo
+downloaded from a private repository (`gh release download v0.5.0 --repo
 REPO_URL`, or `curl --header "PRIVATE-TOKEN: ..."` on GitLab):
 
 ```yaml
 collections:
-  - name: ./aslib-infra-0.4.0.tar.gz
+  - name: ./aslib-infra-0.5.0.tar.gz
     type: file
 ```
 
@@ -164,6 +184,8 @@ role's README says so.
 | [podman_service](roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.6+) | Only if the `acl` package is missing |
 | [podman_overview](roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with how to read their logs | Servers (RHEL 9.6+) | No |
 | [claude_code](roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.6+) | To build: Red Hat's registry, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
+| [claude_vm](roles/claude_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (RHEL 9.6+, Ubuntu 24.04+) | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
+| [gitlab](roles/gitlab/README.md) | GitLab Community Edition as a rootless Podman service, with podman_service, set up for a private instance without email (proof of concept) | Servers (RHEL 9.6+) | The Ansible machine: Docker Hub, for the image. The server: no |
 
 Every role documents its variables; read them offline with
 `ansible-doc -t role aslib.infra.<role>`.
@@ -185,6 +207,12 @@ needed. The playbooks node_setup writes import them.
 | `ansible-playbook aslib.infra.overview` | A server itself, or any directory with an inventory, such as `ansible/` | Shows what aslib.infra runs on that server, or on the inventory's servers, each with the command that shows its log |
 | `ansible-playbook aslib.infra.podman_overview` | The same | Shows only the rootless Podman services, see [podman_overview](roles/podman_overview/README.md) |
 | `ansible-playbook aslib.infra.claude_setup` | An empty directory, or the root of an earlier setup | Writes a Claude Code project; its `ansible/` holds every other playbook it needs, see [claude_code](roles/claude_code/README.md) |
+| `ansible-playbook aslib.infra.claude_vm` | A host with KVM, or a directory with it in an inventory | Creates `claude-dev`, a VM where Claude Code has sudo, away from the local network, see [claude_vm](roles/claude_vm/README.md) |
+| `ansible-playbook aslib.infra.claude_vm_remove` | The same | Removes that VM, for a fresh one |
+| `ansible-playbook aslib.infra.claude_vm_overview` | The same | Shows the host and the VM, for finding out why the VM does not come up; changes nothing |
+| `ansible-playbook aslib.infra.claude_vm_boot_trial` | The same | Boots the VM once in a changed form (other firmware, no TPM, no CD drive) and shows how far it got, see [claude_vm](roles/claude_vm/README.md#when-the-vm-does-not-come-up) |
+| `ansible-playbook aslib.infra.gitlab` | The directory with `gitlab.env`, and an inventory with a group `gitlab` if GitLab goes elsewhere | Deploys GitLab CE, see [gitlab](roles/gitlab/README.md) |
+| `ansible-playbook aslib.infra.gitlab_remove` | The same | Removes GitLab's service, keeping its data in `/opt/gitlab` |
 
 ## Plugins
 
@@ -209,7 +237,10 @@ Tested on every change, in CI:
   shared zone staying private, a replaced README caught by its checksum and put
   back by the next deploy, and Claude Code's 4 GiB memory limit;
 - the Claude Code project's setup, update and real image build, with every
-  package up to date.
+  package up to date;
+- GitLab 19.4.1, deployed and used as a person would: an account and token, a
+  private project, pushes and clones over HTTP and SSH, a fork, its settings, a
+  restart, and a removal and new deploy on the data it left.
 
 Not tested yet:
 

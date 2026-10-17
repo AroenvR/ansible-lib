@@ -22,11 +22,11 @@ VERSION       := $(shell sed -n 's/^version: *//p' galaxy.yml)
 export PYTHONDONTWRITEBYTECODE := 1
 TARBALL       := dist/aslib-infra-$(VERSION).tar.gz
 
-# Ansible loads aslib.infra straight from this checkout, which is why it must live
-# at <dir>/ansible_collections/aslib/infra.
-ifeq ($(filter %/ansible_collections/aslib/infra,$(CURDIR)),)
-$(error Clone this repository into <dir>/ansible_collections/aslib/infra, see CONTRIBUTING.md)
-endif
+# Ansible loads aslib.infra straight from this checkout, wherever it was cloned,
+# through a link that looks like an installed collection. Made afresh by every
+# target that needs it, so it follows a checkout that moved.
+SELF          := $(VENV)/self/ansible_collections/aslib/infra
+COLLECTIONS   := $(CURDIR)/$(VENV)/self:$(CURDIR)/$(VENV)/collections
 
 # Runs Molecule scenario $2 with ansible-core $1 for every role that has it. The
 # banner tells which role's tests the log lines below it belong to.
@@ -35,17 +35,20 @@ define molecule
 	  [ -d roles/$$r/molecule/$2 ] || continue; \
 	  printf '\n##### %s: %s tests, ansible-core %s #####\n\n' $$r $2 $1; \
 	  (cd roles/$$r && PATH="$(CURDIR)/$(VENV)/ansible-$1/bin:$$PATH" \
-	    ANSIBLE_COLLECTIONS_PATH="$(CURDIR)/$(VENV)/collections" \
+	    ANSIBLE_COLLECTIONS_PATH="$(COLLECTIONS)" \
 	    molecule test --scenario-name $2) || exit 1; \
 	done
 endef
 
-.PHONY: help setup images lint test test-native dist dist-release version build clean
+.PHONY: help setup images lint test test-native dist dist-release version build clean $(SELF)
 
 help: ## List the targets
 	@grep -E '^[a-z0-9%.-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-26s %s\n", $$1, $$2}'
 
-setup: $(VENV)/lint $(addprefix $(VENV)/ansible-,$(ANSIBLE_VERSIONS)) $(VENV)/collections ## Create all venvs, install test-only collections
+setup: $(VENV)/lint $(addprefix $(VENV)/ansible-,$(ANSIBLE_VERSIONS)) $(VENV)/collections $(SELF) ## Create all venvs, install test-only collections
+
+$(SELF):
+	@mkdir -p $(dir $@) && ln -sfn $(CURDIR) $@
 
 # Each venv is created once and rebuilt when its pinned requirements change,
 # with a current pip (--upgrade-deps) rather than the one Python bundles.
@@ -72,28 +75,37 @@ image-%: ## Build one test container, e.g. make image-rhel9
 # ansible-lint resolves aslib.infra (used by playbooks/) from this checkout. It
 # skips plugins: ansible-doc loads each one (plugins/<type>/<name>.py) and its
 # documentation instead.
-lint: $(VENV)/lint ## Lint all content and check every role's documented interface
-	ANSIBLE_COLLECTIONS_PATH="$(abspath $(CURDIR)/../../..)" $(VENV)/lint/bin/ansible-lint
+lint: $(VENV)/lint $(SELF) ## Lint all content and check every role's documented interface
+	ANSIBLE_COLLECTIONS_PATH="$(CURDIR)/$(VENV)/self" $(VENV)/lint/bin/ansible-lint
 	$(VENV)/lint/bin/python dev/check_role_docs.py
 	$(VENV)/lint/bin/python dev/check_conditions.py
 	$(VENV)/lint/bin/python dev/check_shell.py
 	@for plugin in plugins/*/*.py; do \
 	  type=$$(basename $$(dirname $$plugin)); name=$$(basename $$plugin .py); \
 	  echo "ansible-doc -t $$type aslib.infra.$$name"; \
-	  ANSIBLE_COLLECTIONS_PATH="$(abspath $(CURDIR)/../../..)" $(VENV)/lint/bin/ansible-doc -t $$type aslib.infra.$$name >/dev/null || exit 1; \
+	  ANSIBLE_COLLECTIONS_PATH="$(CURDIR)/$(VENV)/self" $(VENV)/lint/bin/ansible-doc -t $$type aslib.infra.$$name >/dev/null || exit 1; \
 	done
 
 test: $(foreach v,$(ANSIBLE_VERSIONS),test-servers-$(v) test-build-machine-$(v) test-dist-$(v)) ## Run every test with every ansible-core version
 
-test-servers-%: $(VENV)/ansible-% $(VENV)/collections ## Test the server roles on the test servers, e.g. make test-servers-2.14 ROLES=sudoers
+test-servers-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test the server roles on the test servers, e.g. make test-servers-2.14 ROLES=sudoers
 	$(call molecule,$*,server)
 
-test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections ## Test the build-machine roles on this machine, e.g. make test-build-machine-2.14
+test-build-machine-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test the build-machine roles on this machine, e.g. make test-build-machine-2.14
 	$(call molecule,$*,build_machine)
 
 # build.yml on copies of this checkout: in a git repository, and outside one.
 test-dist-%: $(VENV)/ansible-% ## Test build.yml, in a git checkout and without git, e.g. make test-dist-2.14
 	PATH="$(CURDIR)/$(VENV)/ansible-$*/bin:$$PATH" ansible-playbook dev/test-build.yml
+
+# Not part of `test`: GitLab's image needs Docker Hub, about 4 GB of memory and
+# 15 GB of disk, and the test about half an hour (see roles/gitlab/molecule/gitlab/).
+test-gitlab-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test GitLab on the RHEL 9 test server, e.g. make test-gitlab-2.16
+	$(call molecule,$*,gitlab)
+
+# Not part of `test`: it needs KVM, which the test containers lack.
+test-vm-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test claude_vm's VM on this machine, which needs KVM, e.g. sudo make test-vm-2.14
+	$(call molecule,$*,vm)
 
 test-native: dist image-ubuntu2404 image-ubuntu2404-native ## Test with the ansible-core and Podman packages Ubuntu 24.04 itself ships
 	dev/native-test.sh localhost/aslib-test/ubuntu2404-native $(TARBALL) $(filter $(UBUNTU_ROLES),$(ROLES))

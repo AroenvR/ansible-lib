@@ -1,0 +1,26 @@
+---
+# Creates claude-dev, a VM for Claude Code on a Linux host with KVM (a laptop, a
+# spare server), and sets it up for working on aslib.infra: Claude has sudo in
+# the VM, which reaches the internet but not the local network. On the host itself
+# (without an inventory, it is the host), or from another machine with the host
+# in an inventory:
+#   ansible-playbook aslib.infra.claude_vm --ask-become-pass
+# It ends with how to log in. One host per run (--limit). Options and how it
+# works: ansible-doc -t role aslib.infra.claude_vm. Remove: aslib.infra.claude_vm_remove
+- name: Create the VM claude-dev on the host
+  # Without an inventory Ansible only knows this machine, which "all" leaves out.
+  hosts: "{{ 'all' if groups['all'] else 'localhost' }}"
+  become: true
+  gather_facts: false
+  roles:
+    - role: aslib.infra.claude_vm
+
+- name: Set up claude-dev for Claude Code and aslib.infra's tests
+  hosts: claude_vm
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Set up the VM
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_vm
+        tasks_from: guest

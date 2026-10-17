@@ -11,9 +11,6 @@ variables:
   # internal registry mirror. Pin them to a tag or digest once the pipeline is green.
   PYTHON_IMAGE: docker.io/library/python:3.12
   PODMAN_IMAGE: quay.io/podman/stable:latest
-  # Ansible loads the collection from <dir>/ansible_collections/aslib/infra
-  # (see CONTRIBUTING.md), so every job works on a copy at this path.
-  COLLECTION_DIR: /tmp/src/ansible_collections/aslib/infra
 
 workflow:
   rules:
@@ -23,23 +20,16 @@ workflow:
 
 stages: [check, test, publish]
 
-.copy-to-collection-dir: &copy-to-collection-dir
-  - mkdir -p "$(dirname "$COLLECTION_DIR")"
-  - cp -a . "$COLLECTION_DIR"
-  - cd "$COLLECTION_DIR"
-
 .with-podman:
   image: $PODMAN_IMAGE
   needs: [runner-check]
   before_script:
     # The Podman image is Fedora; the test venvs need Python 3.11 (2.14) and 3.12 (2.16).
     - dnf install --assumeyes --quiet make python3.11 python3.12
-    - *copy-to-collection-dir
 
 lint:
   stage: check
   image: $PYTHON_IMAGE
-  before_script: *copy-to-collection-dir
   script:
     - make lint PYTHON_LINT=python3
 
@@ -68,6 +58,15 @@ build-machine:
     - make test-build-machine-$ANSIBLE
     - make test-dist-$ANSIBLE
 
+gitlab:
+  stage: test
+  extends: .with-podman
+  parallel:
+    matrix:
+      - ANSIBLE: ["2.14", "2.16"]
+  script:
+    - make image-rhel9 test-gitlab-$ANSIBLE
+
 native:
   stage: test
   extends: .with-podman
@@ -81,12 +80,10 @@ branch-build:
   image: $PYTHON_IMAGE
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
-  before_script: *copy-to-collection-dir
   script:
     - make dist BRANCH="$CI_COMMIT_BRANCH" PYTHON_LINT=python3
-    - cp dist/aslib-infra.*.tgz "$CI_PROJECT_DIR/"
   artifacts:
-    paths: ["aslib-infra.*.tgz"]
+    paths: ["dist/aslib-infra.*.tgz"]
     expire_in: 7 days
 
 # The default branch (main): the next version, uploaded to the package registry
@@ -97,7 +94,6 @@ publish:
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   resource_group: release  # two pushes in a row must not claim the same version
-  before_script: *copy-to-collection-dir
   script:
     - make dist-release PYTHON_LINT=python3
     - VERSION=$(make --silent version)
@@ -106,7 +102,7 @@ publish:
         curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "dist/$file" \
           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/aslib-infra/$VERSION/$file"
       done
-    - echo "VERSION=$VERSION" > "$CI_PROJECT_DIR/release.env"
+    - echo "VERSION=$VERSION" > release.env
   artifacts:
     reports:
       dotenv: release.env

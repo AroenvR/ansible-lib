@@ -408,18 +408,34 @@
         src: /opt/claude-code/config/managed-settings.json
       register: __node_deploy_test_policy
 
-    - name: Check the policy starts sessions in bypassPermissions mode and keeps the project's rules
+    # aslib.infra's base, then the container's settings, then the project's (which
+    # win), then bypassPermissions: lists combine without duplicates.
+    - name: Check the installed policy merges the base, the container's settings and the project's, in bypassPermissions mode
       vars:
         __node_deploy_test_installed: "{{ __node_deploy_test_policy.content | b64decode | from_json }}"
-        __node_deploy_test_project_policy: "{{ lookup('file', node_deploy_test_claude_project ~ '/config/managed-settings.json') | from_json }}"
+        __node_deploy_test_roles: "{{ playbook_dir }}/../../.."
+        __node_deploy_test_base: "{{ lookup('file', __node_deploy_test_roles ~ '/claude_code/files/managed-settings.json') | from_json }}"
+        __node_deploy_test_container: >-
+          {{ lookup('file', __node_deploy_test_roles ~ '/claude_code/files/managed-settings.container.json') | from_json }}
+        __node_deploy_test_base_rest: >-
+          {{ __node_deploy_test_base | dict2items | rejectattr('key', 'in', ['permissions', 'plansDirectory']) | items2dict }}
+        __node_deploy_test_deny: "{{ __node_deploy_test_installed.permissions.deny }}"
       ansible.builtin.assert:
         that:
           - __node_deploy_test_installed.permissions.defaultMode == 'bypassPermissions'
-          - __node_deploy_test_installed.permissions.deny == __node_deploy_test_project_policy.permissions.deny
-          - __node_deploy_test_installed.autoMemoryDirectory == '/opt/claude-code/memory'
+          - __node_deploy_test_installed | combine(__node_deploy_test_base_rest) == __node_deploy_test_installed
+          - __node_deploy_test_installed.plansDirectory == './project-plans'
+          - __node_deploy_test_installed.autoMemoryDirectory == __node_deploy_test_container.autoMemoryDirectory
+          - __node_deploy_test_installed.permissions.additionalDirectories == __node_deploy_test_container.permissions.additionalDirectories
+          - >-
+            __node_deploy_test_deny is superset(__node_deploy_test_base.permissions.deny
+            + __node_deploy_test_container.permissions.deny + ['Read(//opt/claude-code/data/private/**)'])
+          - __node_deploy_test_deny | length == __node_deploy_test_deny | unique | length
+        fail_msg: "The installed policy: {{ __node_deploy_test_installed | to_json }}"
         success_msg: >-
-          PASSED claude_code with claude_code_bypass_permissions installed the project's policy with
-          permissions.defaultMode bypassPermissions, its deny rules unchanged.
+          PASSED claude_code with claude_code_bypass_permissions installed aslib.infra's base policy, the container's
+          settings and the project's ({{ __node_deploy_test_deny | length }} deny rules, none twice; the project's
+          plansDirectory over the base's), with permissions.defaultMode bypassPermissions.
 
 - name: Check the overview shows both services, and the log of a service that does not run
   hosts: all

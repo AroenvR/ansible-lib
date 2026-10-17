@@ -2,8 +2,8 @@
 # Shared Molecule settings, merged into every roles/*/molecule/*/molecule.yml.
 # The test containers mimic default server installs; `make images` builds them.
 
-# Test the checkout itself: Ansible finds aslib.infra through the
-# ansible_collections/aslib/infra directory layout, so never install a copy.
+# Test the checkout itself: Ansible finds aslib.infra through make's link
+# .venv/self/ansible_collections/aslib/infra, so never install a copy.
 prerun: false
 
 # Test-only collections are pre-installed (pinned) by `make setup`, so nothing

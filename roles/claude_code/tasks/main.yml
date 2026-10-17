@@ -32,17 +32,25 @@
 
 # config/ becomes /etc/claude-code/ in the container: the policy, Claude's
 # instructions (CLAUDE.md) and any other file Claude Code reads there. The policy
-# is read here, which also checks it is valid JSON, and gets the starting
-# permission mode bypassPermissions when claude_code_bypass_permissions is true.
+# Claude Code reads is, in this order: aslib.infra's base (files/managed-settings.json,
+# which claude_vm installs too), the container's own settings
+# (files/managed-settings.container.json), the project's config/managed-settings.json,
+# and the starting permission mode bypassPermissions when
+# claude_code_bypass_permissions is true. A later value replaces an earlier one,
+# blocks such as env merge key by key and lists combine without duplicates, as
+# Claude Code combines its own drop-in files. Reading them also checks they are JSON.
 - name: Note the files of /etc/claude-code
   vars:
-    __claude_code_policy: "{{ lookup('file', __claude_code_root ~ '/config/managed-settings.json') | from_json }}"
+    __claude_code_policy: >-
+      {{ (lookup('ansible.builtin.file', 'managed-settings.json') | from_json)
+         | combine(lookup('ansible.builtin.file', 'managed-settings.container.json') | from_json,
+                   lookup('ansible.builtin.file', __claude_code_root ~ '/config/managed-settings.json') | from_json,
+                   __claude_code_bypass, recursive=True, list_merge='append_rp') }}
     __claude_code_bypass: "{{ {'permissions': {'defaultMode': 'bypassPermissions'}} if claude_code_bypass_permissions | bool else {} }}"
   ansible.builtin.set_fact:
     __claude_code_config_files: >-
       {{ query('fileglob', __claude_code_root ~ '/config/*') | reject('search', '/managed-settings[.]json$') | list
-         + [{'name': 'managed-settings.json',
-             'content': (__claude_code_policy | combine(__claude_code_bypass, recursive=True)) | to_nice_json(indent=2, sort_keys=False)}] }}
+         + [{'name': 'managed-settings.json', 'content': __claude_code_policy | to_nice_json(indent=2, sort_keys=False)}] }}
 
 # The Quadlet template is the project's (ansible/templates/service.container.j2,
 # from the setup, for the project to tune) if it has one, else podman_service's.

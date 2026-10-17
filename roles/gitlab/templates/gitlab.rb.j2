@@ -1,0 +1,61 @@
+# GitLab's settings from aslib.infra (role gitlab): every deploy writes this file
+# again, so change them with the role's settings (gitlab_config_extra for anything
+# else), not here. GitLab reads it through GITLAB_OMNIBUS_CONFIG, before
+# /etc/gitlab/gitlab.rb, and applies it whenever the container starts.
+
+external_url '{{ __gitlab_url }}'
+gitlab_rails['gitlab_shell_ssh_port'] = {{ gitlab_ssh_port }}
+
+# The first administrator's (root's) password, from GITLAB_ROOT_PASSWORD in the
+# environment file. GitLab uses it only when it creates its database.
+gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD'] unless ENV['GITLAB_ROOT_PASSWORD'].to_s.empty?
+
+# No email: there is no mail server. An administrator creates accounts and sets
+# their passwords.
+gitlab_rails['gitlab_email_enabled'] = false
+
+# Nothing leaves the server by itself: no Service Ping (also locked in the Admin
+# area), and no product usage events (to events.gitlab.net; see gitlab_rails['env'] below).
+gitlab_rails['usage_ping_enabled'] = false
+
+# Unused parts, off: the container registry, Pages, the agent server for
+# Kubernetes (KAS) and Let's Encrypt.
+registry['enable'] = false
+gitlab_rails['gitlab_default_projects_features_container_registry'] = false
+gitlab_pages['enable'] = false
+gitlab_kas['enable'] = false
+letsencrypt['enable'] = false
+
+# Memory, as GitLab's guide for memory-constrained environments has it: Puma in
+# single mode, fewer Sidekiq threads, no monitoring, Gitaly limited, and memory
+# returned to the system sooner.
+puma['worker_processes'] = 0
+sidekiq['concurrency'] = 10
+prometheus_monitoring['enable'] = false
+prometheus['enable'] = false
+alertmanager['enable'] = false
+gitlab_exporter['enable'] = false
+node_exporter['enable'] = false
+postgres_exporter['enable'] = false
+redis_exporter['enable'] = false
+puma['exporter_enabled'] = false
+sidekiq['metrics_enabled'] = false
+gitlab_rails['env'] = {
+  'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000',
+  'GITLAB_PRODUCT_USAGE_DATA_ENABLED' => 'false'
+}
+gitaly['env'] = {
+  'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000',
+  'GITALY_COMMAND_SPAWN_MAX_PARALLEL' => '2'
+}
+gitaly['configuration'] = {
+  concurrency: [
+    { 'rpc' => '/gitaly.SmartHTTPService/PostReceivePack', 'max_per_repo' => 3 },
+    { 'rpc' => '/gitaly.SSHService/SSHUploadPack', 'max_per_repo' => 3 }
+  ]
+}
+{% if gitlab_config_extra | length > 0 %}
+
+# gitlab_config_extra
+{{ gitlab_config_extra }}
+{% endif %}

@@ -1,0 +1,14 @@
+---
+# true: GitLab's own image, from Docker Hub. false: the stand-in in mock/, built
+# from gitlab_test_mock_base.
+gitlab_test_real: true
+gitlab_test_mock_base: registry.access.redhat.com/ubi9/nodejs-24-minimal
+gitlab_test_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') | default('/tmp/gitlab-test', true) }}"
+
+# The settings every deploy in this test uses, as an inventory would set them.
+gitlab_env_file: "{{ gitlab_test_dir }}/gitlab.env"
+gitlab_image_dir: "{{ gitlab_test_dir }}/images"
+gitlab_application_settings:
+  max_artifacts_size: 200
+gitlab_config_extra: gitlab_rails['time_zone'] = 'Europe/Amsterdam'
+podman_service_uid: "3200"  # noqa: var-naming[no-role-prefix]

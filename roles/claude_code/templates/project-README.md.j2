@@ -11,7 +11,7 @@ one as `<file>.bak` to merge from.
 | File | What it is |
 |---|---|
 | `Containerfile` | The image: UBI 9, the tools Claude needs, and Claude Code from Anthropic's signed dnf repository |
-| `config/` | Claude Code's `/etc/claude-code/`, mounted read-only, never in the image: `managed-settings.json`, the policy Claude Code reads as an organisation's, above every other setting; `CLAUDE.md`, the instructions it reads in every session (a template: make it yours) |
+| `config/` | Claude Code's `/etc/claude-code/`, mounted read-only, never in the image: `managed-settings.json`, this project's part of the policy Claude Code reads as an organisation's, above every other setting (below); `CLAUDE.md`, the instructions it reads in every session (a template: make it yours) |
 | `.containerignore` | What never goes into the image build |
 | `ansible/` | Building, deploying and entering it on servers, with aslib.infra |
 
@@ -42,19 +42,31 @@ container's home and survives new images.
 
 ## The policy
 
-`config/managed-settings.json` makes Claude's home and the shared zone of
-aslib.infra's services (`/opt/containers/shared`) its working directories, and
-keeps it away from its own login and config (`.claude/`), from `.env` files, and
-from the files that would run code at its next start (hooks, `.mcp.json`,
-`.git/config`). It may read the rest of the container, which holds only the
-read-only image. Its memory goes to
-`/opt/claude-code/memory`, its plans to `plans/` in the directory a session
-starts in. Its keys are documented in
+Claude Code reads its policy, as an organisation's, from
+`/etc/claude-code/managed-settings.json`, which every deploy assembles, in this
+order, from:
+
+1. aslib.infra's base, the same for every project (and for the VM of
+   aslib.infra's claude_vm): the self-updater and telemetry off, workflows and
+   ultracode on, plans in `plans/` of the directory a session starts in, and
+   Claude kept away from `.env` files and from the files that would run code at
+   its next start (hooks, `.mcp.json`, `.git/config`);
+2. aslib.infra's settings for the container: Claude's home and the shared zone of
+   aslib.infra's services (`/opt/containers/shared`) as its working directories,
+   its memory in `/opt/claude-code/memory`, and its own login and config
+   (`.claude/`) and the instruction files in its home out of its reach;
+3. `config/managed-settings.json`, this project's: `{}` to start, for what the
+   project adds or changes.
+
+A later value replaces an earlier one, blocks such as `env` merge key by key,
+and lists such as `permissions.deny` combine: the project adds deny rules, it
+cannot drop aslib.infra's. Claude may read the rest of the container, which
+holds only the read-only image. The keys are documented in
 [Claude Code's settings reference](https://code.claude.com/docs/en/settings-reference).
 
 To let Claude's shell commands reach only an allowlist of hosts, add this block
-and `bubblewrap socat` to the Containerfile's tools (if Red Hat's UBI repositories
-offer them), then build again:
+to `config/managed-settings.json` and `bubblewrap socat` to the Containerfile's
+tools (if Red Hat's UBI repositories offer them), then build again:
 
 ```json
 "sandbox": {

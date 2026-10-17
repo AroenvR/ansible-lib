@@ -31,6 +31,7 @@
 - name: Query the service on port {{ podman_service_port }}
   ansible.builtin.uri:
     url: "http://{{ '127.0.0.1' if podman_service_bind_address in ['0.0.0.0', '::'] else podman_service_bind_address }}:{{ podman_service_port }}/"
+    follow_redirects: none  # a redirect is an answer; its target may not resolve here
   register: __podman_service_check_answer
   failed_when: false
   when: podman_service_port | int > 0
