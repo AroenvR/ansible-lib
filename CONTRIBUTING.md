@@ -59,10 +59,10 @@ root there, away from the host and the local network. See
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
 | `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
 | `meta/runtime.yml` | The oldest ansible-core the collection supports (2.14) |
-| `galaxy.yml` | The collection's name, version, `repository` (the one copy of its URL) and `build_ignore`: what the tarball leaves out |
+| `galaxy.yml` | The collection's name, version and `build_ignore`: what the tarball leaves out. It names no repository, on purpose |
 | `README.md`, `docs/` | The users' documentation: the landing page; the guides, the reference and the status. Both ship with the collection |
 | `CHANGELOG.md` | Every change users notice, with how to upgrade |
-| `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md` | This file; the instructions for AI coding agents, and a pointer to them for Claude Code. Never shipped |
+| `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md` | This file; the instructions for AI coding agents; Claude Code's: AGENTS.md plus what applies to Claude Code only. Never shipped |
 | `Makefile` | Every developer and CI entry point, see [Make targets](#make-targets). Never shipped |
 | `build.yml` | Builds the collection tarball: try-out builds and, with `-e release=true`, releases. Never shipped |
 | `dev/` | ansible-core pins per version, test images, the checks `make lint` adds, native test, CI helper scripts. Never shipped |
@@ -279,10 +279,14 @@ Then push; open a pull request into `accept` once the gates in
 
 - Never assume internet access. Every repository, key or download URL is a role
   variable whose default points upstream, so sites can point it at a mirror or
-  proxy. They are listed in node_image's
+  proxy. Three are not yet and are to become variables: GitLab's image, nvm's
+  URL in claude_code's Containerfile, and the UBI RPM repositories in the image
+  builds. npm's settings come from the project's `.npmrc` and, below it, the
+  build machine's `~/.npmrc`; images also follow the build machine's
+  `registries.conf`. The sources are listed in node_image's
   [Download sources](roles/node_image/README.md#download-sources) and in the
-  project guide's table of the same name (node_setup's
-  `templates/README.md.j2`); npm's settings come from the project's `.npmrc`.
+  tables of the same name in the project guides (`templates/README.md.j2` of
+  node_setup and claude_code).
 - Download only what is genuinely needed and enterprise-proven; prefer the OS
   repositories.
 - Install packages only when they are missing (see `roles/sudoers/tasks/main.yml`).
@@ -357,8 +361,8 @@ Each kind of documentation has one place:
   [docs/reference.md](docs/reference.md).
 - The repository has moved between names and hosts and will move again, so the
   documentation names no location: it says `<repository>` for its URL, and
-  `<version>` for a release (X.Y.Z) in examples. `galaxy.yml`'s `repository`
-  is the one copy of the URL.
+  `<version>` for a release (X.Y.Z) in examples. `galaxy.yml` names none
+  either: a checkout's git remote is its source.
 
 ## Branches and pull requests
 

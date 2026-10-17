@@ -61,8 +61,11 @@ make setup
 sudo make images test-servers-2.14
 ```
 
-Keep the VM free of secrets: no keys to servers, no git credentials. Get
-Claude's work out from the host, or through it, review it, and push it yourself:
+Claude's work leaves the VM on branches. Give Claude a git credential of its
+own (an account or a key just for Claude, never yours) to push them to your
+repository, protect the branches you merge from, such as `main`, and review
+Claude's in pull or merge requests. No keys to servers. Or, with no credential
+in the VM, fetch them from the host:
 
 ```sh
 git remote add claude-dev claude-dev:src/aslib

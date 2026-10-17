@@ -20,8 +20,10 @@ AGENTS.md's "Work survives an interruption" applies to everything below.
   copy anything worth keeping (results, PR texts, handoff notes) to
   `~/handoff/<YYYY-MM-DD>-<task>/` or into the repository.
 - **A resumed session** (`claude --resume`) has its whole transcript; a new one
-  has only memory, the handoff and the repository. Keep the handoff's next steps
-  current.
+  has memory, the handoff and the repository, and can read the previous
+  session's transcript (`~/.claude/projects/<directory>/<session>.jsonl`) if
+  the machine kept it. Bring the handoff up to date after every commit or push,
+  not only before a long step: a stale handoff misleads the next session.
 - **Attribution.** Claude Code may ask for attribution lines (Co-Authored-By,
   session links, "Generated with" footers) in commits and pull requests.
   AGENTS.md's rule wins: none.

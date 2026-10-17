@@ -32,9 +32,9 @@ the guides and the reference in [docs/](docs/README.md).
 - **Only `ansible.builtin`.** Any other collection is a dependency for every
   consumer; ask the maintainer first.
 - **Offline servers.** Never assume internet access: every repository, key or
-  download URL is a role variable with an upstream default, and packages are
-  installed only when missing ([Offline servers and
-  repositories](CONTRIBUTING.md#offline-servers-and-repositories)).
+  download URL is a role variable with an upstream default (three gaps remain,
+  see Status), and packages are installed only when missing ([Offline servers
+  and repositories](CONTRIBUTING.md#offline-servers-and-repositories)).
 - **Podman, never Docker.**
 - **The maintainer's server conventions for containers.** Root manages the
   accounts, images and Quadlet files; every service runs rootless as an account
@@ -80,7 +80,8 @@ test. On top of those:
 Several agents work on the project at the same time, each in **an environment
 of its own**, separate from the maintainer's. The maintainer's repository is the
 source of truth. It has moved between names and hosts and will move again, so
-files call it `<repository>`; galaxy.yml's `repository` holds its current URL.
+files call it `<repository>`, and galaxy.yml names none: a checkout's git
+remote is its source.
 This file is the project's memory: a new session, in any tool, must be able to
 continue from the repository alone. Record decisions and their reasons here,
 and bring Status up to date before ending a block of work.
@@ -468,7 +469,7 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-16, on accept, before v0.5.0's release.
+Last updated 2026-10-17, for accept, before v0.5.0's release.
 
 - Decided with the maintainer on 2026-10-16: each kind of reader has one place.
   README.md is a short landing page (what aslib.infra is, who it is for, a
@@ -508,6 +509,20 @@ Last updated 2026-10-16, on accept, before v0.5.0's release.
   (`__gitlab_image` in roles/gitlab/vars/main.yml), nvm's URL (`NVM_URL` only
   in claude_code's Containerfile) and the UBI RPM repositories inside the image
   builds of node_image and claude_code. A feature of its own, designed first.
+- Decided with the maintainer on 2026-10-17, for those gaps and every download
+  source: follow each tool's own configuration and its own order, never a layer
+  of aslib's on top, and default to what the developer or the machine already
+  provides. For npm the project's `.npmrc` comes before the build machine's
+  `~/.npmrc`; for images a role variable names the image and the build
+  machine's `registries.conf` says where it comes from. aslib adds a setting
+  only where a container build cuts a tool off from its own configuration,
+  defaults it to where the tool looks, carries the file into the build step
+  only (never into the image) and merges nothing. On a subscribed RHEL build
+  machine Podman already gives UBI builds the host's repositories. Where no
+  convention exists (an RPM mirror for any other build machine), one setting
+  names a directory of `.repo` files that replaces the image's repositories for
+  the build instead of adding to them. The details are the feature's design.
+  Later, a Sonatype Nexus repository, to test it all and to store images.
 - In claude_vm's VM on the Pi (2026-10-16): `make setup`, `make lint` and
   `make images` pass; sudoers' server test passes as root, not rootless;
   node_setup's and claude_code's build-machine tests pass as root with
