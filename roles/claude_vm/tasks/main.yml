@@ -5,6 +5,16 @@
 # that runs the playbook. Then makes the VM reachable as the host claude-dev for
 # the entry point "guest" (playbooks/claude_vm.yml runs both). Running it again
 # changes nothing; a VM that is shut off is started.
+# The host and the VM run Ubuntu 24.04, whose Python (3.12) ansible-core 2.14
+# does not support on managed machines (its get_url fails there over HTTPS).
+- name: Check the ansible-core version
+  ansible.builtin.assert:
+    that: ansible_version.full is version('2.16', '>=')
+    fail_msg: >-
+      claude_vm needs ansible-core 2.16 or newer (Ubuntu 24.04's), as its host and VM run Ubuntu 24.04 with Python
+      3.12; this is {{ ansible_version.full }}.
+    quiet: true
+
 - name: Look up the host's OS and architecture
   ansible.builtin.setup:
     gather_subset: ["!all", "!min", distribution, platform]

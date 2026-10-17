@@ -108,16 +108,13 @@ jobs:
   # claude_vm's VM: GitHub's Linux runners have KVM (/dev/kvm, nested in the
   # runner's own VM), so the test creates claude-dev on an x86_64 Ubuntu 24.04
   # host, as on a laptop. ARM64 hosts are checked by hand (a Raspberry Pi 4).
+  # ansible-core 2.16 only: claude_vm needs it (its host and VM have Python 3.12).
   vm:
-    name: claude_vm · ansible-core ${{ matrix.ansible }}
+    name: claude_vm · ansible-core 2.16
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        ansible: ["2.14", "2.16"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      # ansible-core 2.14 runs on Python 3.11 (as on RHEL 9.6), 2.16 on 3.12 (as on Ubuntu 24.04).
+      # The collections are installed with 2.14's ansible-galaxy, on Python 3.11.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: |
@@ -125,7 +122,7 @@ jobs:
             3.12
       - run: ls -l /dev/kvm
       - run: >-
-          sudo make test-vm-${{ matrix.ansible }}
+          sudo make test-vm-2.16
           PYTHON_2.14="$(command -v python3.11)" PYTHON_2.16="$(command -v python3.12)"
 
   # Every other branch: a build kept for 7 days, only the newest one per branch.
