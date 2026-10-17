@@ -108,10 +108,9 @@ not be on one.
 
 Root: CI runs every test target as root (`sudo make ...`), with rootful
 Podman, which has images of its own, so run `sudo make images` before them.
-Run the tests that way too, the server tests above all: rootless, a server
-test can fail where it passes as root, as sudoers' did on the RHEL 9 test
-server under rootless Podman 4.9 (see
-[AGENTS.md, Known pitfalls](AGENTS.md#known-pitfalls)).
+Run the tests that way too, the server tests above all: CI proves only that
+way, and a rootless run has failed where a rootful one passed (the causes found
+so far are in [AGENTS.md, Known pitfalls](AGENTS.md#known-pitfalls)).
 `make test-vm-<ansible-core>` needs root in any case
 (`sudo make test-vm-2.14`). `setup`, `lint`, `dist` and `version` run as
 yourself.
@@ -252,8 +251,8 @@ Test first:
 2. Describe the desired state in `roles/<role>/molecule/<scenario>/verify.yml`.
 3. Watch it fail: `sudo make images test-servers-2.14 ROLES=<role>` (or
    `make test-build-machine-2.14 ROLES=<role>`). CI runs the tests as root, with
-   rootful Podman, which has images of its own; rootless, a server test can fail
-   where it passes as root (see [Make targets](#make-targets)).
+   rootful Podman, which has images of its own, and proves only that way (see
+   [Make targets](#make-targets)).
 4. Implement in `roles/<role>/` until it passes.
 5. Document it where it belongs ([Documentation](#documentation)), with a
    `CHANGELOG.md` entry for anything users notice.

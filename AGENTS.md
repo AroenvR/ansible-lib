@@ -69,9 +69,8 @@ need root, and [Writing a test](CONTRIBUTING.md#writing-a-test) how to write a
 test. On top of those:
 
 - Run the server tests as root, as CI does, images included (`sudo make images
-  test-servers-2.14 ROLES=<role>`): rootful Podman has images of its own, and
-  rootless, sudoers' test failed on the RHEL 9 test server (see Known
-  pitfalls).
+  test-servers-2.14 ROLES=<role>`): rootful Podman has images of its own, and CI
+  proves only the rootful run (see Known pitfalls).
 - Verify from a clean state before delivering (see Working with the
   maintainer).
 
@@ -373,7 +372,10 @@ the entry says it is likely or not verified yet.
   service cannot retrieve authentication info". A plain ubi-init:9.6 container
   fails the same way under rootless Podman (4.9.3) and passes under rootful
   Podman. Run as root (`sudo make images test-servers-2.14 ROLES=sudoers`), the
-  test passes on both test servers.
+  test passes on both test servers. The cause, found on 2026-10-17, is
+  Ubuntu's AppArmor profile `unix-chkpwd` (below): with the RHEL test image's
+  fix, sudoers' test passes rootless too, over SSH. CI still proves only the
+  rootful run.
 - sshd in a test container (2026-10-17): the PAM session of RHEL's and
   Ubuntu's sshd requires pam_loginuid, which writes `/proc/self/loginuid` and
   needs `CAP_AUDIT_CONTROL`. A rootful container without it ends every login at
@@ -390,8 +392,7 @@ the entry says it is likely or not verified yet.
   (`apparmor="DENIED" ... profile="unix-chkpwd"`) on claude_vm's VM, with
   node_deploy's privileged test server. The RHEL test image makes `/etc/shadow`
   0400, which root reads as its owner; useradd, usermod and userdel keep that
-  mode. Likely also the cause of the rootless sudo failure above (not verified
-  yet).
+  mode. It was also the cause of the rootless sudo failure above.
 - `podman restart` of a test server breaks Ansible's SSH connection; the next
   task fails as unreachable, which an `until` loop does not retry. Reset the
   connection and `wait_for_connection` first (node_deploy's verify).
