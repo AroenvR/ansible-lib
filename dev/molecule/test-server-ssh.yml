@@ -35,3 +35,18 @@
     - name: Wait until the test server lets Ansible in
       ansible.builtin.wait_for_connection:
         timeout: 120
+
+    - name: Look up the SSH session Ansible's commands run in
+      ansible.builtin.command: printenv SSH_CONNECTION
+      register: __test_server_ssh
+      changed_when: false
+      failed_when: false
+      when: aslib_test_container is defined
+
+    - name: Check Ansible reaches the test server over SSH as root
+      ansible.builtin.assert:
+        that:
+          - __test_server_ssh.stdout | length > 0
+        success_msg: "PASSED test server: Ansible reaches {{ inventory_hostname }} over SSH as root ({{ __test_server_ssh.stdout }})."
+        fail_msg: Ansible does not reach {{ inventory_hostname }} over SSH; check the connection settings in .config/molecule/config.yml.
+      when: aslib_test_container is defined
