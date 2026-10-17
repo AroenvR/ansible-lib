@@ -3,3 +3,8 @@
 # on a subscribed RHEL host Podman gives the container the full RHEL repositories.
 ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-init:9.6
 FROM ${BASE_IMAGE}
+# OpenSSH's server, enabled, as on a default install (ubi-init lacks it): the
+# tests reach this server over SSH as root, as Ansible reaches a real one.
+RUN dnf install --assumeyes --setopt=tsflags=nodocs openssh-server \
+ && dnf clean all \
+ && systemctl enable sshd

@@ -1,11 +1,13 @@
 # Test target mimicking a default Ubuntu Server 24.04 install: systemd as PID 1,
-# Python 3 and python3-apt (Ansible's apt modules need it). The package index is
-# kept, like on a real server, so roles can install packages without refreshing it.
+# Python 3 and python3-apt (Ansible's apt modules need it), and OpenSSH's server:
+# the tests reach this server over SSH as root, as Ansible reaches a real one. The
+# package index is kept, like on a real server, so roles can install packages
+# without refreshing it.
 ARG BASE_IMAGE=docker.io/library/ubuntu:24.04
 FROM ${BASE_IMAGE}
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
-      python3 python3-apt systemd systemd-sysv \
+      python3 python3-apt systemd systemd-sysv openssh-server \
  && apt-get clean
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
