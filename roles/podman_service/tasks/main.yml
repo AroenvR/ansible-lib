@@ -62,6 +62,9 @@
 # Commands as the account: `runuser` with the account's runtime directory, where
 # Podman keeps its state and systemctl finds the account's systemd instance. Unlike
 # `systemctl --user -M <user>@`, this needs no D-Bus session bus for the account.
+# Its bus address is still set, to the account's own: runuser keeps the caller's
+# environment, and a root login (over SSH, or su) brings root's, with which
+# podman exec fails to join the container's cgroup.
 # Such commands run from / (chdir), which every account may enter.
 - name: Prepare running commands as the account
   ansible.builtin.set_fact:

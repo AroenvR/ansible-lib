@@ -105,7 +105,7 @@ make lasting ones with `gitlab_application_settings`.
   In the VM: `git config --global credential.helper store`, then a push asks for
   the token once.
 - **A forgotten password**, reset by root on the server:
-  `cd / && sudo runuser -u gitlab -- env XDG_RUNTIME_DIR=/run/user/<the account's UID> podman exec -it gitlab gitlab-rake "gitlab:password:reset[<user>]"`
+  `cd / && sudo runuser -u gitlab -- env XDG_RUNTIME_DIR=/run/user/<the account's UID> DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<the account's UID>/bus podman exec -it gitlab gitlab-rake "gitlab:password:reset[<user>]"`
 
 ## From claude_vm's VM
 

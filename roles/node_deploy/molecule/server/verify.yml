@@ -459,7 +459,15 @@
   gather_facts: false
   vars_files: [vars/project.yml]
   vars:
-    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3001/bus", systemctl, --user]
+    __node_deploy_test_systemctl:
+      - runuser
+      - --user=deploy-test-app
+      - --
+      - env
+      - XDG_RUNTIME_DIR=/run/user/3001
+      - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3001/bus
+      - systemctl
+      - --user
   tasks:
     - name: Run podman_overview
       ansible.builtin.include_role:
@@ -707,7 +715,15 @@
   vars_files: [vars/project.yml]
   vars:
     __node_deploy_test_unhealthy: /opt/deploy-test-app/data/unhealthy
-    __node_deploy_test_systemctl: [runuser, --user=deploy-test-app, --, env, XDG_RUNTIME_DIR=/run/user/3001, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3001/bus", systemctl, --user]
+    __node_deploy_test_systemctl:
+      - runuser
+      - --user=deploy-test-app
+      - --
+      - env
+      - XDG_RUNTIME_DIR=/run/user/3001
+      - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3001/bus
+      - systemctl
+      - --user
   tasks:
     - name: Check the Node.js service, as podman_service's entry point verify does
       ansible.builtin.include_role:

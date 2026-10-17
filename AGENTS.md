@@ -327,8 +327,11 @@ the entry says it is likely or not verified yet.
   account then warns "no systemd user session available", falls back to
   cgroupfs, and `podman exec` fails writing `cgroup.procs` (Permission denied).
   The claude-code command sets the account's own address
-  (`unix:path=/run/user/<uid>/bus`). Seen on the maintainer's server; the cause is
-  the likeliest one, not yet confirmed there.
+  (`unix:path=/run/user/<uid>/bus`). Seen on the maintainer's server, and
+  confirmed on 2026-10-17 by the first server tests over SSH: root's SSH login
+  brings root's bus, and node_deploy's checks and gitlab's application settings
+  (`podman exec` as the account) failed that way in CI. Every runuser prefix of
+  the roles and tests now sets the account's own address too.
 - Quadlet with `Notify=healthy`: the first health check runs as the container
   starts; if the app is not listening yet, the next one waits for the full
   `HealthInterval`, so a 4-second app took 31 seconds to start. A startup check
