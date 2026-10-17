@@ -9,6 +9,10 @@
 #   main         node_image_main, when not dist/main.js
 #   machine_npmrc  true: npm's settings for the sample go into the build machine's
 #                npm settings (node_image_npmrc) instead of the project's .npmrc
+#   rpm_packages RPMs for both stages (node_image_build_packages and
+#                node_image_runtime_packages), from dev/molecule/rpm-repos: UBI's
+#                repositories under a mirror's names (node_image_rpm_repos). Such an
+#                app is renamed after its test case, like the NestJS samples.
 #   request      path to GET (default /cats)
 #   expect       text the response must contain (default [], an empty cat list)
 node_image_test_apps:
@@ -18,6 +22,13 @@ node_image_test_apps:
     expect: native addon works
     node: "24"                  # from app/.nvmrc
     main: server.js
+  - name: rpm-mirror            # RPMs in both stages from a mirror's repository files
+    source: app
+    request: /
+    expect: native addon works
+    node: "24"
+    main: server.js
+    rpm_packages: [jq]
   - name: nestjs-10             # last commit of the sample on NestJS 10
     nestjs_ref: fb20d462f72c2061a735056ca7d45f14e7b77082
     nvmrc: lts/jod

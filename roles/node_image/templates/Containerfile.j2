@@ -6,6 +6,8 @@
 FROM {{ __node_image_builder }} AS build
 LABEL org.opencontainers.image.title="{{ __node_image_package.name }}"
 {% if node_image_build_packages %}
+# From the image's repositories, or the build machine's (node_image_rpm_repos),
+# which the build mounts over /etc/yum.repos.d for its steps only.
 USER 0
 RUN dnf install --assumeyes --setopt=tsflags=nodocs {{ node_image_build_packages | join(' ') }} \
  && dnf clean all
@@ -30,6 +32,7 @@ RUN {% if __node_image_machine_npmrc %}--mount=type=secret,id=npmrc,uid=1001 exp
 # files belong to root and only root may write them, so the app cannot change its own code.
 FROM {{ __node_image_runtime }}
 {% if node_image_runtime_packages %}
+# Repositories as in the build stage.
 USER 0
 RUN microdnf install --assumeyes --nodocs {{ node_image_runtime_packages | join(' ') }} \
  && microdnf clean all

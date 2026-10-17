@@ -15,7 +15,8 @@ ARG CLAUDE_CODE_KEY_URL=https://downloads.claude.ai/keys/claude-code.asc
 # Empty: the newest version in the repository.
 ARG CLAUDE_CODE_VERSION=
 # nvm, the Node.js version manager: one script of a release, checked against its
-# SHA-256. A newer release needs both lines changed.
+# SHA-256. A newer release needs both lines changed (ansible/image.yml passes
+# claude_code_nvm_url and claude_code_nvm_sha256, which default to the same).
 ARG NVM_URL=https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh
 ARG NVM_SHA256=a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
 
@@ -26,7 +27,9 @@ ARG NVM_SHA256=a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
 # layer, so every new image has the updates of its day.
 #
 # Then the tools for Claude's sessions, all from Red Hat's UBI repositories (a
-# subset of RHEL's). Add what your work needs here:
+# subset of RHEL's), or from the build machine's repository files
+# (claude_code_rpm_repos), which ansible/image.yml mounts over /etc/yum.repos.d
+# for the build only. Add what your work needs here:
 # - everyday tools: git, ssh, jq, archives, rsync, file, patch, ps, ip, vi;
 # - Python 3.12 with pip and headers (python3 stays 3.9, which RHEL's own tools
 #   use), and a compiler for native modules;
@@ -43,17 +46,19 @@ RUN dnf upgrade --assumeyes --nodocs \
     && dnf clean all
 
 # Claude Code, after checking the repository's key is Anthropic's release key
-# (fingerprint from Anthropic's documentation): a mismatch stops the build. It
-# installs into /usr, owned by root, so Claude cannot replace its own program,
+# (fingerprint from Anthropic's documentation): a mismatch stops the build. The
+# key goes into rpm's database and the repository is given on the command line,
+# so nothing is written to /etc/yum.repos.d, which may be the build machine's.
+# It installs into /usr, owned by root, so Claude cannot replace its own program,
 # and never updates itself: a new version is a new image.
 RUN curl --fail --silent --show-error --location "$CLAUDE_CODE_KEY_URL" --output /etc/pki/rpm-gpg/claude-code.asc \
     && gpg --show-keys --with-colons /etc/pki/rpm-gpg/claude-code.asc \
        | awk -F: '$1 == "fpr" { print $10 }' \
        | grep --quiet --line-regexp 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE \
-    && printf '%s\n' '[claude-code]' 'name=Claude Code' "baseurl=$CLAUDE_CODE_REPOSITORY" \
-         'enabled=1' 'gpgcheck=1' 'gpgkey=file:///etc/pki/rpm-gpg/claude-code.asc' \
-         > /etc/yum.repos.d/claude-code.repo \
-    && dnf install --assumeyes --nodocs "claude-code${CLAUDE_CODE_VERSION:+-$CLAUDE_CODE_VERSION}" \
+    && rpm --import /etc/pki/rpm-gpg/claude-code.asc \
+    && dnf install --assumeyes --nodocs \
+         --repofrompath="claude-code,$CLAUDE_CODE_REPOSITORY" --setopt=claude-code.gpgcheck=1 \
+         "claude-code${CLAUDE_CODE_VERSION:+-$CLAUDE_CODE_VERSION}" \
     && dnf clean all
 
 # nvm in the image, the Node.js versions it installs in the home (NVM_DIR, below).

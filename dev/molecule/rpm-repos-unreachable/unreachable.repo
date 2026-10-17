@@ -1,0 +1,8 @@
+# A mirror nobody serves: a build with this directory as its RPM repositories
+# must fail naming it, which proves the directory replaced the image's own.
+[aslib-test-unreachable]
+name = A mirror nobody serves (aslib.infra's tests)
+baseurl = http://127.0.0.1:9/unreachable
+enabled = 1
+gpgcheck = 0
+skip_if_unavailable = 0

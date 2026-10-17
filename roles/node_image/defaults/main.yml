@@ -10,3 +10,4 @@ node_image_ignore: []
 node_image_main: dist/main.js
 node_image_registry: registry.access.redhat.com
 node_image_npmrc: "{{ lookup('env', 'HOME') }}/.npmrc"
+node_image_rpm_repos: ""

@@ -67,8 +67,9 @@ argument_specs:
         image only when that version, the base image or the Containerfile changed, so every build is also the update.
       - Keeps only that archive in images/, and only that image of the project on this machine.
       - Needs Podman 4.9 or newer (RHEL 9.6, Ubuntu 24.04) and access to the base image's registry and dnf
-        repositories (Red Hat's UBI repositories), Anthropic's repository and GitHub (nvm, see the Containerfile), or
-        to mirrors of them.
+        repositories (Red Hat's UBI repositories), Anthropic's repository and GitHub (nvm), or to mirrors of them:
+        I(claude_code_base_image) or registries.conf, I(claude_code_rpm_repos), I(claude_code_repository) and
+        I(claude_code_key_url), I(claude_code_nvm_url).
     options:
       claude_code_ansible_dir:
         type: str
@@ -93,6 +94,27 @@ argument_specs:
         type: str
         default: ""
         description: The Claude Code version to build, e.g. C(2.1.211). Empty means the repository's newest.
+      claude_code_nvm_url:
+        type: str
+        default: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh
+        description:
+          - nvm, the Node.js version manager, in the image: one script of a release (the Containerfile's NVM_URL), or a
+            mirror of it.
+          - A newer release needs I(claude_code_nvm_sha256) changed too; a mirror of the same file keeps it.
+      claude_code_nvm_sha256:
+        type: str
+        default: a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
+        description: The SHA-256 of that script (the Containerfile's NVM_SHA256). A mismatch stops the build.
+      claude_code_rpm_repos:
+        type: str
+        default: ""
+        description:
+          - A directory of dnf repository files (.repo), such as a mirror's, for the packages the Containerfile
+            installs. They replace the base image's own repositories while the image builds, rather than adding to
+            them, and are never stored in the image. A relative path is taken from the directory ansible-playbook
+            runs in.
+          - Empty, the default, keeps the base image's own (Red Hat's UBI repositories; on a subscribed RHEL build
+            machine, Podman adds the host's subscription).
   restart:
     short_description: Restart Claude Code's service and wait until it runs
     description:
