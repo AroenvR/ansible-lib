@@ -28,13 +28,16 @@
     mode: "0600"
   no_log: true
 
+# A failure goes to stderr where display_failed_stderr is on (Molecule's ansible.cfg).
 - name: Check the run stopped, naming the setting, without showing the token
+  vars:
+    __claude_code_vm_test_said: "{{ __claude_code_vm_test_bad.stdout ~ __claude_code_vm_test_bad.stderr }}"
   ansible.builtin.assert:
     that:
       - __claude_code_vm_test_bad.rc != 0
-      - __claude_code_vm_test_bad.stdout is search(__claude_code_vm_test_invalid.setting)
-      - __claude_code_vm_test_bad.stdout is not search(__claude_code_vm_test_token)
-    fail_msg: "{{ __claude_code_vm_test_bad.stdout_lines[-15:] | default([]) }}"
+      - __claude_code_vm_test_said is search(__claude_code_vm_test_invalid.setting)
+      - __claude_code_vm_test_said is not search(__claude_code_vm_test_token)
+    fail_msg: "{{ __claude_code_vm_test_bad.stderr_lines[-10:] | default([]) }}"
     success_msg: >-
       PASSED a run stopped at {{ __claude_code_vm_test_invalid.setting }}: {{ __claude_code_vm_test_invalid.value }} in
       the settings file, naming the setting.
