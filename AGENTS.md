@@ -99,7 +99,8 @@ and bring Status up to date before ending a block of work.
     GitHub's suggested squash message lists every commit message, and on
     2026-10-17 a squash merge with it gave `accept` no pipeline. Build that
     branch from accept with the work squashed in (`git merge --squash`),
-    never with a force push.
+    never with a force push. Delete the backup branch once its work is on the
+    request's branch.
   - Keep notes, results and a handoff (what is done, what comes next, open
     questions for the maintainer) in files outside `/tmp`: Ubuntu, claude_vm's
     VM included, empties `/tmp` at every boot (systemd-tmpfiles, `D /tmp`).
@@ -111,7 +112,12 @@ and bring Status up to date before ending a block of work.
   into main. On top of accept, every file of the repository, CI's included, is
   the agent's to change as the work needs. Each agent works on branches of its
   own, named as [Branches and pull
-  requests](CONTRIBUTING.md#branches-and-pull-requests) says.
+  requests](CONTRIBUTING.md#branches-and-pull-requests) says: one per pull
+  request, started from the current accept, never from another of its own
+  branches. After the merge it deletes what is left of the branch, on the
+  remote and locally, with any backup branch, so `git branch -a` shows only
+  main, accept and work in progress (stacked branches once left hanging
+  branches behind every squash merge).
 - **Never touch the maintainer's own tooling**: `.tools/`, `libs/` (their Bash
   library, a git subtree), `.env.example` and personal files like them. They
   stay exactly as the branch has them, in a pushed branch and in a zip; the
@@ -123,7 +129,8 @@ and bring Status up to date before ending a block of work.
   - A pushed branch. An agent with push access pushes its branches (CI runs on
     every push). It may open a pull or merge request into accept only when the
     gates pass: every CI job green, the relevant tests proven to pass, lint
-    clean.
+    clean. The request's description stands on its own, for any reviewer:
+    never written as a continuation of the conversation with the maintainer.
   - A complete zip of the repository root (`git archive` of the agent's
     branch). The maintainer replaces their tree with it, keeping `.git/`, so
     the zip is taken exactly as it is: what it adds, changes or lacks is added,
@@ -521,7 +528,19 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-17, for accept, before v0.5.0's release.
+Last updated 2026-10-18, for accept. v0.5.0 is released (main); what accept has
+since goes into 0.5.1.
+
+- Decided with the maintainer on 2026-10-18: pull request descriptions stand on
+  their own, and every pull request has one branch, started from the current
+  accept and deleted after its merge, remote and local (see Working with the
+  maintainer).
+- Decided with the maintainer on 2026-10-18: the release after 0.5.0 is 0.5.1,
+  a patch. Its changes are fixes and refactors, claude_vm's narrowing to Ubuntu
+  hosts included (its RHEL hosts were never tested). Every merge into accept
+  raises galaxy.yml's version and adds that version's CHANGELOG section, so
+  accept never carries a released version number with different contents;
+  galaxy.yml is 0.5.1.
 
 - Decided with the maintainer on 2026-10-16: each kind of reader has one place.
   README.md is a short landing page (what aslib.infra is, who it is for, a

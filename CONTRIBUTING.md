@@ -387,7 +387,8 @@ Each kind of documentation has one place:
 Every change takes the same way to `main`. This is the foundation; the
 maintainer will extend it.
 
-1. Start a branch of your own from `accept` (not main), named
+1. Start a branch of your own from the current `accept` (not main, and not
+   another branch of yours: one branch per pull request), named
    `<kind>/<YYYY-MM-DD>-<at most three words>`, the words joined with
    underscores, the kind such as `feature` or `hotfix`
    (`feature/2026-10-16-gitlab_container`).
@@ -397,11 +398,21 @@ maintainer will extend it.
    you open the request from. GitHub's suggested squash message lists every
    commit message of that branch, and a marker in it skips the pipeline of
    `accept`. On GitLab, `git push -o ci.skip` skips a pipeline without a marker.
+   Delete the backup branch once its work is on the request's branch.
 3. Open a pull request (GitHub) or merge request (GitLab) into `accept`. It is
    accepted only with a green CI, at the very least: every CI job green, the
-   relevant tests proven to pass, lint clean.
-4. The maintainer merges `accept` into `main`, which CI then releases
+   relevant tests proven to pass, lint clean. Its description stands on its
+   own, for any reviewer now or later: what changed and why, compatibility, how
+   it was tested, and open points; never a continuation of another discussion.
+4. The maintainer squash-merges it, which deletes its branch on GitHub. Delete
+   yours too, with any backup branch, and start the next one from the updated
+   `accept`: `git fetch --prune origin`, then `git branch -D <branch>`.
+5. The maintainer merges `accept` into `main`, which CI then releases
    ([Releases](#releases)).
+
+Work that needs a change still in review waits for its merge, or continues on
+that change's branch: a branch started from another unmerged branch is left
+behind when that one is squash-merged and deleted.
 
 `main` and `accept` are the maintainer's: nobody else pushes to them.
 
