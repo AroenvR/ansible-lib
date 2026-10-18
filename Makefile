@@ -40,7 +40,7 @@ define molecule
 	done
 endef
 
-.PHONY: help setup images lint test test-native dist dist-release version build clean $(SELF)
+.PHONY: help setup images lint test test-native dist dist-release version version-raised build clean $(SELF)
 
 help: ## List the targets
 	@grep -E '^[a-z0-9%.-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-26s %s\n", $$1, $$2}'
@@ -121,6 +121,10 @@ dist-release: $(VENV)/lint ## Build a release, as CI does from main: dist/aslib-
 
 version: ## Print the collection's version (from galaxy.yml)
 	@echo $(VERSION)
+
+# CI fetches accept first; locally, git fetch origin does.
+version-raised: ## Check galaxy.yml's version is higher than accept's, with its CHANGELOG section (BASE=origin/accept)
+	dev/ci/version-raised.sh $(or $(BASE),origin/accept)
 
 build: lint test test-native ## What CI runs before a release, except GitLab's test (test-gitlab-%)
 

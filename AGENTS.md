@@ -98,7 +98,7 @@ and bring Status up to date before ending a block of work.
     request comes from gets only finished commits, without the marker:
     GitHub's suggested squash message lists every commit message, and on
     2026-10-17 a squash merge with it gave `accept` no pipeline. Build that
-    branch from accept with the work squashed in (`git merge --squash`),
+    branch from develop with the work squashed in (`git merge --squash`),
     never with a force push. Delete the backup branch once its work is on the
     request's branch.
   - Keep notes, results and a handoff (what is done, what comes next, open
@@ -107,17 +107,25 @@ and bring Status up to date before ending a block of work.
   - Before a long or costly step, make sure a new session could continue from
     the repository, the handoff and this file alone.
 
-- **Branches.** `main` and `accept` are the maintainer's: an agent starts from
-  `accept` (not main) and never pushes to either; the maintainer merges accept
-  into main. On top of accept, every file of the repository, CI's included, is
-  the agent's to change as the work needs. Each agent works on branches of its
-  own, named as [Branches and pull
+- **Branches.** `main` and `accept` are the maintainer's: an agent never
+  pushes to either. An agent starts from `develop`, where every file of the
+  repository, CI's included, is its to change as the work needs. Each agent
+  works on branches of its own, named as [Branches and pull
   requests](CONTRIBUTING.md#branches-and-pull-requests) says: one per pull
-  request, started from the current accept, never from another of its own
-  branches. After the merge it deletes what is left of the branch, on the
+  request into develop, started from the current develop, never from another
+  of its own branches. The agent squash-merges its own request into develop
+  once every CI job is green, then deletes what is left of the branch, on the
   remote and locally, with any backup branch, so `git branch -a` shows only
-  main, accept and work in progress (stacked branches once left hanging
-  branches behind every squash merge).
+  main, accept, develop and work in progress (stacked branches once left
+  hanging branches behind every squash merge). develop and accept are never
+  deleted.
+- **Versions.** Every merge into accept raises galaxy.yml's version. The first
+  change on develop after a merge into accept raises it (a patch for fixes and
+  refactors, a minor version for new features) and starts its CHANGELOG.md
+  section; CI's `version raised` job fails on any branch whose version is not
+  higher than accept's. When develop holds a version's worth, the agent opens
+  a pull request from develop into accept; the maintainer reviews it and merges
+  it with a merge commit, then accept into main.
 - **Never touch the maintainer's own tooling**: `.tools/`, `libs/` (their Bash
   library, a git subtree), `.env.example` and personal files like them. They
   stay exactly as the branch has them, in a pushed branch and in a zip; the
@@ -127,7 +135,7 @@ and bring Status up to date before ending a block of work.
   written down here yet. In every form, commit messages are plain text, without
   attribution trailers (no Co-Authored-By, no session links).
   - A pushed branch. An agent with push access pushes its branches (CI runs on
-    every push). It may open a pull or merge request into accept only when the
+    every push). It may open a pull or merge request into develop only when the
     gates pass: every CI job green, the relevant tests proven to pass, lint
     clean. The request's description stands on its own, for any reviewer:
     never written as a continuation of the conversation with the maintainer.
@@ -528,8 +536,16 @@ playbook for every podman_service service, a smoke test after a deploy).
 
 ## Status
 
-Last updated 2026-10-18, for accept. v0.5.0 is released (main); what accept has
-since goes into 0.5.1.
+Last updated 2026-10-18, for develop. v0.5.0 is released (main); accept has
+0.5.1, and develop gathers 0.5.2.
+
+- Decided with the maintainer on 2026-10-18: a long-lived `develop` branch
+  gathers the agents' changes. Each comes as a pull request into develop, from
+  a branch started there, and the agent squash-merges it on a green CI.
+  develop goes into accept as a pull request with a raised version, which the
+  maintainer reviews and merges with a merge commit (not a squash, so develop
+  continues without conflicts). CI's `version raised` job checks the version
+  on every branch but main and accept (see Working with the maintainer).
 
 - Decided with the maintainer on 2026-10-18: pull request descriptions stand on
   their own, and every pull request has one branch, started from the current
@@ -703,8 +719,8 @@ since goes into 0.5.1.
 - Releases, decided with the maintainer: CI runs on every push to every branch
   (main and accept get their own pipelines later). A passing branch publishes a
   7-day branch build (GitHub keeps only the newest); a passing main publishes
-  the next version (one patch above the latest tag, or galaxy.yml's version
-  when that is higher) as a release with its tag.
+  galaxy.yml's version (one patch above the latest tag, should it lag behind)
+  as a release with its tag.
 - Roles by area, decided with the maintainer: `podman_` roles work for any image
   (podman_service deploys, podman_overview shows root what runs), `node_` roles
   add what Node.js projects need. A future language gets `<language>_` roles on

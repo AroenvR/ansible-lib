@@ -79,6 +79,12 @@ base, the one Claude Code's container starts from too
 change that file, and both get it with their next run. Claude can change it with
 sudo, so here it sets defaults; the VM is the boundary.
 
+Its instructions, `/etc/claude-code/CLAUDE.md`, are aslib.infra's too
+([files/CLAUDE.md](files/CLAUDE.md)), rewritten with every run: work so that an
+interrupted session loses nothing (commits, a handoff file per task, memory),
+and `/tmp` empties at every boot. Claude Code also reads `~/.claude/CLAUDE.md`
+and each project's `CLAUDE.md`, which are yours and Claude's.
+
 aslib.infra's tests run there as in CI (`<repository>` is the URL of the
 aslib.infra repository you use):
 

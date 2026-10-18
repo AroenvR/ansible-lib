@@ -27,6 +27,21 @@ jobs:
           python-version: "3.12"
       - run: make lint
 
+  # A branch on its way to accept raises the version: galaxy.yml's must be higher
+  # than accept's, with its CHANGELOG.md section. Not for main and accept
+  # themselves, nor for pull requests into main.
+  version:
+    name: version raised
+    if: >-
+      (github.event_name == 'push' && github.ref_name != github.event.repository.default_branch
+       && github.ref_name != 'accept')
+      || (github.event_name == 'pull_request' && github.base_ref != github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - run: git fetch --quiet --depth=1 origin +refs/heads/accept:refs/remotes/origin/accept
+      - run: make version-raised
+
   servers:
     name: server roles · ansible-core ${{ matrix.ansible }}
     runs-on: ubuntu-24.04
