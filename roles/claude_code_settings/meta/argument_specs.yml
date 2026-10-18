@@ -1,0 +1,53 @@
+---
+argument_specs:
+  main:
+    short_description: Compute the Claude Code settings that every target of aslib.infra installs
+    description:
+      - The settings Claude Code gets wherever aslib.infra installs it, in its container (claude_code_podman) and in
+        its VM (claude_code_vm), which include this role and install what it hands over, each where its Claude Code
+        reads it. Changes nothing itself.
+      - Hands over three facts. C(claude_code_settings_policy), the base of the policy managed-settings.json, from
+        templates/managed-settings.json.j2 with the values below; a target may add its own part.
+        C(claude_code_settings_environment), the environment variables every claude process needs.
+        C(claude_code_settings_global_config), Claude Code's .claude.json for an account that has none yet.
+      - Whatever these settings say, a new session starts ready to work - signed in where the target has a token,
+        without the first-run setup, without asking to trust a folder (any folder, git repositories cloned later
+        included), without the confirmation of bypassPermissions mode; and a cd in Bash sticks for later commands,
+        as every directory is a working directory.
+    options:
+      claude_code_settings_permission_mode:
+        type: str
+        default: bypassPermissions
+        choices: [default, acceptEdits, plan, auto, dontAsk, bypassPermissions]
+        description:
+          - The permission mode a new session starts in (the policy's C(permissions.defaultMode)). The policy's deny
+            rules apply in every mode.
+          - C(default) prompts before edits and commands, C(acceptEdits) before commands only, C(plan) only plans,
+            C(auto) lets a classifier decide, C(dontAsk) denies what would prompt, C(bypassPermissions) prompts for
+            nothing.
+      claude_code_settings_model:
+        type: str
+        default: opus
+        description: The model a new session starts with, an alias such as C(opus) (the newest Opus) or C(sonnet), or
+          a full model ID. /model still switches within a session.
+      claude_code_settings_effort:
+        type: str
+        default: xhigh
+        choices: [low, medium, high, xhigh]
+        description: The effort level a new session starts with (C(effortLevel)). /effort still changes it.
+      claude_code_settings_theme:
+        type: str
+        default: dark
+        choices: [auto, dark, light, dark-daltonized, light-daltonized, dark-ansi, light-ansi]
+        description: The colour theme. C(auto) follows the terminal; C(-daltonized) is colour-blind friendly; C(-ansi)
+          uses only the terminal's own colours.
+      claude_code_settings_agent_teams:
+        type: bool
+        default: false
+        description: Agent teams, Claude Code's experimental sessions that work together as a team
+          (C(CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS) in the policy's C(env)).
+      claude_code_settings_ultracode:
+        type: bool
+        default: false
+        description: Start sessions with ultracode on, so that Claude plans a workflow of agents for each substantive
+          task without being asked (C(ultracode)). /effort ultracode off still turns it off for a session.

@@ -27,7 +27,7 @@ server containers ([Make targets](#make-targets) says what each target
 runs); `make help` lists all targets.
 
 `PYTHON_2.14=`, `PYTHON_2.16=` and `PYTHON_LINT=` point make at another Python
-(by default `python3.11`, `python3.12` and `python3.12`). claude_vm's VM
+(by default `python3.11`, `python3.12` and `python3.12`). claude_code_vm's VM
 already has Python 3.11 (from deadsnakes); adding the deadsnakes PPA a second
 time there breaks `apt-get update`.
 
@@ -40,10 +40,10 @@ make lint
 sudo make images test-servers-2.14 ROLES=sudoers
 ```
 
-**A machine for development:** claude_vm's VM, on a host with KVM, has Podman,
+**A machine for development:** claude_code_vm's VM, on a host with KVM, has Podman,
 git, make and both Pythons, and runs the tests as CI does; Claude Code may have
 root there, away from the host and the local network. See
-[A VM for Claude Code, for development](docs/claude-vm.md).
+[A VM for Claude Code, for development](docs/claude-code-vm.md).
 
 ## Repository layout
 
@@ -52,9 +52,9 @@ root there, away from the host and the local network. See
 | `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface; `README.md` is the role's reference |
 | `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
-| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
-| `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
-| `roles/claude_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`sudo make test-vm-2.16`; CI runs it on GitHub) |
+| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code_podman's deploy, side by side with the Node.js service |
+| `roles/claude_code_podman/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
+| `roles/claude_code_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`sudo make test-vm-2.16`; CI runs it on GitHub) |
 | `roles/gitlab/molecule/gitlab/` | Deploys and uses GitLab on the RHEL 9 test server; not part of `make test` (`make test-gitlab-<ansible-core>`). `mock/` is a stand-in for GitLab's image (`gitlab_test_real: false`) |
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
 | `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
@@ -93,7 +93,7 @@ so a local run does exactly what a pipeline does. `make help` lists them:
 | `make test` | The three above, with ansible-core 2.14 and 2.16 |
 | `make test-native` | `make dist`, the images `ubuntu2404` and `ubuntu2404-native`, then `dev/native-test.sh` with the roles in `UBUNTU_ROLES` |
 | `make test-gitlab-<ansible-core>` | Molecule scenario `gitlab`, on the RHEL 9 test server; not part of `make test` |
-| `make test-vm-<ansible-core>` | Molecule scenario `vm`, on this machine, which needs KVM; with 2.16 only, as claude_vm needs it; not part of `make test` |
+| `make test-vm-<ansible-core>` | Molecule scenario `vm`, on this machine, which needs KVM; with 2.16 only, as claude_code_vm needs it; not part of `make test` |
 | `make build` | `lint`, `test` and `test-native`: what CI runs before a release, except GitLab's test |
 | `make dist` | `build.yml`: a tarball to try out, `dist/aslib-infra.<branch>.<commit>.<UTC time>.tgz` |
 | `make dist-release` | `build.yml -e release=true`: a release, as CI makes one from main, `dist/aslib-infra-<next version>.tar.gz`. It writes the version into `galaxy.yml` first, so only CI should run it |
@@ -122,16 +122,16 @@ yourself.
 
 Every role but podman_service and podman_overview has one Molecule scenario,
 named after where the role runs. Those two are tested through node_deploy's,
-which deploys a service with them, next to Claude Code (claude_code's deploy,
-with the stand-in for Claude Code in `roles/claude_code/molecule/mock/`) on the
+which deploys a service with them, next to Claude Code (claude_code_podman's deploy,
+with the stand-in for Claude Code in `roles/claude_code_podman/molecule/mock/`) on the
 same test server: every service the library provides must run side by side
 without taking another's account, UID or files.
 
 | Scenario | For roles that run on | Runs in | Make target |
 |---|---|---|---|
 | `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
-| `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code`'s setup and image) | The machine running the tests | `make test-build-machine-<ansible-core>` |
-| `roles/claude_vm/molecule/vm/` | A host with KVM (`claude_vm`) | The machine running the tests, which needs KVM; not part of `make test`; with 2.16 only | `sudo make test-vm-2.16` |
+| `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code_podman`'s setup and image, `claude_code_settings`) | The machine running the tests | `make test-build-machine-<ansible-core>` |
+| `roles/claude_code_vm/molecule/vm/` | A host with KVM (`claude_code_vm`, its settings file and the real Claude Code in the VM) | The machine running the tests, which needs KVM; not part of `make test`; with 2.16 only. It deletes `/etc/claude-vm/settings.yml` first and removes the VM at the end | `sudo make test-vm-2.16` |
 | `roles/gitlab/molecule/gitlab/` | A server running GitLab (`gitlab`) | The RHEL 9 test server; needs Docker Hub, about 4 GB of memory, 15 GB of disk and half an hour, so not part of `make test` (with `gitlab_test_real: false` in its `vars/test.yml`, a stand-in takes minutes, offline) | `make test-gitlab-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
@@ -219,10 +219,10 @@ default install (`node_deploy` needs Podman) installs it in its `prepare.yml`,
 the way an administrator would, and only what a default RHEL install has: what a
 role needs beyond it (acl), the role installs when missing.
 
-Stand-ins replace what a machine may not reach: claude_code's build-machine
+Stand-ins replace what a machine may not reach: claude_code_podman's build-machine
 test builds the real Claude Code image, which needs Red Hat's registry and
-Anthropic's repository, unless `claude_code_test_real: false` in its
-`vars/project.yml` builds the stand-in in `roles/claude_code/molecule/mock/`
+Anthropic's repository, unless `claude_code_podman_test_real: false` in its
+`vars/project.yml` builds the stand-in in `roles/claude_code_podman/molecule/mock/`
 instead; node_deploy's test always deploys that stand-in. gitlab's test uses
 GitLab's own image unless `gitlab_test_real: false` in its `vars/test.yml`.
 
@@ -296,7 +296,7 @@ Then push; open a pull request into `develop` once the gates in
   - images: a role variable for the name, and the build machine's
     `registries.conf` for where it comes from;
   - RPMs in image builds: a directory of `.repo` files (`node_image_rpm_repos`,
-    `claude_code_rpm_repos`), which replaces the images' own repositories for
+    `claude_code_podman_rpm_repos`), which replaces the images' own repositories for
     the build instead of adding to them;
   - anything else (a repository, a key, a script): a role variable whose
     default points upstream, checked by fingerprint or checksum.
@@ -306,7 +306,7 @@ Then push; open a pull request into `develop` once the gates in
   image, and merges nothing. The sources are listed in node_image's
   [Download sources](roles/node_image/README.md#download-sources) and in the
   tables of the same name in the project guides (`templates/README.md.j2` of
-  node_setup and claude_code).
+  node_setup and claude_code_podman).
 - Download only what is genuinely needed and enterprise-proven; prefer the OS
   repositories.
 - Install packages only when they are missing (see `roles/sudoers/tasks/main.yml`).
@@ -314,14 +314,22 @@ Then push; open a pull request into `develop` once the gates in
   already installed, which fails on offline hosts.
 - Each role README says exactly what the machines it runs on need, and when, in
   a section of its own ("What a server needs", "What the build machine needs",
-  "Requirements", or claude_vm's "The host").
+  "Requirements", or claude_code_vm's "The host").
 
 ### Role design
+
+The design rests on SOLID and KISS, with some domain-driven and test-driven
+design: roles are grouped by domain into families, each role does one job,
+roles meet through their documented interfaces, and the checks come first.
 
 | OOP idea | In this collection |
 |---|---|
 | Package | The collection, versioned and released as one tarball |
+| Module | A family of roles of one domain, named `<domain>_<what>`: `podman_`, `node_`, `claude_code_` |
+| Index | The family's bare name, where it is a role (`claude_code`): its README maps the family, and it runs nothing itself |
 | Class | A role, doing one job |
+| Interface | A role's `meta/argument_specs.yml`, and the facts its README says it hands over (`claude_code_settings_policy`) |
+| Utility | A role that others include for what they share, and that changes nothing itself (claude_code_settings) |
 | Constructor parameters | Variables in `defaults/main.yml`, documented and validated in `meta/argument_specs.yml` |
 | Public methods | Extra entry points: `tasks/<name>.yml` plus an `argument_specs` entry, called with `include_role` and `tasks_from` |
 | Private members (by convention) | Task files without an `argument_specs` entry, and variables prefixed `__<role>_` |
@@ -337,13 +345,24 @@ Then push; open a pull request into `develop` once the gates in
   validation evaluates every default before the first task runs. Read files in tasks.
 - When a role is meant for people who don't write Ansible, also ship a playbook in
   `playbooks/`, so it runs as `ansible-playbook aslib.infra.<name>`.
-- Name roles by area: `podman_` for any container image, `node_` for what
-  Node.js projects add on top.
+- Name roles by domain, in the domain's own words: `podman_` for any container
+  image, `node_` for what Node.js projects add on top, `claude_code_` for
+  Claude Code wherever it runs. A role that implements one domain with another
+  carries both names, its domain first: claude_code_podman is a Claude Code
+  role built on podman_service.
+- What two roles share lives in a role of its own that both include
+  (claude_code_settings for claude_code_podman and claude_code_vm). A role
+  does not take what another role owns from that role's folder: it includes
+  that role and uses what its interface hands over. For now, the setups of
+  node_setup and claude_code_podman still share their templates of a project's
+  inventory and Quadlet file that way, until a shared setup role exists.
+- A role that renames or drops a setting stops a run that still sets the old
+  name, naming the new one, rather than ignoring it.
 - Containers run with Podman, never Docker. Build every container-based role on
   podman_service, which implements the server conventions (an account per
   service, image archives, Quadlet files, the service's directory, see
   [podman_service](roles/podman_service/README.md#conventions)), as node_deploy,
-  claude_code and gitlab do.
+  claude_code_podman and gitlab do.
 
 ### Plugins
 
@@ -364,7 +383,7 @@ Each kind of documentation has one place:
 | What aslib.infra is, who it is for, a quick start, how to install, links onwards | `README.md`, a short landing page |
 | A guide per job, in order, from nothing to working; installing; the reference of roles, playbooks and plugins; what the tests cover | `docs/`, indexed in [docs/README.md](docs/README.md) |
 | A role: what it does, how, what the machines it runs on need, its options | The role's `README.md`, and `meta/argument_specs.yml` for its options (`ansible-doc -t role aslib.infra.<role>` shows them offline) |
-| A project's steps, from its `ansible/` directory | The guides node_setup and claude_code write into a project as `ansible/README.md`, from their `templates/README.md.j2` (claude_code's `templates/project-README.md.j2` becomes the project's `README.md`) |
+| A project's steps, from its `ansible/` directory | The guides node_setup and claude_code_podman write into a project as `ansible/README.md`, from their `templates/README.md.j2` (claude_code_podman's `templates/project-README.md.j2` becomes the project's `README.md`) |
 | Every change users notice, with how to upgrade | `CHANGELOG.md`, under the version it ships in |
 | Developing aslib.infra | This file |
 | Rules, pitfalls, decisions and status, for AI coding agents | `AGENTS.md`, which links here rather than repeating it |
@@ -447,7 +466,7 @@ requests. main and accept get pipelines of their own later.
 | build-machine roles · ansible-core 2.14 / 2.16 | `make test-build-machine-<ansible-core>`, `make test-dist-<ansible-core>` | Same, plus access to Red Hat's registry, Anthropic's repository, npm and GitHub |
 | Ubuntu 24.04's own ansible-core and Podman | `make test-native` | Same |
 | GitLab · ansible-core 2.14 / 2.16 | `make image-rhel9 test-gitlab-<ansible-core>` | As server roles, plus Docker Hub, about 4 GB of memory and 15 GB of disk |
-| claude_vm · ansible-core 2.16 (GitHub only) | `make test-vm-2.16` | KVM (`/dev/kvm`), which GitHub's Linux runners have; Ubuntu's archive, its cloud image, the deadsnakes and Anthropic's repositories |
+| claude_code_vm · ansible-core 2.16 (GitHub only) | `make test-vm-2.16` | KVM (`/dev/kvm`), which GitHub's Linux runners have; Ubuntu's archive, its cloud image, the deadsnakes and Anthropic's repositories |
 | branch build (every branch but main) | `make dist BRANCH=<branch>` | All jobs above green |
 | release (main) | `make dist-release` | All jobs above green |
 
@@ -458,7 +477,7 @@ container, which the runner has to allow. The `runner-check` job reports what
 the runner offers (OS, user, privileges, Podman) and the test jobs only start
 once it passes. If it fails, its log says what the runner admin needs to
 change. Until then GitLab publishes nothing, on purpose: nothing ships untested.
-GitLab has no claude_vm job: its runner would need KVM too.
+GitLab has no claude_code_vm job: its runner would need KVM too.
 
 ## Releases
 

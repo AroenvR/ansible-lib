@@ -1,0 +1,207 @@
+---
+# Entry point "guest": runs in the VM, as claude, who may use sudo. Sets up what
+# Claude Code and aslib.infra's tests need: Podman, git, make, Python 3.11 next to
+# Ubuntu's 3.12, and Claude Code from Anthropic's signed repository with the
+# settings of aslib.infra.claude_code_settings and Claude's token. Running it
+# again changes nothing.
+- name: Wait until the VM lets Ansible in
+  ansible.builtin.wait_for_connection:
+    timeout: 600
+
+# Until then, cloud-init may still hold apt's lock. 2: done, with warnings.
+- name: Wait until cloud-init has finished the first boot
+  ansible.builtin.command:
+    argv: [cloud-init, status, --wait]
+  register: __claude_code_vm_cloud_init
+  changed_when: false
+  failed_when: __claude_code_vm_cloud_init.rc not in [0, 2]
+
+- name: Look up the VM's Ubuntu release
+  ansible.builtin.setup:
+    gather_subset: ["!all", "!min", distribution]
+
+- name: Let the keys in claude_code_vm_authorized_keys log in as claude, besides this machine's
+  ansible.builtin.template:
+    src: authorized_keys.j2
+    dest: /home/claude/.ssh/authorized_keys
+    owner: claude
+    group: claude
+    mode: "0600"
+
+# Next to the ports the host's firewall lets through (claude_code_vm_host_ports).
+- name: Make the names in claude_code_vm_host_names lead to the host
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} claude_code_vm (aslib.infra): names of the host, claude_code_vm_host_names"
+    block: "{{ claude_code_vm_network_prefix }}.1 {{ claude_code_vm_host_names | join(' ') }}"
+    state: "{{ 'present' if claude_code_vm_host_names | length > 0 else 'absent' }}"
+
+# Only where missing: a keyserver's answer can differ from one request to the
+# next (seen in CI, with deadsnakes' key), so downloading again could change the
+# file on every run. The fingerprint check below is what proves the key.
+- name: Look up the keys the VM's repositories are signed with
+  ansible.builtin.stat:
+    path: /etc/apt/keyrings/{{ __claude_code_vm_repository.name }}.asc
+  loop: "{{ __claude_code_vm_repositories }}"
+  loop_control:
+    loop_var: __claude_code_vm_repository
+    label: "{{ __claude_code_vm_repository.name }}"
+  register: __claude_code_vm_key_files
+
+- name: Download the keys the VM's repositories are signed with, where missing
+  ansible.builtin.get_url:
+    url: "{{ __claude_code_vm_key_file.__claude_code_vm_repository.key_url }}"
+    dest: /etc/apt/keyrings/{{ __claude_code_vm_key_file.__claude_code_vm_repository.name }}.asc
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __claude_code_vm_key_files.results }}"
+  loop_control:
+    loop_var: __claude_code_vm_key_file
+    label: "{{ __claude_code_vm_key_file.__claude_code_vm_repository.name }}"
+  when: not __claude_code_vm_key_file.stat.exists
+
+- name: Look up the keys' fingerprints
+  ansible.builtin.command:
+    argv: [gpg, --show-keys, --with-colons, "/etc/apt/keyrings/{{ __claude_code_vm_repository.name }}.asc"]
+  loop: "{{ __claude_code_vm_repositories }}"
+  loop_control:
+    loop_var: __claude_code_vm_repository
+    label: "{{ __claude_code_vm_repository.name }}"
+  register: __claude_code_vm_keys
+  changed_when: false
+
+- name: Check each key is the one its project publishes
+  ansible.builtin.assert:
+    that: "__claude_code_vm_key_check.stdout is search('^fpr:+' ~ __claude_code_vm_key_check.__claude_code_vm_repository.fingerprint ~ ':', multiline=True)"
+    fail_msg: >-
+      {{ __claude_code_vm_key_check.__claude_code_vm_repository.key_url }} is not the key
+      {{ __claude_code_vm_key_check.__claude_code_vm_repository.fingerprint }}.
+    quiet: true
+  loop: "{{ __claude_code_vm_keys.results }}"
+  loop_control:
+    loop_var: __claude_code_vm_key_check
+    label: "{{ __claude_code_vm_key_check.__claude_code_vm_repository.name }}"
+
+- name: Add the repositories
+  ansible.builtin.copy:
+    content: |
+      # claude_code_vm (aslib.infra): written by every run.
+      deb [signed-by=/etc/apt/keyrings/{{ __claude_code_vm_repository.name }}.asc] {{ __claude_code_vm_repository.deb }}
+    dest: /etc/apt/sources.list.d/{{ __claude_code_vm_repository.name }}.list
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __claude_code_vm_repositories }}"
+  loop_control:
+    loop_var: __claude_code_vm_repository
+    label: "{{ __claude_code_vm_repository.name }}"
+
+- name: Look up the installed packages
+  ansible.builtin.package_facts:
+
+- name: Install Podman, git, make, Python 3.11 and Claude Code where missing
+  ansible.builtin.apt:
+    name: "{{ __claude_code_vm_missing }}"
+    state: present
+    update_cache: true
+  vars:
+    __claude_code_vm_missing: "{{ __claude_code_vm_guest_packages | difference(ansible_facts.packages.keys()) }}"
+  when: __claude_code_vm_missing | length > 0
+
+# How a session starts, the same as in Claude Code's container: the settings come
+# from the host's play (the inventory, the settings file, -e). With sudo, Claude
+# could change what follows: in the VM it sets defaults, and the VM itself is
+# the boundary.
+- name: Compute Claude Code's settings
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_settings
+
+- name: Create /etc/claude-code, where Claude Code reads its policy
+  ansible.builtin.file:
+    path: /etc/claude-code
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Claude Code's policy
+  ansible.builtin.copy:
+    content: "{{ claude_code_settings_policy | to_nice_json(indent=2, sort_keys=False) }}\n"
+    dest: /etc/claude-code/managed-settings.json
+    owner: root
+    group: root
+    mode: "0644"
+
+# Claude's sign-in: readable by claude, changeable only with sudo, and never in
+# the policy, which everyone may read.
+- name: Create the directory of Claude's token, {{ __claude_code_vm_token_file | dirname }}
+  ansible.builtin.file:
+    path: "{{ __claude_code_vm_token_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Claude's token, readable by root and claude only
+  ansible.builtin.copy:
+    content: "{{ claude_code_vm_oauth_token }}\n"
+    dest: "{{ __claude_code_vm_token_file }}"
+    owner: root
+    group: claude
+    mode: "0640"
+  when: claude_code_vm_oauth_token | length > 0
+  no_log: true
+
+- name: Remove Claude's token, as claude_code_vm_oauth_token is empty
+  ansible.builtin.file:
+    path: "{{ __claude_code_vm_token_file }}"
+    state: absent
+  when: claude_code_vm_oauth_token | length == 0
+
+# Before Ubuntu's /usr/bin/claude in every PATH: Claude Code reads both from its
+# environment.
+- name: Install the claude command, which starts Claude Code with its token and environment
+  ansible.builtin.template:
+    src: claude.sh.j2
+    dest: "{{ __claude_code_vm_claude_command }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+# Claude Code's own file; it is Claude Code's from then on.
+- name: Give claude Claude Code's .claude.json, which skips the setup of its first start, if it has none
+  ansible.builtin.copy:
+    content: "{{ claude_code_settings_global_config | to_nice_json(indent=2) }}\n"
+    dest: /home/claude/.claude.json
+    owner: claude
+    group: claude
+    mode: "0600"
+    force: false
+
+# Read in every session, before the user's and the project's CLAUDE.md.
+- name: Install aslib.infra's instructions for Claude Code in the VM
+  ansible.builtin.copy:
+    src: CLAUDE.md
+    dest: /etc/claude-code/CLAUDE.md
+    owner: root
+    group: root
+    mode: "0644"
+
+# A reset soon after (UEFI may restart an ARM64 VM; the test resets it on
+# purpose) loses what ext4 has not written out yet, up to 30 seconds' worth: a
+# new file then comes back empty, as the policy did in CI 19 seconds after it was
+# written.
+- name: Write everything to the VM's disk
+  ansible.builtin.command: sync
+  changed_when: false
+
+- name: Show how to use the VM
+  ansible.builtin.debug:
+    msg:
+      - "Log in: ssh -i {{ __claude_code_vm_key }} {{ ansible_ssh_common_args }} claude@{{ ansible_host }}"
+      - >-
+        Claude Code: claude, in {{ claude_code_settings_policy.permissions.defaultMode }} mode{{
+        ', signed in with claude_code_vm_oauth_token' if claude_code_vm_oauth_token | length > 0 else ' (sign in once)' }}
+      - "aslib.infra: git clone <repository> ~/src/aslib, then see its CONTRIBUTING.md"
+      - "Its tests, as CI runs them: make setup, then sudo make images test-servers-2.14"

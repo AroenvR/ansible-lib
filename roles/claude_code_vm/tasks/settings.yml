@@ -1,0 +1,114 @@
+---
+# The host's settings file, /etc/claude-vm/settings.yml: what a person chooses
+# (vars/main.yml lists it), read by every run, whichever machine Ansible runs on.
+# Written when missing, with every setting at the value this run uses; later runs
+# add the settings it lacks, at the value this run uses, and never change,
+# remove or reorder a line that is there. Its values then win over the
+# inventory's and the defaults (as facts), -e over them. It may hold Claude's
+# token, so every task that reads or writes it hides its result (no_log).
+
+# Its defaults are the settings' defaults here.
+- name: Look up how Claude Code's sessions start, the same settings as in its container
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_settings
+    public: true
+
+- name: Create the VM's configuration directory, {{ __claude_code_vm_config_dir }}
+  ansible.builtin.file:
+    path: "{{ __claude_code_vm_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Look up the settings file
+  ansible.builtin.stat:
+    path: "{{ __claude_code_vm_settings_file }}"
+  register: __claude_code_vm_settings_stat
+
+- name: Read the settings file
+  ansible.builtin.slurp:
+    src: "{{ __claude_code_vm_settings_file }}"
+  register: __claude_code_vm_settings_read
+  when: __claude_code_vm_settings_stat.stat.exists
+  no_log: true
+
+- name: Note the settings file's text and settings
+  ansible.builtin.set_fact:
+    __claude_code_vm_settings_text: "{{ __claude_code_vm_settings_read_text }}"
+    __claude_code_vm_settings_values: "{{ __claude_code_vm_settings_read_text | from_yaml or {} }}"
+    __claude_code_vm_settings_new_lines: []
+  vars:
+    __claude_code_vm_settings_read_text: >-
+      {{ __claude_code_vm_settings_read.content | b64decode if __claude_code_vm_settings_stat.stat.exists else '' }}
+  no_log: true
+
+- name: Check the settings file holds settings and nothing else
+  vars:
+    __claude_code_vm_settings_unknown: >-
+      {{ __claude_code_vm_settings_values.keys() | difference(__claude_code_vm_settings | map(attribute='name'))
+         if __claude_code_vm_settings_values is mapping else [] }}
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_settings_values is mapping
+      - __claude_code_vm_settings_unknown | length == 0
+    fail_msg: >-
+      {{ __claude_code_vm_settings_file }} must hold settings, one "name: value" per line, of these only:
+      {{ __claude_code_vm_settings | map(attribute='name') | join(', ') }}. It also has:
+      {{ __claude_code_vm_settings_unknown | join(', ') or 'something else than settings' }}.
+    quiet: true
+
+- name: Note the settings the file lacks, each with its comment, at the value this run uses
+  ansible.builtin.set_fact:
+    __claude_code_vm_settings_new_lines: >-
+      {{ __claude_code_vm_settings_new_lines + ['# ' ~ __claude_code_vm_setting.comment,
+         __claude_code_vm_setting.name ~ ': ' ~ (lookup('ansible.builtin.vars', __claude_code_vm_setting.name) | to_json)] }}
+  loop: "{{ __claude_code_vm_settings | rejectattr('name', 'in', __claude_code_vm_settings_values) | list }}"
+  loop_control:
+    loop_var: __claude_code_vm_setting
+  no_log: true
+
+# A value as one line of YAML (JSON is YAML), after the file's own lines.
+- name: Write the settings file, or add the settings it lacks
+  ansible.builtin.copy:
+    content: >-
+      {{ __claude_code_vm_settings_text
+         ~ (__claude_code_vm_newline if __claude_code_vm_settings_text[-1:] not in ['', __claude_code_vm_newline] else '')
+         ~ ((([] if __claude_code_vm_settings_stat.stat.exists else __claude_code_vm_settings_header)
+             + __claude_code_vm_settings_new_lines) | join(__claude_code_vm_newline)) ~ __claude_code_vm_newline }}
+    dest: "{{ __claude_code_vm_settings_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: __claude_code_vm_settings_new_lines | length > 0
+  no_log: true
+
+# Facts beat the inventory and the defaults; -e still beats facts.
+- name: Take the settings from the file
+  ansible.builtin.set_fact:
+    "{{ __claude_code_vm_setting.key }}": "{{ __claude_code_vm_setting.value }}"
+  loop: "{{ __claude_code_vm_settings_values | dict2items }}"
+  loop_control:
+    loop_var: __claude_code_vm_setting
+  no_log: true
+
+- name: Check the file's settings of claude_code_vm as the role's options
+  ansible.builtin.validate_argument_spec:
+    argument_spec: >-
+      {{ (lookup('ansible.builtin.file', role_path ~ '/meta/argument_specs.yml') | from_yaml).argument_specs.main.options
+         | dict2items | selectattr('key', 'in', __claude_code_vm_settings_values) | rejectattr('key', 'eq', 'claude_code_vm_oauth_token')
+         | items2dict }}
+    provided_arguments: >-
+      {{ __claude_code_vm_settings_values | dict2items | rejectattr('key', 'search', '^claude_code_settings_|_oauth_token$')
+         | items2dict }}
+
+# Not with the others: an argument check would name the value.
+- name: Check the token is text
+  ansible.builtin.assert:
+    that: claude_code_vm_oauth_token is string
+    fail_msg: claude_code_vm_oauth_token must be text, the token that claude setup-token prints, or "" for none.
+    quiet: true
+
+- name: Check the file's settings of Claude Code's sessions, as claude_code_settings does
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_settings

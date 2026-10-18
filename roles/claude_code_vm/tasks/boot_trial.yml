@@ -1,0 +1,116 @@
+---
+# Entry point "boot_trial": boots claude-dev once as the options say, with its
+# console recorded, and shows how far the boot got. A debugging tool: it changes
+# the VM, and the changes stay for the next trial. It only swaps the firmware or
+# takes things away (TPM, CD drive); the VM as aslib.infra.claude_code_vm makes
+# it comes back with aslib.infra.claude_code_vm_remove, then aslib.infra.claude_code_vm.
+- name: Look up the VM
+  ansible.builtin.include_tasks: describe.yml
+
+- name: Check there is a VM to try, with UEFI firmware to swap if asked
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_describe.results[0].rc == 0
+      - claude_code_vm_trial_firmware | length == 0 or __claude_code_vm_describe.results[1].stdout is search('<loader')
+    fail_msg: >-
+      {{ 'There is no VM ' ~ __claude_code_vm_name ~ ' to try; aslib.infra.claude_code_vm creates it.'
+         if __claude_code_vm_describe.results[0].rc != 0 else
+         'The VM boots with BIOS (as on x86_64), so there is no UEFI firmware to swap: leave claude_code_vm_trial_firmware empty.' }}
+    quiet: true
+
+- name: Look up the firmware to boot with
+  ansible.builtin.stat:
+    path: "{{ __claude_code_vm_trial_file }}"
+  loop: "{{ __claude_code_vm_trial_firmware_files[claude_code_vm_trial_firmware].values() | list if claude_code_vm_trial_firmware | length > 0 else [] }}"
+  loop_control:
+    loop_var: __claude_code_vm_trial_file
+  register: __claude_code_vm_trial_firmware_found
+
+- name: Check this host has that firmware
+  ansible.builtin.assert:
+    that: __claude_code_vm_trial_missing | length == 0
+    fail_msg: >-
+      This host lacks {{ __claude_code_vm_trial_missing | join(', ') }}: the firmware trials use Ubuntu's ARM64 firmware
+      (qemu-efi-aarch64).
+    quiet: true
+  vars:
+    __claude_code_vm_trial_missing: >-
+      {{ __claude_code_vm_trial_firmware_found.results | rejectattr('stat.exists') | map(attribute='__claude_code_vm_trial_file') | list }}
+
+- name: Stop the VM
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_virsh + ['destroy', __claude_code_vm_name] }}"
+  when: __claude_code_vm_describe.results[0].stdout is not search('^shut off')
+  changed_when: true
+
+# virt-xml, which comes with virt-install, edits the VM's definition; libvirt
+# fills in the new firmware's features (Secure Boot, keys) itself. The console
+# log starts afresh at every boot.
+- name: Swap the firmware as the trial asks, and record the console
+  vars:
+    __claude_code_vm_firmware: "{{ __claude_code_vm_trial_firmware_files[claude_code_vm_trial_firmware] | default({}) }}"
+    __claude_code_vm_edits: >-
+      {{ (['xpath.delete=./os/firmware', './os/loader=' ~ __claude_code_vm_firmware.code,
+           './os/nvram/@template=' ~ __claude_code_vm_firmware.vars] if __claude_code_vm_firmware else [])
+         + (['./devices/serial/log/@file=' ~ __claude_code_vm_console_log, './devices/serial/log/@append=off']
+            if __claude_code_vm_describe.results[1].stdout is not search("<log file='" ~ __claude_code_vm_console_log ~ "'") else []) }}
+  ansible.builtin.command:
+    argv: >-
+      {{ __claude_code_vm_virt_xml + [__claude_code_vm_name, '--edit']
+         + (['--xml'] * __claude_code_vm_edits | length) | zip(__claude_code_vm_edits) | list | flatten }}
+  when: __claude_code_vm_edits | length > 0
+  changed_when: true
+
+- name: Remove the TPM
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_virt_xml + [__claude_code_vm_name, '--remove-device', '--tpm', 'all'] }}"
+  when: not claude_code_vm_trial_tpm | bool and __claude_code_vm_describe.results[1].stdout is search('<tpm ')
+  changed_when: true
+
+# domblklist --details: type, device, target, source.
+- name: Remove the CD drive
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_virt_xml + [__claude_code_vm_name, '--remove-device', '--disk', 'target=' ~ __claude_code_vm_cd_target] }}"
+  vars:
+    __claude_code_vm_cd_target: >-
+      {{ __claude_code_vm_describe.results[2].stdout_lines | map('split') | selectattr(1, 'defined')
+         | selectattr(1, 'equalto', 'cdrom') | map(attribute=2) | first | default('') }}
+  when: not claude_code_vm_trial_cdrom | bool and __claude_code_vm_cd_target | length > 0
+  changed_when: true
+
+- name: Boot the VM, from fresh UEFI variables unless told otherwise
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_virsh + ['start', __claude_code_vm_name] + (['--reset-nvram'] if claude_code_vm_trial_reset_nvram | bool else []) }}"
+  changed_when: true
+
+- name: Wait for a login prompt or a crash on the console
+  ansible.builtin.wait_for:
+    path: "{{ __claude_code_vm_console_log }}"
+    search_regex: "login:|Exception|No bootable|Shell>"
+    timeout: "{{ claude_code_vm_trial_seconds }}"
+  failed_when: false
+
+- name: Look up how far the boot got
+  ansible.builtin.include_tasks: describe.yml
+
+- name: Show how far the boot got
+  vars:
+    __claude_code_vm_login: "{{ __claude_code_vm_console | select('search', 'login:') | first | default('') }}"
+    __claude_code_vm_crash: "{{ __claude_code_vm_console | select('search', 'Exception') | first | default('') }}"
+    __claude_code_vm_nothing: "{{ __claude_code_vm_console | select('search', 'No bootable|Shell>') | first | default('') }}"
+  ansible.builtin.debug:
+    msg: >-
+      {{ ['Trial: firmware %s, TPM %s, CD drive %s, UEFI variables %s' | format(
+            claude_code_vm_trial_firmware or 'unchanged', 'kept' if claude_code_vm_trial_tpm | bool else 'removed',
+            'kept' if claude_code_vm_trial_cdrom | bool else 'removed',
+            'fresh' if claude_code_vm_trial_reset_nvram | bool else 'kept'),
+          'Result: ' ~ ('reached a login prompt: ' ~ __claude_code_vm_login if __claude_code_vm_login else
+                        'crashed: ' ~ __claude_code_vm_crash if __claude_code_vm_crash else
+                        'found nothing to boot: ' ~ __claude_code_vm_nothing if __claude_code_vm_nothing else
+                        'neither a login prompt nor a crash within %s seconds' | format(claude_code_vm_trial_seconds))]
+         + __claude_code_vm_description
+         + ['Console, the lines that show how far it got (all of it: sudo cat ' ~ __claude_code_vm_console_log ~ '):']
+         + (__claude_code_vm_console | select('search', __claude_code_vm_console_markers) | map('regex_replace', '^', '  ') | list)[-40:]
+         + ((['Console, last lines:'] + __claude_code_vm_console[-5:] | map('regex_replace', '^', '  ') | list)
+            if not (__claude_code_vm_login or __claude_code_vm_crash or __claude_code_vm_nothing) else [])
+         + ['Back to the VM as aslib.infra.claude_code_vm makes it: aslib.infra.claude_code_vm_remove, then aslib.infra.claude_code_vm.'] }}

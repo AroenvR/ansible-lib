@@ -1,0 +1,74 @@
+---
+- name: Check what claude_code_settings hands its targets
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Compute the settings with the defaults
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+
+    - name: Check the policy starts sessions as the defaults say, ready to work
+      vars:
+        __claude_code_settings_test_policy: "{{ claude_code_settings_policy }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_settings_test_policy.permissions.defaultMode == 'bypassPermissions'
+          - __claude_code_settings_test_policy.skipDangerousModePermissionPrompt is true
+          - __claude_code_settings_test_policy.model == 'opus'
+          - __claude_code_settings_test_policy.effortLevel == 'xhigh'
+          - __claude_code_settings_test_policy.theme == 'dark'
+          - __claude_code_settings_test_policy.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS == '0'
+          - __claude_code_settings_test_policy.ultracode is false
+          # Every directory is a working directory, so a cd sticks for later Bash calls.
+          - __claude_code_settings_test_policy.permissions.additionalDirectories == ['/']
+          - "'Edit(//etc/claude-code/**)' in __claude_code_settings_test_policy.permissions.deny"
+          - claude_code_settings_environment == dict(CLAUDE_CODE_SANDBOXED='1')
+          - claude_code_settings_global_config == dict(hasCompletedOnboarding=true)
+        fail_msg: "Policy: {{ claude_code_settings_policy }}"
+        success_msg: >-
+          PASSED claude_code_settings: by default, sessions start in bypassPermissions mode without its
+          confirmation, with Opus at xhigh effort and the dark theme, agent teams and ultracode off, every
+          directory a working directory, every folder trusted and the first-run setup done.
+
+    - name: Compute the settings with every one changed
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+      vars:
+        claude_code_settings_permission_mode: acceptEdits
+        claude_code_settings_model: sonnet
+        claude_code_settings_effort: high
+        claude_code_settings_theme: light-daltonized
+        claude_code_settings_agent_teams: true
+        claude_code_settings_ultracode: "true"   # as -e passes it
+
+    - name: Check the policy holds each changed value
+      ansible.builtin.assert:
+        that:
+          - claude_code_settings_policy.permissions.defaultMode == 'acceptEdits'
+          - claude_code_settings_policy.model == 'sonnet'
+          - claude_code_settings_policy.effortLevel == 'high'
+          - claude_code_settings_policy.theme == 'light-daltonized'
+          - claude_code_settings_policy.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS == '1'
+          - claude_code_settings_policy.ultracode is true
+        fail_msg: "Policy: {{ claude_code_settings_policy }}"
+        success_msg: PASSED claude_code_settings puts each setting's value in the policy.
+
+    - name: Try a permission mode Claude Code does not have
+      block:
+        - name: Compute the settings with it
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_settings
+          vars:
+            claude_code_settings_permission_mode: yolo
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_settings accepted the permission mode yolo.
+      rescue:
+        - name: Check the run stopped, naming the setting
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_settings_permission_mode')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: PASSED claude_code_settings stops at a value outside the choices, naming the setting.

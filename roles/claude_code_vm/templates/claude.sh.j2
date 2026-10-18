@@ -1,0 +1,16 @@
+#!/bin/sh
+# claude: starts Claude Code (Ubuntu's /usr/bin/claude) with what it reads from its
+# environment. Installed by aslib.infra.claude_code_vm; every run replaces this file.
+#
+# Claude's sign-in, the token of claude_code_vm_oauth_token, unless the
+# environment already brings one of its own (an API key wins over it anyway).
+token={{ __claude_code_vm_token_file }}
+if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -r "$token" ]; then
+  CLAUDE_CODE_OAUTH_TOKEN=$(cat "$token")
+  export CLAUDE_CODE_OAUTH_TOKEN
+fi
+# aslib.infra.claude_code_settings: what Claude Code reads before any settings file.
+{% for __claude_code_vm_env in claude_code_settings_environment | dict2items %}
+export {{ __claude_code_vm_env.key }}={{ __claude_code_vm_env.value | quote }}
+{% endfor %}
+exec /usr/bin/claude "$@"

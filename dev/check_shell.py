@@ -8,6 +8,7 @@ maintainer's own tooling (.tools/, libs/) is theirs to check.
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,15 @@ class Placeholder(jinja2.ChainableUndefined):
 
     def __str__(self) -> str:
         return "placeholder"
+
+
+def dict2items(value) -> list:
+    """Ansible's filter: a placeholder has no items."""
+    return [{"key": k, "value": v} for k, v in value.items()] if isinstance(value, dict) else []
+
+
+# The Ansible filters the shell templates use.
+FILTERS = {"quote": lambda value: shlex.quote(str(value)), "dict2items": dict2items}
 
 
 def scripts() -> list:
@@ -53,7 +63,10 @@ with tempfile.TemporaryDirectory() as tmp:
         target = path
         if path.suffix == ".j2":
             target = Path(tmp, path.name[: -len(".j2")])
-            template = jinja2.Environment(undefined=Placeholder).from_string(path.read_text(encoding="utf-8"))
+            # As Ansible renders templates: a block tag takes its newline along.
+            environment = jinja2.Environment(undefined=Placeholder, trim_blocks=True)
+            environment.filters.update(FILTERS)
+            template = environment.from_string(path.read_text(encoding="utf-8"))
             target.write_text(template.render(), encoding="utf-8")
         result = subprocess.run([shellcheck, str(target)], capture_output=True, text=True)
         if result.returncode != 0:

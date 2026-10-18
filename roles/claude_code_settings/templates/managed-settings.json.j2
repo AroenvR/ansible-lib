@@ -1,0 +1,28 @@
+{
+  "env": {
+    "DISABLE_AUTOUPDATER": "1",
+    "DISABLE_TELEMETRY": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": {{ ('1' if claude_code_settings_agent_teams | bool else '0') | to_json }}
+  },
+  "enableWorkflows": true,
+  "ultracode": {{ claude_code_settings_ultracode | bool | to_json }},
+  "plansDirectory": "./plans",
+  "model": {{ claude_code_settings_model | to_json }},
+  "effortLevel": {{ claude_code_settings_effort | to_json }},
+  "theme": {{ claude_code_settings_theme | to_json }},
+  "skipDangerousModePermissionPrompt": true,
+  "permissions": {
+    "defaultMode": {{ claude_code_settings_permission_mode | to_json }},
+    "additionalDirectories": ["/"],
+    "deny": [
+      "Edit(//etc/claude-code/**)",
+      "Read(.env)",
+      "Edit(**/.claude/settings.json)",
+      "Edit(**/.claude/settings.local.json)",
+      "Edit(**/.claude/hooks/**)",
+      "Edit(**/.mcp.json)",
+      "Edit(**/.git/hooks/**)",
+      "Edit(**/.git/config)"
+    ]
+  }
+}

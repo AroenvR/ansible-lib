@@ -103,8 +103,8 @@ argument_specs:
         description:
           - The most memory the container may use, e.g. C(4g); /tmp counts toward it. Past it, the kernel stops a
             process in the container rather than elsewhere on the server.
-          - Empty, the default, sets no limit. node_deploy, claude_code and gitlab set this from node_deploy_memory,
-            claude_code_memory and gitlab_memory.
+          - Empty, the default, sets no limit. node_deploy, claude_code_podman and gitlab set this from node_deploy_memory,
+            claude_code_podman_memory and gitlab_memory.
       podman_service_shared:
         type: bool
         default: true

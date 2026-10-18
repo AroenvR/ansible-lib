@@ -2,7 +2,7 @@
 
 GitLab Community Edition on a server of your own, as a rootless Podman service:
 repositories, merge requests, forks and CI configuration for a few people and
-agents, such as Claude in [claude_vm](../claude_vm/README.md)'s VM. A proof of
+agents, such as Claude in [claude_code_vm](../claude_code_vm/README.md)'s VM. A proof of
 concept: plain HTTP, no email, no backups or runner yet.
 
 ```sh
@@ -26,7 +26,7 @@ unless the archive is there: the server itself needs no access to Docker Hub.
    file stays, it may be empty).
 2. **The name.** Every machine that uses GitLab must find `gitlab.home.arpa`
    (`gitlab_hostname`) at the server: a line in its `/etc/hosts`, or your
-   router's DNS. In claude_vm's VM, `claude_vm_host_names` does it (below).
+   router's DNS. In claude_code_vm's VM, `claude_code_vm_host_names` does it (below).
    `.home.arpa` is the domain meant for home networks.
 3. **A fixed UID** for the account, e.g. `podman_service_uid: 3200` in your
    inventory's `group_vars`. GitLab's files belong to the account's UID and its
@@ -98,7 +98,7 @@ make lasting ones with `gitlab_application_settings`.
 - **root**, the administrator: signs in with the first password, then changes it.
 - **Others**: Admin area, Users, New user; then Edit to give a password, as no
   email can. The person changes it at the first sign-in.
-- **Claude** (in claude_vm's VM) gets an account of its own, not an
+- **Claude** (in claude_code_vm's VM) gets an account of its own, not an
   administrator's, with a personal access token (Edit profile, Access tokens;
   scopes `api` to work with projects and merge requests, or `read_repository` and
   `write_repository` for git only). GitLab CE lets a token live 365 days at most.
@@ -107,17 +107,17 @@ make lasting ones with `gitlab_application_settings`.
 - **A forgotten password**, reset by root on the server:
   `cd / && sudo runuser -u gitlab -- env XDG_RUNTIME_DIR=/run/user/<the account's UID> DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<the account's UID>/bus podman exec -it gitlab gitlab-rake "gitlab:password:reset[<user>]"`
 
-## From claude_vm's VM
+## From claude_code_vm's VM
 
 The VM may not reach the host's services, unless they are named. With GitLab on
 the host, set for the host in your inventory (or with `-e`):
 
 ```yaml
-claude_vm_host_ports: [8929, 2224]
-claude_vm_host_names: [gitlab.home.arpa]
+claude_code_vm_host_ports: [8929, 2224]
+claude_code_vm_host_names: [gitlab.home.arpa]
 ```
 
-and run `aslib.infra.claude_vm` again: the host's firewall lets the VM through to
+and run `aslib.infra.claude_code_vm` again: the host's firewall lets the VM through to
 those two ports only, and in the VM `gitlab.home.arpa` leads to the host.
 
 ## Upgrading

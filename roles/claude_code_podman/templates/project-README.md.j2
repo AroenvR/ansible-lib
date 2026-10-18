@@ -1,0 +1,100 @@
+# Claude Code, always on
+
+An always-on Claude Code agent in a rootless Podman container on Red Hat UBI 9,
+which root reaches from a terminal. `ansible/` builds and deploys it with
+aslib.infra (see [ansible/README.md](ansible/README.md)).
+
+`config/` is yours. The `Containerfile`, `.containerignore` and this README are
+aslib.infra's: `ansible/update-playbooks.yml` replaces them, keeping a changed
+one as `<file>.bak` to merge from.
+
+| File | What it is |
+|---|---|
+| `Containerfile` | The image: UBI 9, the tools Claude needs, and Claude Code from Anthropic's signed dnf repository |
+| `config/` | Claude Code's `/etc/claude-code/`, mounted read-only, never in the image: `managed-settings.json`, this project's part of the policy Claude Code reads as an organisation's, above every other setting (below); `CLAUDE.md`, the instructions it reads in every session (a template: make it yours) |
+| `.containerignore` | What never goes into the image build |
+| `ansible/` | Building, deploying and entering it on servers, with aslib.infra |
+
+## Without aslib.infra
+
+The image builds and runs with plain Podman 4.3 or newer, as any account:
+
+```sh
+podman build --tag claude-code .
+mkdir -p ~/claude-code && cp -r config ~/claude-code/
+podman run --detach --name claude-code --userns=keep-id:uid=1001,gid=1001 \
+  --volume ~/claude-code:/opt/claude-code:Z --volume ~/claude-code/config:/opt/claude-code/config:ro,Z claude-code
+podman exec --interactive --tty claude-code claude
+```
+
+`~/claude-code` is the container's home, `/opt/claude-code`: Claude keeps its
+login, history and memory there. Its `config/` is `/etc/claude-code/`, read-only
+for Claude. The container's user (1001) is your account inside it, so what
+Claude writes is yours. The policy is then `config/managed-settings.json` alone:
+aslib.infra's deploy is what adds its base and the container's settings (below).
+
+## Signing in
+
+With `CLAUDE_CODE_OAUTH_TOKEN` (what `claude setup-token` prints, for a Pro,
+Max, Team or Enterprise subscription) or `ANTHROPIC_API_KEY` in
+`ansible/container.env`, Claude is signed in from the start; if both are set,
+the API key wins. Without either, the first session asks you to sign in. The browser cannot reach the container,
+so the sign-in page shows a code: paste it into Claude. If pasting misbehaves,
+run `claude auth login` in a shell in the container (`podman exec -it claude-code
+bash`), which reads the code from plain input. The login stays in the
+container's home and survives new images.
+
+## The policy
+
+Claude Code reads its policy, as an organisation's, from
+`/etc/claude-code/managed-settings.json`, which every deploy assembles, in this
+order, from:
+
+1. aslib.infra's base, the same for every project (and for the VM of
+   aslib.infra's claude_code_vm): how a session starts (permission mode, model,
+   effort, theme, agent teams, ultracode: the `claude_code_settings_*` settings
+   in `ansible/group_vars/all/project.yml`), without the confirmation of
+   bypassPermissions mode, every directory a working directory, the
+   self-updater and telemetry off, workflows on, plans in `plans/` of the
+   directory a session starts in, and Claude kept away from `.env` files and
+   from the files that would run code at its next start (hooks, `.mcp.json`,
+   `.git/config`);
+2. aslib.infra's settings for the container: its memory in
+   `/opt/claude-code/memory`, and its own login and config (`.claude/`) and the
+   instruction files in its home out of its reach;
+3. `config/managed-settings.json`, this project's: `{}` to start, for what the
+   project adds or changes.
+
+A later value replaces an earlier one, blocks such as `env` merge key by key,
+and lists such as `permissions.deny` combine: the project adds deny rules, it
+cannot drop aslib.infra's. Claude may read the rest of the container, which
+holds only the read-only image. The keys are documented in
+[Claude Code's settings reference](https://code.claude.com/docs/en/settings-reference).
+
+To let Claude's shell commands reach only an allowlist of hosts, add this block
+to `config/managed-settings.json` and `bubblewrap socat` to the Containerfile's
+tools (if Red Hat's UBI repositories offer them), then build again:
+
+```json
+"sandbox": {
+  "enabled": true,
+  "enableWeakerNestedSandbox": true,
+  "failIfUnavailable": true,
+  "allowUnsandboxedCommands": false,
+  "network": {
+    "allowedDomains": ["api.anthropic.com", "claude.ai", "claude.com", "platform.claude.com"],
+    "strictAllowlist": true
+  }
+}
+```
+
+It covers shell commands and what they start, not Claude Code's own traffic, and
+it needs the weaker nested sandbox inside an unprivileged container.
+
+## Updating Claude Code
+
+Without a pinned version, every build installs the newest Claude Code of the
+repository's channel (stable by default): a new image is the update. Claude Code
+never updates itself here. A new image also upgrades every package of the base
+image to its newest (security fixes), so with a pinned version the packages stay
+as they were too, until the base image changes.
