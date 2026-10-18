@@ -40,6 +40,8 @@ In CI:
 - a deploy as an account that uses sudo: the tests connect as root;
 - claude_vm on an ARM64 host in CI: it runs on a Raspberry Pi 4 (Ubuntu 24.04),
   checked by hand;
+- claude_vm's firewall rules after a reboot of the host: CI resets the VM, but
+  never reboots the host;
 - GitLab CI: `.gitlab-ci.yml` is written but has not run.
 
 ## Known limits and open work

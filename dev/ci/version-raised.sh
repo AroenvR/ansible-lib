@@ -6,7 +6,13 @@
 set -eu
 base=${1:?usage: version-raised.sh <base ref, such as origin/accept>}
 new=$(sed -n 's/^version: *//p' galaxy.yml)
-old=$(git show "$base:galaxy.yml" | sed -n 's/^version: *//p')
+# On its own line, so that set -e stops on a base that does not exist.
+old_file=$(git show "$base:galaxy.yml")
+old=$(printf '%s\n' "$old_file" | sed -n 's/^version: *//p')
+if [ -z "$old" ]; then
+  echo "No version in $base:galaxy.yml." >&2
+  exit 1
+fi
 higher=$(printf '%s\n%s\n' "$old" "$new" | sort -V | tail -n 1)
 if [ "$new" = "$old" ] || [ "$higher" != "$new" ]; then
   echo "galaxy.yml's version is $new, $base's is $old: raise it, with a CHANGELOG.md section (CONTRIBUTING.md, Releases)." >&2
