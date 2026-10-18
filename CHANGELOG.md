@@ -4,6 +4,14 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.5.2
+
+- Changed: contributions go through a `develop` branch, and every merge into
+  `accept` raises the version, with its section here. CI's `version raised`
+  job (`make version-raised`) fails on a branch whose `galaxy.yml` version is
+  not higher than `accept`'s or has no section here (CONTRIBUTING.md,
+  "Branches and pull requests" and "Releases").
+
 ## 0.5.1
 
 - Changed: claude_vm supports Ubuntu hosts only (24.04 or newer, x86_64 or

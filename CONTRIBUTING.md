@@ -69,7 +69,7 @@ root there, away from the host and the local network. See
 | `dev/requirements-*.txt`, `dev/collections.yml` | The pinned venvs (`ansible-2.14`, `ansible-2.16`, `lint`) and the test-only collections |
 | `dev/images/` | The test containers: `rhel9` and `ubuntu2404`, and `ubuntu2404-native` for the native test |
 | `dev/molecule/` | Plays shared by several scenarios: SSH access to the test servers, the preparation of the test server for podman_service |
-| `dev/ci/` | CI helper scripts: the next release version, the GitLab runner check, pruning older GitHub branch builds |
+| `dev/ci/` | CI helper scripts: the next release version, the check that a branch raises the version, the GitLab runner check, pruning older GitHub branch builds |
 | `.config/molecule/config.yml` | Molecule settings shared by all roles |
 | `.ansible-lint` | ansible-lint's settings: production profile, offline |
 | `.github/workflows/ci.yml`, `.gitlab-ci.yml` | CI; both only call make targets |
@@ -98,6 +98,7 @@ so a local run does exactly what a pipeline does. `make help` lists them:
 | `make dist` | `build.yml`: a tarball to try out, `dist/aslib-infra.<branch>.<commit>.<UTC time>.tgz` |
 | `make dist-release` | `build.yml -e release=true`: a release, as CI makes one from main, `dist/aslib-infra-<next version>.tar.gz`. It writes the version into `galaxy.yml` first, so only CI should run it |
 | `make version` | Prints the collection's version, from `galaxy.yml` |
+| `make version-raised` | Checks that `galaxy.yml`'s version is higher than `accept`'s (`origin/accept`, or `BASE=<ref>`) and that `CHANGELOG.md` has its section |
 | `make clean` | Removes the venvs and build output (`.venv/`, `dist/`) |
 | `make help` | Lists the targets |
 
@@ -246,7 +247,7 @@ make target of step 3 of the [Workflow](#workflow) before debugging the role.
 
 Test first:
 
-1. Start a branch of your own from `accept`
+1. Start a branch of your own from `develop`
    ([Branches and pull requests](#branches-and-pull-requests)).
 2. Describe the desired state in `roles/<role>/molecule/<scenario>/verify.yml`.
 3. Watch it fail: `sudo make images test-servers-2.14 ROLES=<role>` (or
@@ -255,13 +256,13 @@ Test first:
    [Make targets](#make-targets)).
 4. Implement in `roles/<role>/` until it passes.
 5. Document it where it belongs ([Documentation](#documentation)), with a
-   `CHANGELOG.md` entry for anything users notice.
+   `CHANGELOG.md` entry for anything users notice, under the coming version.
 
 Before pushing, run what `make build` runs (lint, both ansible-core versions,
 native test), with the tests as root as in step 3: `make lint`, then
 `sudo make images test test-native`. CI also runs GitLab's test
 (`make image-rhel9 test-gitlab-<ansible-core>`), which `make build` leaves out.
-Then push; open a pull request into `accept` once the gates in
+Then push; open a pull request into `develop` once the gates in
 [Branches and pull requests](#branches-and-pull-requests) pass.
 
 ## Rules for library code
@@ -384,11 +385,12 @@ Each kind of documentation has one place:
 
 ## Branches and pull requests
 
-Every change takes the same way to `main`. This is the foundation; the
-maintainer will extend it.
+Every change takes the same way to `main`, through two long-lived branches:
+`develop` gathers finished changes, and `accept` takes them from it as a new
+version, which the maintainer reviews before a release.
 
-1. Start a branch of your own from the current `accept` (not main, and not
-   another branch of yours: one branch per pull request), named
+1. Start a branch of your own from the current `develop` (not main or accept,
+   and not another branch of yours: one branch per pull request), named
    `<kind>/<YYYY-MM-DD>-<at most three words>`, the words joined with
    underscores, the kind such as `feature` or `hotfix`
    (`feature/2026-10-16-gitlab_container`).
@@ -396,25 +398,36 @@ maintainer will extend it.
    its message starts no pipeline, for work in progress you only want to keep
    safe: push such commits to a backup branch of your own, never to the branch
    you open the request from. GitHub's suggested squash message lists every
-   commit message of that branch, and a marker in it skips the pipeline of
-   `accept`. On GitLab, `git push -o ci.skip` skips a pipeline without a marker.
-   Delete the backup branch once its work is on the request's branch.
-3. Open a pull request (GitHub) or merge request (GitLab) into `accept`. It is
+   commit message of that branch, and a marker in it skips the pipeline of the
+   branch it is merged into. On GitLab, `git push -o ci.skip` skips a pipeline
+   without a marker. Delete the backup branch once its work is on the request's
+   branch.
+3. Add the change's entry to `CHANGELOG.md`, under the coming version. If
+   `develop` still has `accept`'s version, raise `version` in `galaxy.yml` and
+   start that version's section ([Releases](#releases)): CI's `version raised`
+   job fails until the branch's version is higher than `accept`'s.
+4. Open a pull request (GitHub) or merge request (GitLab) into `develop`. It is
    accepted only with a green CI, at the very least: every CI job green, the
    relevant tests proven to pass, lint clean. Its description stands on its
    own, for any reviewer now or later: what changed and why, compatibility, how
    it was tested, and open points; never a continuation of another discussion.
-4. The maintainer squash-merges it, which deletes its branch on GitHub. Delete
-   yours too, with any backup branch, and start the next one from the updated
-   `accept`: `git fetch --prune origin`, then `git branch -D <branch>`.
-5. The maintainer merges `accept` into `main`, which CI then releases
+5. It is squash-merged into `develop`. Delete its branch, on the remote and
+   locally, with any backup branch, and start the next one from the updated
+   `develop`: `git fetch --prune origin`, then `git branch -D <branch>`.
+6. A pull request from `develop` into `accept` brings what `develop` gathered,
+   as its version. The maintainer reviews it and merges it with a merge
+   commit, not a squash: `develop`'s commits stay the same in `accept`, so
+   `develop` goes on from there without conflicts.
+7. The maintainer merges `accept` into `main`, which CI then releases
    ([Releases](#releases)).
 
 Work that needs a change still in review waits for its merge, or continues on
 that change's branch: a branch started from another unmerged branch is left
 behind when that one is squash-merged and deleted.
 
-`main` and `accept` are the maintainer's: nobody else pushes to them.
+`main` and `accept` are the maintainer's: nobody else pushes to them. `develop`
+changes through pull requests only, and neither it nor `accept` is ever
+deleted.
 
 ## CI
 
@@ -427,6 +440,7 @@ requests. main and accept get pipelines of their own later.
 | Job | Make target | Needs |
 |---|---|---|
 | lint | `make lint` | Python 3.10+ |
+| version raised (every branch but main and accept; pull requests but those into main) | `make version-raised` | `accept` fetched |
 | server roles · ansible-core 2.14 / 2.16 | `make images test-servers-<ansible-core>` | Podman that can start privileged containers |
 | build-machine roles · ansible-core 2.14 / 2.16 | `make test-build-machine-<ansible-core>`, `make test-dist-<ansible-core>` | Same, plus access to Red Hat's registry, Anthropic's repository, npm and GitHub |
 | Ubuntu 24.04's own ansible-core and Podman | `make test-native` | Same |
@@ -458,14 +472,19 @@ never anything untested:
   workflow run (Actions > the run > Artifacts), kept 7 days, and a newer build
   of the branch deletes the older one. On GitLab it is the `branch-build` job's
   artifact, kept 7 days.
-- **main: a release.** CI gives it the next patch version after the latest
-  `vX.Y.Z` tag (`dev/ci/next-version.sh`), creates that tag and publishes
+- **main: a release**, with the version in `galaxy.yml`. Every merge into
+  `accept` raises it, so `accept` never carries the number of a release with
+  other contents: a patch version for fixes and refactors, a minor one for new
+  features, a major one for a breaking interface change (before 1.0.0, a minor
+  one). The first change on `develop` after a merge into `accept` raises it and
+  starts its section in `CHANGELOG.md`; a later change raises it further when
+  it needs to. Each change adds its `CHANGELOG.md` entry there, for anything
+  users notice. CI creates the `vX.Y.Z` tag and publishes
   `aslib-infra-<version>.tar.gz`: as a GitHub release, or in GitLab's package
-  registry with a GitLab release linking to it. To release a new minor or major
-  version, raise `version` in `galaxy.yml`: CI uses it when it is higher than
-  the next patch version. A breaking interface change means a new major version
-  (before 1.0.0, a new minor one); add a `CHANGELOG.md` entry for anything users
-  notice.
+  registry with a GitLab release linking to it. It never reuses a tag: should
+  `galaxy.yml` lag behind the latest one, the release is one patch above it
+  (`dev/ci/next-version.sh`). A version that reached `accept` but not `main`
+  on its own is released as part of the next one.
 
 Either tarball holds runtime files only (see `build_ignore` in `galaxy.yml`)
 and installs with `ansible-galaxy collection install --force <file>`.
