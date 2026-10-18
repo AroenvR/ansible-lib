@@ -1,5 +1,5 @@
 ---
-# Creates claude-dev, a VM for Claude Code on a Linux host with KVM (a laptop, a
+# Creates claude-dev, a VM for Claude Code on an Ubuntu host with KVM (a laptop, a
 # spare server), and sets it up for working on aslib.infra: Claude has sudo in
 # the VM, which reaches the internet but not the local network. On the host itself
 # (without an inventory, it is the host), or from another machine with the host

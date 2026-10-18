@@ -9,5 +9,5 @@ skip_list:
   # We support ansible-core 2.14 on purpose: it is what RHEL 9.6 ships.
   - meta-runtime[unsupported-version]
   # aslib.infra is not published on Galaxy, and galaxy.yml names no repository
-  # on purpose: where it is hosted keeps changing (see AGENTS.md, Status).
+  # on purpose: where it is hosted keeps changing (see AGENTS.md, Decisions).
   - galaxy[no-repository]

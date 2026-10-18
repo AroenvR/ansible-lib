@@ -235,6 +235,7 @@ cd roles/<role>
 top=$(git rev-parse --show-toplevel)   # after make setup, which links .venv/self
 export ANSIBLE_COLLECTIONS_PATH=$top/.venv/self:$top/.venv/collections
 export PATH=$top/.venv/ansible-2.14/bin:$PATH
+export PYTHONDONTWRITEBYTECODE=1      # no __pycache__ next to the plugins, as make does
 molecule converge -s server   # create the containers once, apply the role
 molecule verify -s server     # run the checks
 molecule destroy -s server    # clean up when done
@@ -418,7 +419,8 @@ version, which the maintainer reviews before a release.
    as its version. The maintainer reviews it and merges it with a merge
    commit, not a squash: `develop`'s commits stay the same in `accept`, so
    `develop` goes on from there without conflicts.
-7. The maintainer merges `accept` into `main`, which CI then releases
+7. The maintainer merges `accept` into `main` with a merge commit too, never a
+   squash, so `main` stays part of `accept`'s history; CI then releases it
    ([Releases](#releases)).
 
 Work that needs a change still in review waits for its merge, or continues on

@@ -2,10 +2,10 @@
 # Collection metadata: identity, version and what ends up in the release tarball.
 namespace: aslib
 name: infra
-# Releases are made by CI from main: each gets the next patch version after the
-# latest v* tag, or this version when it is higher. Raise it here to release a
-# new minor or major version (see CONTRIBUTING.md).
-version: 0.5.2
+# Releases are made by CI from main, as this version. Every merge into accept
+# raises it, with its CHANGELOG.md section (see CONTRIBUTING.md, Releases); should
+# it lag behind the latest v* tag, the release gets one patch above that tag.
+version: 0.6.0
 readme: README.md
 description: Tested building blocks for RHEL 9.6 and Ubuntu 24.04 servers.
 authors:
