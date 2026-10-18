@@ -30,7 +30,7 @@
       loop:
         - "{{ __claude_code_vm_test_virsh + ['dominfo', 'claude-dev'] }}"
         - "{{ __claude_code_vm_test_virsh + ['net-info', 'claude-vm'] }}"
-        - [nft, list, table, inet, claude_code_vm]
+        - [nft, list, table, inet, claude_vm]
       register: __claude_code_vm_test_host
       changed_when: false
 
