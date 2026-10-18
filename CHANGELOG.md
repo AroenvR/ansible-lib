@@ -4,7 +4,7 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
-## 0.6.0
+## 0.5.1
 
 - Changed: claude_vm supports Ubuntu hosts only (24.04 or newer, x86_64 or
   ARM64) and needs ansible-core 2.16 or newer, as its host and VM have Python
@@ -41,7 +41,7 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Changed: galaxy.yml names no repository URL and no profile URL for its
   author: where aslib.infra is hosted keeps changing.
 
-### Upgrading from 0.5
+### Upgrading from 0.5.0
 
 - claude_vm: run it with ansible-core 2.16 or newer, on an Ubuntu host; RHEL
   hosts are no longer supported.

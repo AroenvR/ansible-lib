@@ -529,12 +529,16 @@ playbook for every podman_service service, a smoke test after a deploy).
 ## Status
 
 Last updated 2026-10-18, for accept. v0.5.0 is released (main); what accept has
-since goes into 0.6.0.
+since goes into 0.5.1.
 
 - Decided with the maintainer on 2026-10-18: pull request descriptions stand on
   their own, and every pull request has one branch, started from the current
   accept and deleted after its merge, remote and local (see Working with the
   maintainer).
+- Decided with the maintainer on 2026-10-18: the release after 0.5.0 is 0.5.1,
+  a patch. Its changes are fixes and refactors, claude_vm's narrowing to Ubuntu
+  hosts included (its RHEL hosts were never tested), so galaxy.yml stays at
+  0.5.0 and CI computes the next patch version.
 
 - Decided with the maintainer on 2026-10-16: each kind of reader has one place.
   README.md is a short landing page (what aslib.infra is, who it is for, a
