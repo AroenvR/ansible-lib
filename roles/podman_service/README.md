@@ -129,7 +129,10 @@ with a working app or fails (after systemd's start timeout, 90 seconds).
 After 3 failures in a row Podman stops the container (`HealthOnFailure=kill`)
 and systemd starts it again: a hung app gets restarted, not just a crashed one.
 The command can only use what the image has: [node_deploy](../node_deploy/README.md)
-asks with the image's own Node.js.
+asks with the image's own Node.js. Quote inside it with single quotes, as in
+`node -e '...'`: Quadlet hands the command on in double quotes, which keep
+single quotes intact, while double quotes inside it break before Podman 5.8.2.
+systemd reads the line first, so write a `%` as `%%`.
 
 The app's output goes to the journal (`--log-driver=journald`), where root reads
 it. Without that, Podman writes it to a file in the account's storage whenever

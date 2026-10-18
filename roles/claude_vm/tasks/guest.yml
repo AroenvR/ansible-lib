@@ -128,6 +128,15 @@
     group: root
     mode: "0644"
 
+# Read in every session, before the user's and the project's CLAUDE.md.
+- name: Install aslib.infra's instructions for Claude Code in the VM
+  ansible.builtin.copy:
+    src: CLAUDE.md
+    dest: /etc/claude-code/CLAUDE.md
+    owner: root
+    group: root
+    mode: "0644"
+
 # A reset soon after (UEFI may restart an ARM64 VM; the test resets it on
 # purpose) loses what ext4 has not written out yet, up to 30 seconds' worth: a
 # new file then comes back empty, as the policy did in CI 19 seconds after it was

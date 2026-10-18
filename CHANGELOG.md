@@ -11,6 +11,22 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   job (`make version-raised`) fails on a branch whose `galaxy.yml` version is
   not higher than `accept`'s or has no section here (CONTRIBUTING.md,
   "Branches and pull requests" and "Releases").
+- Added: claude_vm installs aslib.infra's instructions for Claude Code in the
+  VM, `/etc/claude-code/CLAUDE.md`, with every run: keep work on disk as it
+  goes (commits, a handoff file per task, memory), so an interrupted session
+  loses nothing; `/tmp` empties at every boot.
+- Changed: the template of a Claude Code project's `config/CLAUDE.md` asks the
+  same of the container's Claude.
+- Changed: podman_service's documentation of `podman_service_health_cmd` says
+  how to quote in it: single quotes inside, as Quadlet hands the command on in
+  double quotes, which break before Podman 5.8.2.
+
+### Upgrading from 0.5.1
+
+- Claude Code projects: `config/CLAUDE.md` is the project's, so an update
+  leaves it as it is. To give Claude the new instruction, add the paragraph
+  that starts "A session can end at any moment" from aslib.infra's
+  `roles/claude_code/files/CLAUDE.md` to "How we work together".
 
 ## 0.5.1
 

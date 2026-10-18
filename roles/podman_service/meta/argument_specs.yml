@@ -118,7 +118,9 @@ argument_specs:
             seconds from the start until it passes, then every 30 seconds, with tools the image has, e.g.
             C(curl --fail --silent http://127.0.0.1:3000/). With one, systemd counts the service as started once it
             passed (within systemd's start timeout, 90 seconds by default), and after 3 failures in a row Podman stops
-            the container, which systemd then starts again. Write a C(%) as C(%%) (systemd reads the line).
+            the container, which systemd then starts again. Quote inside it with single quotes, as Quadlet hands
+            it on in double quotes (double quotes inside it break before Podman 5.8.2), and write a C(%) as C(%%)
+            (systemd reads the line).
           - Empty means no health check, and the service counts as started once it runs.
   restart:
     short_description: Restart a service that aslib.infra.podman_service deployed, and wait until it is ready
