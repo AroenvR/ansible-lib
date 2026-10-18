@@ -1,0 +1,16 @@
+# claude_code_vm (aslib.infra): loads the rules that keep {{ __claude_code_vm_name }} away from the
+# local network, at boot before libvirt starts the VM.
+[Unit]
+Description=Firewall rules for the VM {{ __claude_code_vm_name }}
+# virtqemud starts the VM where libvirt runs as per-driver daemons; a unit that
+# does not exist makes Before= a no-op.
+Before=libvirtd.service virtqemud.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ __claude_code_vm_config_dir }}/firewall.nft
+ExecStop=/usr/sbin/nft delete table inet claude_vm
+
+[Install]
+WantedBy=multi-user.target

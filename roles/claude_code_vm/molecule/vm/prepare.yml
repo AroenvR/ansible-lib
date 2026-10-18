@@ -1,0 +1,11 @@
+---
+# The removal before keeps the settings file, as it does for a person.
+- name: Start without claude_code_vm's settings file, as on a new host
+  hosts: localhost
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove the settings file an earlier run kept
+      ansible.builtin.file:
+        path: /etc/claude-vm/settings.yml
+        state: absent

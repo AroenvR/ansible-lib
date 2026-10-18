@@ -1,0 +1,18 @@
+---
+# Entry point "main": computes what every target installs, as facts for the role
+# that includes this one. Changes nothing.
+- name: Note Claude Code's settings for the target
+  ansible.builtin.set_fact:
+    # The base of the policy, with the settings' values (reading it also checks it is JSON).
+    claude_code_settings_policy: "{{ lookup('ansible.builtin.template', 'managed-settings.json.j2', convert_data=false) | from_json }}"
+    # Claude Code checks whether it trusts a folder before it applies a policy's
+    # env, so this one must be in the environment of the claude process itself.
+    # In the container and the VM, the target itself is the boundary that the
+    # trust dialog guards elsewhere, for every folder, git repositories included.
+    claude_code_settings_environment:
+      CLAUDE_CODE_SANDBOXED: "1"
+    # Claude Code's own file, ~/.claude.json (or .claude.json in CLAUDE_CONFIG_DIR):
+    # with this, its first start skips the setup it asks for once (the theme, the
+    # sign-in), as the policy and the token already answer it.
+    claude_code_settings_global_config:
+      hasCompletedOnboarding: true

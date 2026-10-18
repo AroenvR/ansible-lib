@@ -1,0 +1,132 @@
+---
+# One VM per host, named so: also its account's key (~/.ssh/claude-dev) and
+# known_hosts file on the machine that runs the playbook.
+__claude_code_vm_name: claude-dev
+__claude_code_vm_network: claude-vm
+__claude_code_vm_bridge: virbr-claude
+# A fixed MAC address, which the network's DHCP server ties to <prefix>.10.
+__claude_code_vm_mac: "52:54:00:c1:a0:de"
+__claude_code_vm_ip: "{{ claude_code_vm_network_prefix }}.10"
+__claude_code_vm_images: /var/lib/libvirt/images
+__claude_code_vm_disk: /var/lib/libvirt/images/claude-dev.qcow2
+# What cloud-init reads at the VM's first boot (NoCloud), as a CD of its own.
+__claude_code_vm_seed_iso: /var/lib/libvirt/images/claude-dev-seed.iso
+__claude_code_vm_base: /var/lib/libvirt/images/{{ __claude_code_vm_image_url | basename }}
+# The host's architecture as Ubuntu names it, and its cloud image.
+__claude_code_vm_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts.architecture] }}"
+__claude_code_vm_image_url: >-
+  {{ claude_code_vm_image_url or 'https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-'
+     ~ __claude_code_vm_arch ~ '.img' }}
+__claude_code_vm_config_dir: /etc/claude-vm
+
+# The host's settings file: what a person chooses, each setting with a comment of
+# one line, in this order. Not the download sources nor the debugging options,
+# which stay aslib.infra's, so that an update can change them.
+__claude_code_vm_settings_file: "{{ __claude_code_vm_config_dir }}/settings.yml"
+__claude_code_vm_settings:
+  - name: claude_code_vm_memory
+    comment: The VM's memory in MiB, all taken from the host when the VM starts.
+  - name: claude_code_vm_vcpus
+    comment: The VM's virtual CPUs.
+  - name: claude_code_vm_disk_size
+    comment: The size of the VM's disk, as qemu-img takes it; for a new VM.
+  - name: claude_code_vm_network_prefix
+    comment: "The VM's own network: the host is <prefix>.1, the VM <prefix>.10; for a new VM."
+  - name: claude_code_vm_lan_block
+    comment: true keeps the VM away from the local network and the host's own services.
+  - name: claude_code_vm_host_ports
+    comment: Ports of the host's own services the VM may reach all the same, such as GitLab's [8929, 2224].
+  - name: claude_code_vm_host_names
+    comment: Names that lead to the host from inside the VM, such as [gitlab.home.arpa].
+  - name: claude_code_vm_authorized_keys
+    comment: Public keys that may also log in as claude, besides the key of the machine that runs the playbook.
+  - name: claude_code_vm_oauth_token
+    comment: "Claude's sign-in: the one-year token that claude setup-token prints; empty: sign in by hand."
+  - name: claude_code_settings_permission_mode
+    comment: The permission mode a session starts in, bypassPermissions or default (prompts), acceptEdits, plan, auto, dontAsk.
+  - name: claude_code_settings_model
+    comment: The model a session starts with, opus (the newest Opus), sonnet or a model ID.
+  - name: claude_code_settings_effort
+    comment: The effort level a session starts with, low, medium, high or xhigh.
+  - name: claude_code_settings_theme
+    comment: The theme, auto, dark, light, dark-daltonized, light-daltonized, dark-ansi or light-ansi.
+  - name: claude_code_settings_agent_teams
+    comment: true turns agent teams on.
+  - name: claude_code_settings_ultracode
+    comment: true starts sessions with ultracode on.
+
+__claude_code_vm_settings_header:
+  - "# claude_code_vm's settings on this host (aslib.infra.claude_code_vm): what you"
+  - "# choose. Every run reads them, -e still wins for one run, and adds the settings"
+  - "# this file lacks, never changing a line that is here. The values are YAML; the"
+  - "# options: ansible-doc -t role aslib.infra.claude_code_vm. Root's only, as it may"
+  - "# hold Claude's token. A removal of the VM keeps it."
+  - ""
+__claude_code_vm_newline: "\n"
+
+# In the VM: Claude's sign-in token, readable by root and claude only, and the
+# command that starts Claude Code with it.
+__claude_code_vm_token_file: /etc/claude-vm/oauth-token
+__claude_code_vm_claude_command: /usr/local/bin/claude
+
+# How the VM boots (virt-install's --boot): an x86_64 VM with BIOS, from its
+# disk; an ARM64 VM with UEFI firmware without Secure Boot. libvirt's default for
+# ARM64, Secure Boot enforced with Microsoft's keys, crashes in Ubuntu's boot
+# loader on a Raspberry Pi 4; in a VM where Claude has root, it protects nothing.
+__claude_code_vm_boot:
+  x86_64: hd
+  aarch64: uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no
+
+# Packages on the host (Ubuntu), by architecture. An ARM64 VM boots with UEFI,
+# from the firmware of qemu-efi-aarch64.
+__claude_code_vm_host_packages:
+  x86_64: [qemu-system-x86, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
+  aarch64: [qemu-system-arm, qemu-efi-aarch64, qemu-utils, libvirt-daemon-system, virtinst, xorriso, nftables]
+
+# The keys the VM's repositories are signed with.
+__claude_code_vm_python_key_fingerprint: F23C5A6CF475977595C89F51BA6932366A755776
+__claude_code_vm_claude_code_key_fingerprint: 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
+# What aslib.infra's tests need in the VM (make setup images test-...).
+__claude_code_vm_guest_packages: [podman, git, make, python3-venv, python3.11, python3.11-venv, claude-code]
+
+# virsh and the key, on the machine that runs the playbook, that logs in as claude.
+__claude_code_vm_virsh: [virsh, --connect, "qemu:///system"]
+
+# Debugging (entry points overview and boot_trial). virt-xml comes with
+# virt-install; the VM's console goes to this file once a trial has set it up.
+__claude_code_vm_virt_xml: [virt-xml, --connect, "qemu:///system"]
+__claude_code_vm_console_log: /var/log/libvirt/qemu/claude-dev-console.log
+# UEFI firmware a trial can boot the VM with: Ubuntu's for ARM64 (qemu-efi-aarch64).
+# An x86_64 VM boots with BIOS (SeaBIOS) instead.
+__claude_code_vm_trial_firmware_files:
+  secure-ms: {code: /usr/share/AAVMF/AAVMF_CODE.ms.fd, vars: /usr/share/AAVMF/AAVMF_VARS.ms.fd}
+  secure-nokeys: {code: /usr/share/AAVMF/AAVMF_CODE.secboot.fd, vars: /usr/share/AAVMF/AAVMF_VARS.fd}
+  plain: {code: /usr/share/AAVMF/AAVMF_CODE.no-secboot.fd, vars: /usr/share/AAVMF/AAVMF_VARS.fd}
+# The overview shows these packages' versions, where installed.
+__claude_code_vm_overview_packages:
+  [qemu-system-arm, qemu-system-x86, qemu-efi-aarch64, ovmf, libvirt-daemon-system, virtinst, swtpm]
+# Console lines that tell how far a boot got: UEFI, shim, Linux, cloud-init, login.
+__claude_code_vm_console_markers: >-
+  BdsDxe|Exception|Security Violation|[Ss]him|Booting Linux|EFI stub|Cloud-init v[.]|FAILED|login:
+__claude_code_vm_key: "{{ lookup('env', 'HOME') }}/.ssh/{{ __claude_code_vm_name }}"
+
+# How that machine reaches the VM: through the host, unless it is the host. The
+# VM's host key goes into a file of its own, which a removal deletes.
+__claude_code_vm_jump: >-
+  {{ '' if ansible_connection | default('ssh') == 'local'
+     else (ansible_user ~ '@' if ansible_user is defined else '') ~ (ansible_host | default(inventory_hostname))
+          ~ (':' ~ ansible_port if ansible_port is defined else '') }}
+__claude_code_vm_ssh_args: >-
+  -o UserKnownHostsFile={{ __claude_code_vm_key }}.known_hosts -o StrictHostKeyChecking=accept-new
+  {{- ' -o ProxyJump=' ~ __claude_code_vm_jump if __claude_code_vm_jump | length > 0 else '' }}
+
+# The VM's apt repositories, each checked against its signing key's fingerprint.
+__claude_code_vm_repositories:
+  - name: deadsnakes
+    key_url: "{{ claude_code_vm_python_key_url }}"
+    fingerprint: "{{ __claude_code_vm_python_key_fingerprint }}"
+    deb: "{{ claude_code_vm_python_repository }} {{ ansible_facts.distribution_release }} main"
+  - name: claude-code
+    key_url: "{{ claude_code_vm_claude_code_key_url }}"
+    fingerprint: "{{ __claude_code_vm_claude_code_key_fingerprint }}"
+    deb: "{{ claude_code_vm_claude_code_repository }} {{ claude_code_vm_claude_code_repository | basename }} main"

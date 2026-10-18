@@ -1,0 +1,18 @@
+---
+# A debugging tool: boots the VM claude-dev once in a changed form, such as with
+# other firmware or without its TPM, records its console, and shows how far the
+# boot got. The changes stay; aslib.infra.claude_code_vm_remove, then
+# aslib.infra.claude_code_vm, bring back the VM as it was made. Run it like
+# aslib.infra.claude_code_vm, e.g. with firmware without Secure Boot:
+#   ansible-playbook aslib.infra.claude_code_vm_boot_trial --ask-become-pass -e claude_code_vm_trial_firmware=plain
+# Options: ansible-doc -t role aslib.infra.claude_code_vm (entry point boot_trial).
+- name: Boot the VM claude-dev once, changed, and show how far it gets
+  # Without an inventory Ansible only knows this machine, which "all" leaves out.
+  hosts: "{{ 'all' if groups['all'] else 'localhost' }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Try a boot
+      ansible.builtin.import_role:
+        name: aslib.infra.claude_code_vm
+        tasks_from: boot_trial

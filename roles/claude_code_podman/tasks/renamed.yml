@@ -1,0 +1,16 @@
+---
+# Shared by every entry point: settings of before 0.7.0 (vars/main.yml) stop the
+# run, naming what replaced them, instead of being ignored.
+- name: Stop at settings of before 0.7.0, which have new names
+  vars:
+    __claude_code_podman_old: >-
+      {{ query('ansible.builtin.varnames', '^(' ~ __claude_code_podman_renamed.keys() | join('|') ~ ')$') | sort }}
+  ansible.builtin.assert:
+    that: __claude_code_podman_old | length == 0
+    fail_msg: >-
+      Settings of before 0.7.0 are set, which have new names:
+      {% for __claude_code_podman_name_then in __claude_code_podman_old %}{{ __claude_code_podman_name_then }} is now
+      {{ __claude_code_podman_renamed[__claude_code_podman_name_then] }}{{ '; ' if not loop.last else '.' }}
+      {% endfor %} Rename them where they are set (ansible/group_vars/all/project.yml, the inventory or -e); the
+      CHANGELOG's upgrade notes for 0.7.0 say more.
+    quiet: true

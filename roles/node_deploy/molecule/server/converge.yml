@@ -11,6 +11,6 @@
     # The account takes the next free UID, as without a setting.
     - name: Deploy Claude Code next to it
       ansible.builtin.include_role:
-        name: aslib.infra.claude_code
+        name: aslib.infra.claude_code_podman
       vars:
         podman_service_uid: ""

@@ -38,10 +38,10 @@
 
     - name: Write the Claude Code project into an empty directory
       ansible.builtin.include_role:
-        name: aslib.infra.claude_code
+        name: aslib.infra.claude_code_podman
         tasks_from: setup
       vars:
-        claude_code_project: "{{ node_deploy_test_claude_project }}"
+        claude_code_podman_project: "{{ node_deploy_test_claude_project }}"
 
     # As a developer would add them: a rule of the project's own, one the base has
     # already, and a value that replaces the base's.
@@ -56,15 +56,15 @@
         mode: "0644"
 
     # The tests need neither Anthropic's repository nor dnf: a stand-in with the
-    # same contract replaces Claude Code. claude_code's own test builds the real one.
+    # same contract replaces Claude Code. claude_code_podman's own test builds the real one.
     - name: Replace the project's Containerfile with the stand-in for Claude Code
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../../../claude_code/molecule/mock/{{ item }}"
+        src: "{{ playbook_dir }}/../../../claude_code_podman/molecule/mock/{{ item }}"
         dest: "{{ node_deploy_test_claude_project }}/{{ item }}"
         mode: preserve
       loop: [Containerfile, claude]
 
     - name: Build the Claude Code image
       ansible.builtin.include_role:
-        name: aslib.infra.claude_code
+        name: aslib.infra.claude_code_podman
         tasks_from: image

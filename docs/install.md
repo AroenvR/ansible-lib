@@ -9,8 +9,8 @@ needs](servers.md#what-a-managed-server-needs).
 
 | | Supported |
 |---|---|
-| Ansible control node | The `ansible-core` package of RHEL 9.6 (2.14) or Ubuntu 24.04 (2.16), or newer. `claude_vm`: 2.16 or newer, as its host and VM run Ubuntu 24.04 (Python 3.12) |
-| Managed servers | RHEL 9.6, Ubuntu 24.04. `podman_service`, `podman_overview`, `node_deploy`, `claude_code` and `gitlab`: RHEL 9.6 or newer with its Podman (5.4) |
+| Ansible control node | The `ansible-core` package of RHEL 9.6 (2.14) or Ubuntu 24.04 (2.16), or newer. `claude_code_vm`: 2.16 or newer, as its host and VM run Ubuntu 24.04 (Python 3.12) |
+| Managed servers | RHEL 9.6, Ubuntu 24.04. `podman_service`, `podman_overview`, `node_deploy`, `claude_code_podman` and `gitlab`: RHEL 9.6 or newer with its Podman (5.4) |
 | Image build machines | RHEL 9.6, Ubuntu 24.04, with their Podman (5.4, 4.9) |
 | Other collections | None. Only `ansible.builtin` is used. |
 
@@ -69,9 +69,9 @@ variables means a new major version (before 1.0.0, a new minor version).
 version asks for it, what to do when upgrading ("Upgrading from ...").
 
 To upgrade, install the newer tarball as above. A project that `node_setup` or
-`claude_setup` wrote then runs this from its `ansible/` directory, which brings
+`claude_code_podman_setup` wrote then runs this from its `ansible/` directory, which brings
 aslib.infra's files there up to date ([node_setup](../roles/node_setup/README.md),
-[claude_code](../roles/claude_code/README.md#the-project)):
+[claude_code_podman](../roles/claude_code_podman/README.md#the-project)):
 
 ```sh
 ansible-playbook update-playbooks.yml

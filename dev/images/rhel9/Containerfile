@@ -6,7 +6,7 @@ FROM ${BASE_IMAGE}
 # OpenSSH's server, enabled, as on a default install (ubi-init lacks it): the
 # tests reach this server over SSH as root, as Ansible reaches a real one.
 # /etc/shadow readable by its owner, root (0400; RHEL has 0000): on an Ubuntu
-# test machine (CI's runners, claude_vm's VM) AppArmor's unix-chkpwd profile
+# test machine (CI's runners, claude_code_vm's VM) AppArmor's unix-chkpwd profile
 # takes over this image's unix_chkpwd in an unconfined container (privileged or
 # rootless) and denies it the capability to read a 0000 file, so PAM refuses
 # every login, SSH's and sudo's. A real RHEL server never runs that profile.

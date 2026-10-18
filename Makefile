@@ -15,7 +15,7 @@ PYTHON_LINT   ?= python3.12
 SERVERS       := ubuntu2404 rhel9
 ROLES         ?= $(notdir $(wildcard roles/*))
 # Roles that support Ubuntu. Only these run in the native test.
-UBUNTU_ROLES  := sudoers node_image node_setup claude_code
+UBUNTU_ROLES  := sudoers node_image node_setup claude_code_podman claude_code_settings
 VENV          := .venv
 VERSION       := $(shell sed -n 's/^version: *//p' galaxy.yml)
 # Python leaves no __pycache__ in the checkout when Ansible loads its plugins.
@@ -104,7 +104,7 @@ test-gitlab-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test GitLab on t
 	$(call molecule,$*,gitlab)
 
 # Not part of `test`: it needs KVM, which the test containers lack.
-test-vm-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test claude_vm's VM on this machine, which needs KVM, with 2.16: sudo make test-vm-2.16
+test-vm-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test claude_code_vm's VM on this machine, which needs KVM, with 2.16: sudo make test-vm-2.16
 	$(call molecule,$*,vm)
 
 test-native: dist image-ubuntu2404 image-ubuntu2404-native ## Test with the ansible-core and Podman packages Ubuntu 24.04 itself ships

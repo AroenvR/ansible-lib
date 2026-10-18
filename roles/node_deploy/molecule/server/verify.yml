@@ -266,6 +266,17 @@
         path: /opt/claude-code/.bashrc
       register: __node_deploy_test_bashrc
 
+    - name: Look up Claude Code's own file the deploy gave Claude's home
+      ansible.builtin.stat:
+        path: /opt/claude-code/.claude/.claude.json
+      register: __node_deploy_test_claude_json
+
+    - name: Read it
+      ansible.builtin.slurp:
+        src: /opt/claude-code/.claude/.claude.json
+      register: __node_deploy_test_claude_json_content
+      failed_when: false
+
     # As a script would, without a terminal; the stand-in reports and exits. From
     # a root shell that still carries another user's D-Bus address, as after su.
     - name: Run Claude Code with claude-code, as root
@@ -280,6 +291,7 @@
       vars:
         __node_deploy_test_claude_says:
           - "mock claude as 1001 in /opt/claude-code with: --test-arg"
+          - CLAUDE_CODE_SANDBOXED=1
           - policy readable
           - instructions readable
           - policy read-only
@@ -302,13 +314,20 @@
           - __node_deploy_test_command.stat.mode == '0750'
           - __node_deploy_test_command.stat.pw_name == 'root'
           - __node_deploy_test_bashrc.stat.pw_name == 'claude-code'
+          # The first start skips Claude Code's setup.
+          - __node_deploy_test_claude_json.stat.pw_name == 'claude-code'
+          - __node_deploy_test_claude_json.stat.mode == '0600'
+          - >-
+            (__node_deploy_test_claude_json_content.content | default('') | b64decode | default('{}', true) | from_json)
+            == {'hasCompletedOnboarding': true}
           - __node_deploy_test_entered.stdout_lines == __node_deploy_test_claude_says
         success_msg: >-
-          PASSED claude_code next to node_deploy: both came back after the restart, as accounts with UIDs
+          PASSED claude_code_podman next to node_deploy: both came back after the restart, as accounts with UIDs
           {{ __node_deploy_test_uid }} and {{ __node_deploy_test_claude_uid }} and separate subordinate UID ranges;
           a file one wrote to the shared zone the other read and changed, while the zone's README stayed root's
           and unchangeable; claude-code ran Claude as 1001 in /opt/claude-code, despite a foreign D-Bus address,
-          and Claude found its policy and instructions in /etc/claude-code and could not change them.
+          with every folder trusted (CLAUDE_CODE_SANDBOXED) and the first-run setup done, and Claude found its
+          policy and instructions in /etc/claude-code and could not change them.
 
     - name: Check a file reaches the group only with the group's access, and the README matches its read-only checksum
       ansible.builtin.assert:
@@ -380,13 +399,42 @@
           ansible.builtin.set_fact:
             __node_deploy_test_verify_said: "{{ ansible_failed_result.msg | default('') }}"
 
+    # claude_code_settings_permission_mode replaced it in 0.7.0.
+    - name: Deploy Claude Code with claude_code_bypass_permissions, as a project from before 0.7.0 does
+      block:
+        - name: Deploy Claude Code with claude_code_bypass_permissions
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_podman
+          vars:
+            claude_code_bypass_permissions: true
+
+        - name: Fail, as the deploy went ahead
+          ansible.builtin.fail:
+            msg: claude_code_podman deployed with claude_code_bypass_permissions set.
+      rescue:
+        - name: Check the deploy stopped, naming the setting that replaced it
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name is search('Stop at settings of before 0[.]7[.]0')
+              - ansible_failed_result.msg is search('claude_code_bypass_permissions')
+              - ansible_failed_result.msg is search('claude_code_settings_permission_mode')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: >-
+              PASSED claude_code_podman stops a deploy that sets claude_code_bypass_permissions, naming
+              claude_code_settings_permission_mode.
+
     # Every deploy writes the README again, as this one does.
-    - name: Deploy Claude Code again, with claude_code_bypass_permissions
+    - name: Deploy Claude Code again, with every setting of claude_code_settings changed
       ansible.builtin.include_role:
-        name: aslib.infra.claude_code
-      vars:
+        name: aslib.infra.claude_code_podman
+      vars: &node_deploy_test_settings
         podman_service_uid: ""
-        claude_code_bypass_permissions: "true"   # as -e claude_code_bypass_permissions=true passes it
+        claude_code_settings_permission_mode: acceptEdits
+        claude_code_settings_model: sonnet
+        claude_code_settings_effort: high
+        claude_code_settings_theme: light
+        claude_code_settings_agent_teams: "true"   # as -e passes it
+        claude_code_settings_ultracode: true
 
     - name: Check the README against its checksum again
       ansible.builtin.command:
@@ -425,34 +473,47 @@
         src: /opt/claude-code/config/managed-settings.json
       register: __node_deploy_test_policy
 
-    # aslib.infra's base, then the container's settings, then the project's (which
-    # win), then bypassPermissions: lists combine without duplicates.
-    - name: Check the installed policy merges the base, the container's settings and the project's, in bypassPermissions mode
+    - name: Compute what claude_code_settings hands every target, with the same settings
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+      vars: *node_deploy_test_settings
+
+    # claude_code_settings' base, then the container's own part, then the
+    # project's (which wins): lists combine without duplicates.
+    - name: Check the installed policy holds each setting, and merges the base, the container's part and the project's
       vars:
         __node_deploy_test_installed: "{{ __node_deploy_test_policy.content | b64decode | from_json }}"
         __node_deploy_test_roles: "{{ playbook_dir }}/../../.."
-        __node_deploy_test_base: "{{ lookup('file', __node_deploy_test_roles ~ '/claude_code/files/managed-settings.json') | from_json }}"
+        __node_deploy_test_base: "{{ claude_code_settings_policy }}"
         __node_deploy_test_container: >-
-          {{ lookup('file', __node_deploy_test_roles ~ '/claude_code/files/managed-settings.container.json') | from_json }}
+          {{ lookup('file', __node_deploy_test_roles ~ '/claude_code_podman/files/managed-settings.container.json') | from_json }}
         __node_deploy_test_base_rest: >-
           {{ __node_deploy_test_base | dict2items | rejectattr('key', 'in', ['permissions', 'plansDirectory']) | items2dict }}
         __node_deploy_test_deny: "{{ __node_deploy_test_installed.permissions.deny }}"
       ansible.builtin.assert:
         that:
-          - __node_deploy_test_installed.permissions.defaultMode == 'bypassPermissions'
+          - __node_deploy_test_installed.permissions.defaultMode == 'acceptEdits'
+          - __node_deploy_test_installed.model == 'sonnet'
+          - __node_deploy_test_installed.effortLevel == 'high'
+          - __node_deploy_test_installed.theme == 'light'
+          - __node_deploy_test_installed.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS == '1'
+          - __node_deploy_test_installed.ultracode is true
+          - __node_deploy_test_installed.skipDangerousModePermissionPrompt is true
           - __node_deploy_test_installed | combine(__node_deploy_test_base_rest) == __node_deploy_test_installed
+          - __node_deploy_test_installed.permissions.defaultMode == __node_deploy_test_base.permissions.defaultMode
+          - __node_deploy_test_installed.permissions.additionalDirectories == ['/']
           - __node_deploy_test_installed.plansDirectory == './project-plans'
           - __node_deploy_test_installed.autoMemoryDirectory == __node_deploy_test_container.autoMemoryDirectory
-          - __node_deploy_test_installed.permissions.additionalDirectories == __node_deploy_test_container.permissions.additionalDirectories
           - >-
             __node_deploy_test_deny is superset(__node_deploy_test_base.permissions.deny
             + __node_deploy_test_container.permissions.deny + ['Read(//opt/claude-code/data/private/**)'])
           - __node_deploy_test_deny | length == __node_deploy_test_deny | unique | length
         fail_msg: "The installed policy: {{ __node_deploy_test_installed | to_json }}"
         success_msg: >-
-          PASSED claude_code with claude_code_bypass_permissions installed aslib.infra's base policy, the container's
-          settings and the project's ({{ __node_deploy_test_deny | length }} deny rules, none twice; the project's
-          plansDirectory over the base's), with permissions.defaultMode bypassPermissions.
+          PASSED claude_code_podman installed each setting of claude_code_settings (acceptEdits, sonnet, high
+          effort, the light theme, agent teams and ultracode on) as claude_code_settings hands them to every target,
+          with the container's part and the project's ({{ __node_deploy_test_deny | length }} deny rules, none
+          twice; the project's plansDirectory over the base's).
 
 - name: Check the overview shows both services, and the log of a service that does not run
   hosts: all
@@ -682,7 +743,7 @@
 
     - name: Restart Claude Code, as its restart.yml does
       ansible.builtin.include_role:
-        name: aslib.infra.claude_code
+        name: aslib.infra.claude_code_podman
         tasks_from: restart
 
     # Right away: the restart only returns once the service answers.
@@ -707,7 +768,7 @@
           - (__node_deploy_test_claude_restarted.stdout | from_json)[0].State.Running
         success_msg: >-
           PASSED restart: node_deploy's restarted the Node.js service and returned once it answered (start count
-          {{ __node_deploy_test_after_restart.json.starts }}); claude_code's started a new container that runs.
+          {{ __node_deploy_test_after_restart.json.starts }}); claude_code_podman's started a new container that runs.
 
 - name: Check the services keep what their deploy promised, and Podman restarts an unhealthy one
   hosts: all
@@ -753,7 +814,7 @@
         - /etc/containers/systemd/users/{{ ansible_facts.getent_passwd['claude-code'][1] }}/claude-code.container
       register: __node_deploy_test_quadlets
 
-    # As the kernel enforces it: Claude Code's at most 4g (claude_code_memory's
+    # As the kernel enforces it: Claude Code's at most 4g (claude_code_podman_memory's
     # default), the Node.js service's unlimited (node_deploy_memory's).
     - name: Read each container's memory limit
       ansible.builtin.command:
@@ -879,7 +940,7 @@
           {{ __node_deploy_test_memory.results | map(attribute='stdout') | list }}
           {{ __node_deploy_test_memory.results | map(attribute='stderr') | list }}
         success_msg: >-
-          PASSED memory limits: the kernel holds Claude Code's container to 4 GiB (claude_code_memory's default), and
+          PASSED memory limits: the kernel holds Claude Code's container to 4 GiB (claude_code_podman_memory's default), and
           the Node.js service's container has no limit (node_deploy_memory's default).
 
 - name: Check the removal takes away the service and keeps its directory as it is
@@ -1131,7 +1192,7 @@
   tasks:
     - name: Remove Claude Code
       ansible.builtin.include_role:
-        name: aslib.infra.claude_code
+        name: aslib.infra.claude_code_podman
         tasks_from: remove
 
     - name: Look up Claude Code's account
@@ -1157,5 +1218,5 @@
           - ansible_facts.getent_passwd['claude-code'] is none
           - __node_deploy_test_claude_left.results | map(attribute='stat.exists') | list == [false, false, true, true, true]
         success_msg: >-
-          PASSED claude_code remove: the service, its account, archive and command are gone; /opt/claude-code,
+          PASSED claude_code_podman remove: the service, its account, archive and command are gone; /opt/claude-code,
           its config/ included, and the shared zone's files stay.

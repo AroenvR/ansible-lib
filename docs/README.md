@@ -14,9 +14,9 @@ to the role READMEs for every option and mechanism.
   installing it, versions.
 - [Deploy a Node.js backend](nodejs-backend.md): from project to running
   service, for backend developers without Ansible knowledge.
-- [Run Claude Code on a server](claude-code.md): an always-on agent for root,
+- [Run Claude Code on a server](claude-code-podman.md): an always-on agent for root,
   in a rootless container.
-- [A VM for Claude Code, for development](claude-vm.md): where Claude may have
+- [A VM for Claude Code, for development](claude-code-vm.md): where Claude may have
   root, away from the host and the local network (a proof of concept).
 - [Run a GitLab of your own](gitlab.md): GitLab CE as a rootless Podman service
   (a proof of concept).
@@ -36,12 +36,14 @@ to the role READMEs for every option and mechanism.
   [node_deploy](../roles/node_deploy/README.md),
   [podman_service](../roles/podman_service/README.md),
   [podman_overview](../roles/podman_overview/README.md),
-  [claude_code](../roles/claude_code/README.md),
-  [claude_vm](../roles/claude_vm/README.md),
+  [claude_code](../roles/claude_code/README.md) (the index of the Claude Code
+  roles), [claude_code_podman](../roles/claude_code_podman/README.md),
+  [claude_code_vm](../roles/claude_code_vm/README.md),
+  [claude_code_settings](../roles/claude_code_settings/README.md),
   [gitlab](../roles/gitlab/README.md).
 - `ansible-doc -t role aslib.infra.<role>`: a role's options, offline.
 - A project's own guide: `ansible/README.md`, which `aslib.infra.node_setup`
-  and `aslib.infra.claude_setup` write into the project, for every step from
+  and `aslib.infra.claude_code_podman_setup` write into the project, for every step from
   its `ansible/` directory.
 - [Status](status.md): what the tests cover, what they do not yet, and known
   limits.

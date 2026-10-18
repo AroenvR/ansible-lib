@@ -1,104 +1,12 @@
 ---
-# Entry point "main": deploys the image in images/ as the always-on service
-# claude-code, with aslib.infra.podman_service, and installs the claude-code command
-# that enters it. Runs as root on the servers.
-- name: Check this is a Claude Code project
-  ansible.builtin.import_tasks: project.yml
-
-# images/ holds the one version the build made (on the Ansible machine).
-- name: Find the image archive in images/
-  ansible.builtin.set_fact:
-    __claude_code_found_archives: "{{ query('fileglob', __claude_code_images ~ '/' ~ __claude_code_name ~ '-*.tar') }}"
-
-- name: Check there is one image archive, the environment file and the policy
-  ansible.builtin.assert:
-    that:
-      - __claude_code_found_archives | length == 1
-      - (claude_code_ansible_dir ~ '/container.env') is file
-      - (__claude_code_root ~ '/config/managed-settings.json') is file
-    fail_msg: >-
-      The deploy needs one image archive in {{ __claude_code_images }} (build it: ansible-playbook image.yml; found
-      {{ __claude_code_found_archives | length }}), {{ claude_code_ansible_dir }}/container.env, which holds the
-      container's settings and secrets and is not in git (create it; it may be empty), and the policy,
-      {{ __claude_code_root }}/config/managed-settings.json.
-    quiet: true
-
-- name: Note the version to deploy
-  ansible.builtin.set_fact:
-    __claude_code_archive: "{{ __claude_code_found_archives[0] }}"
-    __claude_code_version: >-
-      {{ __claude_code_found_archives[0] | basename
-         | regex_replace('^' ~ __claude_code_name ~ '-', '') | regex_replace('[.]tar$', '') }}
-
-# config/ becomes /etc/claude-code/ in the container: the policy, Claude's
-# instructions (CLAUDE.md) and any other file Claude Code reads there. The policy
-# Claude Code reads is, in this order: aslib.infra's base (files/managed-settings.json,
-# which claude_vm installs too), the container's own settings
-# (files/managed-settings.container.json), the project's config/managed-settings.json,
-# and the starting permission mode bypassPermissions when
-# claude_code_bypass_permissions is true. A later value replaces an earlier one,
-# blocks such as env merge key by key and lists combine without duplicates, as
-# Claude Code combines its own drop-in files. Reading them also checks they are JSON.
-- name: Note the files of /etc/claude-code
-  vars:
-    __claude_code_policy: >-
-      {{ (lookup('ansible.builtin.file', 'managed-settings.json') | from_json)
-         | combine(lookup('ansible.builtin.file', 'managed-settings.container.json') | from_json,
-                   lookup('ansible.builtin.file', __claude_code_root ~ '/config/managed-settings.json') | from_json,
-                   __claude_code_bypass, recursive=True, list_merge='append_rp') }}
-    __claude_code_bypass: "{{ {'permissions': {'defaultMode': 'bypassPermissions'}} if claude_code_bypass_permissions | bool else {} }}"
-  ansible.builtin.set_fact:
-    __claude_code_config_files: >-
-      {{ query('fileglob', __claude_code_root ~ '/config/*') | reject('search', '/managed-settings[.]json$') | list
-         + [{'name': 'managed-settings.json', 'content': __claude_code_policy | to_nice_json(indent=2, sort_keys=False)}] }}
-
-# The Quadlet template is the project's (ansible/templates/service.container.j2,
-# from the setup, for the project to tune) if it has one, else podman_service's.
-- name: Deploy the service
-  ansible.builtin.import_role:
-    name: aslib.infra.podman_service
-  vars:
-    __claude_code_template: "{{ claude_code_ansible_dir }}/templates/service.container.j2"
-    podman_service_name: "{{ __claude_code_service }}"
-    podman_service_dir: "{{ __claude_code_home }}"
-    podman_service_port: 0
-    podman_service_image: localhost/{{ __claude_code_name }}:{{ __claude_code_version }}
-    podman_service_archive: "{{ __claude_code_archive }}"
-    podman_service_env_file: "{{ claude_code_ansible_dir }}/container.env"
-    podman_service_config_files: "{{ __claude_code_config_files }}"
-    podman_service_quadlet_template: "{{ __claude_code_template if __claude_code_template is file else '' }}"
-    # Nothing in the container serves, so there is nothing to check its health with.
-    podman_service_health_cmd: ""
-    podman_service_memory: "{{ claude_code_memory | default('') }}"
-
-# Claude Code reads ~/.bashrc when it starts a session's shell. RHEL's default
-# one loads /etc/bashrc and with it /etc/profile.d/, where the image's nvm is.
-# Written once, as useradd would from /etc/skel; it is Claude's from then on.
-- name: Give Claude's home RHEL's default .bashrc, if it has none
-  ansible.builtin.copy:
-    content: |
-      # .bashrc, as RHEL's /etc/skel has it: loads /etc/bashrc, which loads
-      # /etc/profile.d/*.sh (nvm among them). Written once by the deploy; yours to change.
-      if [ -f /etc/bashrc ]; then
-        . /etc/bashrc
-      fi
-    dest: "{{ __claude_code_dir }}/.bashrc"
-    owner: "{{ __claude_code_user }}"
-    group: "{{ __claude_code_user }}"
-    mode: "0644"
-    force: false
-
-- name: Install the command that enters Claude Code, /usr/local/sbin/{{ __claude_code_name }}
-  ansible.builtin.template:
-    src: claude-code.sh.j2
-    dest: /usr/local/sbin/{{ __claude_code_name }}
-    owner: root
-    group: root
-    mode: "0750"
-
-- name: Show how to enter Claude Code
-  ansible.builtin.debug:
+# Entry point "main": the index runs nothing. A project from before 0.7.0 calls
+# this name for its container, so it learns where to go instead.
+- name: Name the Claude Code role to run instead
+  ansible.builtin.fail:
     msg: >-
-      Claude Code {{ __claude_code_version }} runs as the service {{ __claude_code_name }}{{ ', starting its sessions
-      in bypassPermissions mode' if claude_code_bypass_permissions | bool else '' }}. Enter it as root on the server:
-      sudo -i, then {{ __claude_code_name }}.
+      aslib.infra.claude_code is the index of the Claude Code roles and runs nothing. Claude Code in a container
+      on a server is aslib.infra.claude_code_podman; the VM is aslib.infra.claude_code_vm; the settings both
+      start sessions with are aslib.infra.claude_code_settings's. A Claude Code project from before 0.7.0: run
+      ansible-playbook aslib.infra.claude_code_podman_setup in its root directory, which brings its playbooks up
+      to date, and rename its settings in ansible/group_vars/all/project.yml as the CHANGELOG's upgrade notes for
+      0.7.0 say.

@@ -1,0 +1,40 @@
+---
+# A value outside a setting's type or choices: the run stops, naming the
+# setting, and shows no token. The file gets its own value back.
+- name: Note the settings file as it is
+  ansible.builtin.set_fact:
+    __claude_code_vm_test_good: "{{ lookup('file', __claude_code_vm_test_file, rstrip=false) }}"
+  no_log: true
+
+- name: Put the invalid value in the settings file, {{ __claude_code_vm_test_invalid }}
+  ansible.builtin.replace:
+    path: "{{ __claude_code_vm_test_file }}"
+    regexp: "^{{ __claude_code_vm_test_invalid.setting }}: .*$"
+    replace: "{{ __claude_code_vm_test_invalid.setting }}: {{ __claude_code_vm_test_invalid.value }}"
+
+- name: Run aslib.infra.claude_code_vm with it
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  environment: "{{ __claude_code_vm_test_env }}"
+  register: __claude_code_vm_test_bad
+  changed_when: false
+  failed_when: false
+
+- name: Put the settings file back
+  ansible.builtin.copy:
+    content: "{{ __claude_code_vm_test_good }}"
+    dest: "{{ __claude_code_vm_test_file }}"
+    mode: "0600"
+  no_log: true
+
+- name: Check the run stopped, naming the setting, without showing the token
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_bad.rc != 0
+      - __claude_code_vm_test_bad.stdout is search(__claude_code_vm_test_invalid.setting)
+      - __claude_code_vm_test_bad.stdout is not search(__claude_code_vm_test_token)
+    fail_msg: "{{ __claude_code_vm_test_bad.stdout_lines[-15:] | default([]) }}"
+    success_msg: >-
+      PASSED a run stopped at {{ __claude_code_vm_test_invalid.setting }}: {{ __claude_code_vm_test_invalid.value }} in
+      the settings file, naming the setting.
