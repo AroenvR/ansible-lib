@@ -13,6 +13,9 @@
         node_image_main: "{{ node_image_test_app.main | default('dist/main.js') }}"
         # Only the build machine npm settings of the test, never those of the machine running it.
         node_image_npmrc: "{{ node_image_test_dir ~ '/machine.npmrc' if node_image_test_app.machine_npmrc | default(false) else '' }}"
+        node_image_build_packages: "{{ node_image_test_app.rpm_packages | default([]) }}"
+        node_image_runtime_packages: "{{ node_image_test_app.rpm_packages | default([]) }}"
+        node_image_rpm_repos: "{{ playbook_dir ~ '/../../../../dev/molecule/rpm-repos' if node_image_test_app.rpm_packages is defined else '' }}"
       loop: "{{ node_image_test_apps }}"
       loop_control:
         loop_var: node_image_test_app

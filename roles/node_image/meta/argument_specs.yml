@@ -81,6 +81,16 @@ argument_specs:
           - The build machine's own npm settings, e.g. the registry and tokens of its environment. They apply under the
             project's .npmrc, which wins where both set something, and are never stored in an image. Ignored when the
             file does not exist; empty uses none.
+      node_image_rpm_repos:
+        type: str
+        default: ""
+        description:
+          - A directory of dnf repository files (.repo), such as a mirror's, for node_image_build_packages and
+            node_image_runtime_packages. They replace the base images' own repositories while the image builds,
+            rather than adding to them, and are never stored in an image. A relative path is taken from the directory
+            ansible-playbook runs in.
+          - Empty, the default, keeps the images' own (Red Hat's UBI repositories; on a subscribed RHEL build machine,
+            Podman adds the host's subscription).
   node_modules:
     short_description: Install a Node.js project's dependencies into node_modules in a throwaway container
     description:

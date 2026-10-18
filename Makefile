@@ -104,7 +104,7 @@ test-gitlab-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test GitLab on t
 	$(call molecule,$*,gitlab)
 
 # Not part of `test`: it needs KVM, which the test containers lack.
-test-vm-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test claude_vm's VM on this machine, which needs KVM, e.g. sudo make test-vm-2.14
+test-vm-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test claude_vm's VM on this machine, which needs KVM, with 2.16: sudo make test-vm-2.16
 	$(call molecule,$*,vm)
 
 test-native: dist image-ubuntu2404 image-ubuntu2404-native ## Test with the ansible-core and Podman packages Ubuntu 24.04 itself ships

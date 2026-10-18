@@ -7,8 +7,8 @@ argument_specs:
         aslib.infra.podman_service, rootless, as an account of its own whose directory is /opt/gitlab. Its
         conventions apply, and its settings for the account (podman_service_user, podman_service_uid) and the
         directory (podman_service_dir); see C(ansible-doc -t role aslib.infra.podman_service).
-      - First downloads the image from Docker Hub as an archive on the Ansible machine, in I(gitlab_image_dir),
-        unless it is there; the server needs no access to Docker Hub.
+      - First downloads the image (I(gitlab_image), Docker Hub's by default) as an archive on the Ansible machine,
+        in I(gitlab_image_dir), unless it is there; the server needs no access to the registry.
       - GitLab's settings come from the role, as config/gitlab.rb (read-only in the container, read before
         /etc/gitlab/gitlab.rb), for a private instance on a small server without email - Service Ping, product usage
         data, the container registry, Pages, KAS and monitoring are off, Puma and Sidekiq are sized for little memory. GitLab's
@@ -24,9 +24,15 @@ argument_specs:
         type: str
         default: 19.4.1
         description:
-          - The GitLab version, the image docker.io/gitlab/gitlab-ce:<version>-ce.0.
+          - The GitLab version, the tag <version>-ce.0 of I(gitlab_image).
           - To upgrade, raise it one required upgrade stop at a time (x.2, x.5, x.8, x.11; see GitLab's Upgrade Path
             tool) and let the background migrations finish in between. Back up first.
+      gitlab_image:
+        type: str
+        default: docker.io/gitlab/gitlab-ce
+        description:
+          - Where GitLab CE's image comes from, without its tag. Docker Hub's by default, or a mirror's (a registry
+            proxy, such as a Nexus). A mirror for docker.io in registries.conf works as well.
       gitlab_hostname:
         type: str
         default: gitlab.home.arpa
@@ -79,15 +85,21 @@ argument_specs:
   image:
     short_description: Download GitLab's image as an archive
     description:
-      - On the machine that runs it, downloads docker.io/gitlab/gitlab-ce:<gitlab_version>-ce.0 and saves it as
+      - On the machine that runs it, downloads I(gitlab_image):<gitlab_version>-ce.0 and saves it as
         I(gitlab_image_dir)/gitlab-ce-<version>.tar, removing archives of other versions. Does nothing when the
         archive is there. The entry point main runs it on the Ansible machine.
-      - Needs Podman 4.9 or newer and access to Docker Hub.
+      - Needs Podman 4.9 or newer and access to I(gitlab_image)'s registry (Docker Hub by default) or a mirror of it.
     options:
       gitlab_version:
         type: str
         default: 19.4.1
         description: The GitLab version.
+      gitlab_image:
+        type: str
+        default: docker.io/gitlab/gitlab-ce
+        description:
+          - Where GitLab CE's image comes from, without its tag (<version>-ce.0). Docker Hub's by default, or a
+            mirror's.
       gitlab_image_dir:
         type: path
         default: "{{ lookup('env', 'PWD') }}/images"

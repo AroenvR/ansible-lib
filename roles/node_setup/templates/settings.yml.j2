@@ -21,6 +21,7 @@ node_image_main: dist/main.js          # the entry point that npm run build make
 node_image_port: 3000                  # the app's port, as PORT
 node_image_build_packages: []          # RPMs a native module needs to compile, e.g. [libpq-devel]
 node_image_runtime_packages: []        # ...and at runtime, e.g. [libpq]
+node_image_rpm_repos: ""               # a directory of .repo files (a mirror's) for those RPMs; empty: the images' own
 node_image_ignore: []                  # more files kept out of the image (.containerignore patterns)
 
 # Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.

@@ -55,4 +55,5 @@
       changed_when: true
       vars:
         __gitlab_test_version: "{{ (lookup('ansible.builtin.file', playbook_dir ~ '/../../defaults/main.yml') | from_yaml).gitlab_version }}"
-        __gitlab_test_image: docker.io/gitlab/gitlab-ce:{{ __gitlab_test_version }}-ce.0
+        __gitlab_test_defaults: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../defaults/main.yml') | from_yaml }}"
+        __gitlab_test_image: "{{ __gitlab_test_defaults.gitlab_image }}:{{ __gitlab_test_version }}-ce.0"

@@ -5,6 +5,16 @@
 # that runs the playbook. Then makes the VM reachable as the host claude-dev for
 # the entry point "guest" (playbooks/claude_vm.yml runs both). Running it again
 # changes nothing; a VM that is shut off is started.
+# The host and the VM run Ubuntu 24.04, whose Python (3.12) ansible-core 2.14
+# does not support on managed machines (its get_url fails there over HTTPS).
+- name: Check the ansible-core version
+  ansible.builtin.assert:
+    that: ansible_version.full is version('2.16', '>=')
+    fail_msg: >-
+      claude_vm needs ansible-core 2.16 or newer (Ubuntu 24.04's), as its host and VM run Ubuntu 24.04 with Python
+      3.12; this is {{ ansible_version.full }}.
+    quiet: true
+
 - name: Look up the host's OS and architecture
   ansible.builtin.setup:
     gather_subset: ["!all", "!min", distribution, platform]
@@ -18,12 +28,14 @@
   ansible.builtin.assert:
     that:
       - __claude_vm_kvm.stat.exists
-      - ansible_facts.os_family in __claude_vm_host_packages
-      - ansible_facts.architecture in __claude_vm_host_packages[ansible_facts.os_family] | default({})
+      - ansible_facts.distribution == 'Ubuntu'
+      - ansible_facts.distribution_version is version('24.04', '>=')
+      - ansible_facts.architecture in __claude_vm_host_packages
     fail_msg: >-
-      {{ inventory_hostname }} needs Ubuntu or RHEL on x86_64 or ARM64 (aarch64), with KVM (/dev/kvm):
+      {{ inventory_hostname }} needs Ubuntu 24.04 or newer on x86_64 or ARM64 (aarch64), with KVM (/dev/kvm):
       virtualization enabled in the firmware, or nested virtualization when the host is a VM itself. It has
-      {{ ansible_facts.distribution }} on {{ ansible_facts.architecture }}{{ '' if __claude_vm_kvm.stat.exists else ', without KVM' }}.
+      {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }} on {{ ansible_facts.architecture
+      }}{{ '' if __claude_vm_kvm.stat.exists else ', without KVM' }}.
     quiet: true
 
 # QEMU reserves all of the VM's memory when it starts; past what the host has,
@@ -55,17 +67,14 @@
     state: present
   vars:
     __claude_vm_missing: >-
-      {{ __claude_vm_host_packages[ansible_facts.os_family][ansible_facts.architecture] | difference(ansible_facts.packages.keys()) }}
+      {{ __claude_vm_host_packages[ansible_facts.architecture] | difference(ansible_facts.packages.keys()) }}
   when: __claude_vm_missing | length > 0
 
 - name: Start libvirt, now and at every boot
   ansible.builtin.systemd:
-    name: "{{ __claude_vm_service }}"
+    name: libvirtd.service
     state: started
     enabled: true
-  loop: "{{ __claude_vm_host_services[ansible_facts.os_family] }}"
-  loop_control:
-    loop_var: __claude_vm_service
 
 # On the machine that runs the playbook, as the person running it.
 - name: Create ~/.ssh for the key that logs in to the VM

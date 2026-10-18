@@ -34,12 +34,12 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Rename each NestJS sample after its test case, so their images get different tags
+    - name: Rename each NestJS sample and RPM test app after its test case, so their images get different tags
       ansible.builtin.replace:
         path: "{{ node_image_test_dir }}/{{ item.name }}/package.json"
         regexp: '^  "name": ".*",$'
         replace: '  "name": "{{ item.name }}",'
-      loop: "{{ node_image_test_apps | selectattr('nestjs_ref', 'defined') | list }}"
+      loop: "{{ (node_image_test_apps | selectattr('nestjs_ref', 'defined') | list) + (node_image_test_apps | selectattr('rpm_packages', 'defined') | list) }}"
       loop_control:
         label: "{{ item.name }}"
 

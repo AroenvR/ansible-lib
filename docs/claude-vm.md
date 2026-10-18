@@ -9,12 +9,13 @@ safe](../roles/claude_vm/README.md#how-it-keeps-you-safe).
 
 ## Before you start
 
-- **A host**: Ubuntu 24.04 or RHEL 9.6 (or newer) on x86_64 or ARM64, such as a
+- **A host**: Ubuntu 24.04 (or newer) on x86_64 or ARM64, such as a
   Raspberry Pi, with virtualization enabled in the firmware (`/dev/kvm`);
   headless is fine. The VM takes 4 GiB of the host's memory from the start
   ([The host](../roles/claude_vm/README.md#the-host)).
 - **The machine that runs Ansible**: the host itself, or another machine with
-  the host in an inventory. ansible-core and aslib.infra on it ([Install
+  the host in an inventory. ansible-core 2.16 or newer (Ubuntu 24.04's; 2.14
+  does not support the Python 3.12 of the host and the VM) and aslib.infra on it ([Install
   aslib.infra](install.md)), and sudo on the host.
 - **Internet access** for the host and the VM: packages, Ubuntu's cloud image,
   Anthropic's and the deadsnakes repositories.

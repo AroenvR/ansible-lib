@@ -35,17 +35,30 @@
     block: "{{ claude_vm_network_prefix }}.1 {{ claude_vm_host_names | join(' ') }}"
     state: "{{ 'present' if claude_vm_host_names | length > 0 else 'absent' }}"
 
-- name: Download the keys the VM's repositories are signed with
-  ansible.builtin.get_url:
-    url: "{{ __claude_vm_repository.key_url }}"
-    dest: /etc/apt/keyrings/{{ __claude_vm_repository.name }}.asc
-    owner: root
-    group: root
-    mode: "0644"
+# Only where missing: a keyserver's answer can differ from one request to the
+# next (seen in CI, with deadsnakes' key), so downloading again could change the
+# file on every run. The fingerprint check below is what proves the key.
+- name: Look up the keys the VM's repositories are signed with
+  ansible.builtin.stat:
+    path: /etc/apt/keyrings/{{ __claude_vm_repository.name }}.asc
   loop: "{{ __claude_vm_repositories }}"
   loop_control:
     loop_var: __claude_vm_repository
     label: "{{ __claude_vm_repository.name }}"
+  register: __claude_vm_key_files
+
+- name: Download the keys the VM's repositories are signed with, where missing
+  ansible.builtin.get_url:
+    url: "{{ __claude_vm_key_file.__claude_vm_repository.key_url }}"
+    dest: /etc/apt/keyrings/{{ __claude_vm_key_file.__claude_vm_repository.name }}.asc
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __claude_vm_key_files.results }}"
+  loop_control:
+    loop_var: __claude_vm_key_file
+    label: "{{ __claude_vm_key_file.__claude_vm_repository.name }}"
+  when: not __claude_vm_key_file.stat.exists
 
 - name: Look up the keys' fingerprints
   ansible.builtin.command:
@@ -114,6 +127,14 @@
     owner: root
     group: root
     mode: "0644"
+
+# A reset soon after (UEFI may restart an ARM64 VM; the test resets it on
+# purpose) loses what ext4 has not written out yet, up to 30 seconds' worth: a
+# new file then comes back empty, as the policy did in CI 19 seconds after it was
+# written.
+- name: Write everything to the VM's disk
+  ansible.builtin.command: sync
+  changed_when: false
 
 - name: Show how to use the VM
   ansible.builtin.debug:

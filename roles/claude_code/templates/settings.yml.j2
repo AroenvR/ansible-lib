@@ -17,6 +17,9 @@ claude_code_base_image: registry.access.redhat.com/ubi9/ubi   # the Containerfil
 claude_code_repository: https://downloads.claude.ai/claude-code/rpm/stable   # or .../rpm/latest, or a mirror
 claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc
 claude_code_version: ""                # empty: the repository's newest, so every build updates; or e.g. "2.1.211"
+claude_code_nvm_url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh   # nvm's script, or a mirror of it
+claude_code_nvm_sha256: a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467   # its SHA-256: a newer release changes both
+claude_code_rpm_repos: ""              # a directory of .repo files (a mirror's) for the Containerfile's packages; empty: the base image's own
 
 # Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
 claude_code_bypass_permissions: false  # true: sessions start in bypassPermissions mode; also -e claude_code_bypass_permissions=true

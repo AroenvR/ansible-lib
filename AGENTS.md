@@ -31,10 +31,11 @@ the guides and the reference in [docs/](docs/README.md).
   shows.
 - **Only `ansible.builtin`.** Any other collection is a dependency for every
   consumer; ask the maintainer first.
-- **Offline servers.** Never assume internet access: every repository, key or
-  download URL is a role variable with an upstream default (three gaps remain,
-  see Status), and packages are installed only when missing ([Offline servers
-  and repositories](CONTRIBUTING.md#offline-servers-and-repositories)).
+- **Offline servers.** Never assume internet access: everything a build or a
+  deploy downloads can come from a mirror, through each tool's own
+  configuration (see Status, 2026-10-17), and packages are installed only when
+  missing ([Offline servers and
+  repositories](CONTRIBUTING.md#offline-servers-and-repositories)).
 - **Podman, never Docker.**
 - **The maintainer's server conventions for containers.** Root manages the
   accounts, images and Quadlet files; every service runs rootless as an account
@@ -177,6 +178,11 @@ the entry says it is likely or not verified yet.
 - ansible-core 2.14 modules break on Python 3.12 for HTTPS (`cert_file`
   errors; 2.12 did too). GitHub's runners have 3.12 as python3, so build_machine
   scenarios run modules with the venv's Python (`ansible_python_interpreter`).
+  2.14 supports managed machines' Python only up to 3.11 (ansible-core's support
+  matrix; 2.16 up to 3.12), so a role that manages Ubuntu 24.04 machines with
+  downloads needs 2.16: claude_vm (its host and its VM) checks for it first, and
+  CI runs its VM test with 2.16 only (seen 2026-10-17: get_url of the cloud
+  image's checksums failed with 2.14).
 - Quadlet: systemd specifiers (`%h`) work in `Volume=` and `EnvironmentFile=`.
   Avoid `StateDirectory=` for a user service's data: systemd 252 (RHEL 9) puts it
   in ~/.config, newer versions in ~/.local/state.
@@ -396,6 +402,22 @@ the entry says it is likely or not verified yet.
 - `podman restart` of a test server breaks Ansible's SSH connection; the next
   task fails as unreachable, which an `until` loop does not retry. Reset the
   connection and `wait_for_connection` first (node_deploy's verify).
+- get_url without a checksum asks again on every run (If-Modified-Since) and
+  replaces the file when the answer differs: keyserver.ubuntu.com ignores that
+  header, and in CI a second run got a different answer for deadsnakes' key,
+  so claude_vm's idempotence step failed. claude_vm downloads its repository
+  keys only where missing and proves them by fingerprint.
+- A hard reset of a VM (`virsh reset`) loses what ext4 has not written out
+  yet, up to 30 seconds' worth: a new file comes back empty. claude_vm's test
+  resets the VM first thing; on GitHub's fast runners that came 19 seconds after
+  the policy was written, which then was empty (CI, 2026-10-17). claude_vm ends
+  its guest setup with `sync`.
+- microdnf (librhsm) in UBI's minimal images writes `redhat.repo` into
+  `/etc/yum.repos.d` at every run, unless `/var/lib/rhsm` exists (then it leaves
+  that to subscription-manager). With node_image_rpm_repos mounted read-only
+  there, it failed ("Read-only file system"); the runtime stage creates
+  `/var/lib/rhsm` for that step only. dnf with its subscription-manager plugin
+  (the full images) does not mind.
 - claude_vm's VM gets Python 3.11 from a deadsnakes source of claude_vm's own
   (`/etc/apt/sources.list.d/deadsnakes.list`, signed by
   `/etc/apt/keyrings/deadsnakes.asc`). Adding the PPA a second time with
@@ -539,6 +561,8 @@ Last updated 2026-10-17, for accept, before v0.5.0's release.
   (`__gitlab_image` in roles/gitlab/vars/main.yml), nvm's URL (`NVM_URL` only
   in claude_code's Containerfile) and the UBI RPM repositories inside the image
   builds of node_image and claude_code. A feature of its own, designed first.
+  Closed on 2026-10-17: `gitlab_image`, `claude_code_nvm_url` and
+  `claude_code_nvm_sha256`, `node_image_rpm_repos` and `claude_code_rpm_repos`.
 - Decided with the maintainer on 2026-10-17, for those gaps and every download
   source: follow each tool's own configuration and its own order, never a layer
   of aslib's on top, and default to what the developer or the machine already
@@ -553,6 +577,22 @@ Last updated 2026-10-17, for accept, before v0.5.0's release.
   names a directory of `.repo` files that replaces the image's repositories for
   the build instead of adding to them. The details are the feature's design.
   Later, a Sonatype Nexus repository, to test it all and to store images.
+  Built on 2026-10-17 as designed. The directory of `.repo` files is mounted
+  read-only over the base images' `/etc/yum.repos.d` for the build's steps
+  (`podman build --volume ...:ro,z`); claude_code's Containerfile therefore
+  imports Anthropic's key into rpm's database and installs Claude Code with
+  `--repofrompath` instead of writing `claude-code.repo` there. Its default is
+  empty (the images' own repositories), not the build machine's
+  `/etc/yum.repos.d`: that holds `redhat.repo`, whose certificates a container
+  lacks, and repositories such as EPEL that do not belong in an image.
+- The end goal, from the maintainer on 2026-10-17 (issue #15, a feature not
+  built yet): an offline RHEL VM managing all of aslib.infra's non-KVM services,
+  with every requirement served by an offline Sonatype Nexus that runs as a
+  container managed by aslib.infra and gets its data as a tarball from an
+  online Nexus. In it, a RHEL VM develops a Node.js project from a GitLab and
+  builds and deploys it to another RHEL VM; aslib.infra itself is one of the
+  packages the Nexus serves. Every download source must therefore be able to
+  come from such a mirror.
 - Decided with the maintainer on 2026-10-17: aslib's consumers are root on the
   servers they manage, mostly RHEL VMs (bare-metal machines are mostly Ubuntu).
   Managing services remotely on RHEL 9.6 VMs comes first; RHEL as a build
@@ -563,10 +603,11 @@ Last updated 2026-10-17, for accept, before v0.5.0's release.
   repositories already serve 9.8 packages. A dedicated sudo account (issue #14)
   is closed as not planned.
 - Decided with the maintainer on 2026-10-17: claude_vm supports one path, an
-  Ubuntu VM on an Ubuntu host, until hosting the VM on RHEL is needed. Its
-  supported hosts narrow to Ubuntu, and its VM test moves into GitHub CI, whose
-  standard Linux runners have `/dev/kvm` since April 2024 (an x86_64 host; ARM64
-  stays proven by hand on the Pi). A branch of its own, next.
+  Ubuntu VM on an Ubuntu host, until hosting the VM on RHEL is needed. Done the
+  same day: its supported hosts are Ubuntu 24.04 or newer, it needs
+  ansible-core 2.16 (see Known pitfalls), and its VM test runs in GitHub CI,
+  whose standard Linux runners have `/dev/kvm` since April 2024 (an x86_64
+  host; ARM64 stays proven by hand on the Pi). GitLab CI has no such job.
 - Since 2026-10-17 claude-dev also holds a GitHub CLI login of Claude's own
   account (device flow, approved by the maintainer), to open pull requests and
   read issues. It reaches what the push key reaches.
@@ -719,9 +760,9 @@ Last updated 2026-10-17, for accept, before v0.5.0's release.
   personal VM, which has no nested KVM and where Claude gets no root. What
   matters is what the VM holds (only Claude's login, and since 2026-10-16 a key
   that pushes Claude's own branches, see above; no keys to servers) and what it reaches
-  (the internet, not the local network, enforced by nftables on the host). Runs
-  on the maintainer's Raspberry Pi 4 (ARM64); not yet on an x86_64 host with KVM
-  or a RHEL host. On ARM64 the VM boots with UEFI firmware without Secure Boot
+  (the internet, not the local network, enforced by nftables on the host).
+  Ubuntu hosts only (2026-10-17). Runs on the maintainer's Raspberry Pi 4 (ARM64),
+  and in CI on GitHub's x86_64 runners with KVM. On ARM64 the VM boots with UEFI firmware without Secure Boot
   (qemu-efi-aarch64; see Known pitfalls) and is ARM64 itself. The VM has Python
   3.11 (deadsnakes, ARM64 included) next to Ubuntu's 3.12, for both test venvs.
   GitLab next to it needs Podman 5 (podman_service): Ubuntu 24.04 has 4.9,

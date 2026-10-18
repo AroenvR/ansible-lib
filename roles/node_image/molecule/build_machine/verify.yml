@@ -133,3 +133,34 @@
           - __node_image_test_refusal is match('fs-extra in both')
           - (__node_image_test_project ~ '/ansible/images/Containerfile') is not file
         success_msg: "PASSED node_image stops before building when a package is in both lists: {{ __node_image_test_refusal | default('') }}"
+
+- name: Check node_image builds with the RPM repositories it is given, instead of the images' own
+  hosts: localhost
+  gather_facts: false
+  vars_files: [vars/apps.yml]
+  tasks:
+    - name: Build with a mirror nobody serves, which must fail
+      block:
+        - name: Run node_image with node_image_rpm_repos naming the unreachable mirror
+          ansible.builtin.include_role:
+            name: aslib.infra.node_image
+          vars:
+            node_image_source: "{{ node_image_test_dir }}/rpm-mirror"
+            node_image_output_dir: "{{ node_image_test_dir }}/rpm-unreachable/images"
+            node_image_main: server.js
+            node_image_npmrc: ""
+            node_image_build_packages: [which]   # another RUN line than the cached one, so dnf runs
+            node_image_rpm_repos: "{{ playbook_dir }}/../../../../dev/molecule/rpm-repos-unreachable"
+      rescue:
+        - name: Note why it failed
+          ansible.builtin.set_fact:
+            __node_image_test_rpm_failure: "{{ ansible_failed_result | to_json }}"
+
+    - name: Check the build failed on the mirror, not the images' own repositories
+      ansible.builtin.assert:
+        that:
+          - __node_image_test_rpm_failure is defined
+          - "'aslib-test-unreachable' in __node_image_test_rpm_failure"
+        success_msg: >-
+          PASSED node_image: with node_image_rpm_repos, dnf uses only those repositories (the unreachable mirror
+          made the build fail), not the images' own.

@@ -1,0 +1,22 @@
+# UBI 9's own repositories under other names, as a mirror of them (a Nexus, say)
+# would serve them: the tests build with this directory as node_image_rpm_repos.
+[aslib-test-ubi9-baseos]
+name = UBI 9 BaseOS, as a mirror (aslib.infra's tests)
+baseurl = https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/baseos/os
+enabled = 1
+gpgcheck = 1
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+[aslib-test-ubi9-appstream]
+name = UBI 9 AppStream, as a mirror (aslib.infra's tests)
+baseurl = https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/appstream/os
+enabled = 1
+gpgcheck = 1
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+[aslib-test-ubi9-codeready-builder]
+name = UBI 9 CodeReady Builder, as a mirror (aslib.infra's tests)
+baseurl = https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/codeready-builder/os
+enabled = 1
+gpgcheck = 1
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release

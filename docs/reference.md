@@ -15,8 +15,8 @@ job from start to end.
 | [podman_service](../roles/podman_service/README.md) | Runs any image archive as a rootless Podman service that starts at boot | Servers (RHEL 9.6+) | Only if the `acl` package is missing |
 | [podman_overview](../roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with how to read their logs | Servers (RHEL 9.6+) | No |
 | [claude_code](../roles/claude_code/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.6+) | To build: Red Hat's registry and UBI repositories, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
-| [claude_vm](../roles/claude_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (RHEL 9.6+, Ubuntu 24.04+) | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
-| [gitlab](../roles/gitlab/README.md) | GitLab Community Edition as a rootless Podman service, with podman_service, set up for a private instance without email (proof of concept) | Servers (RHEL 9.6+) | The Ansible machine: Docker Hub, for the image. The server: no |
+| [claude_vm](../roles/claude_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (Ubuntu 24.04+), with ansible-core 2.16+ | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
+| [gitlab](../roles/gitlab/README.md) | GitLab Community Edition as a rootless Podman service, with podman_service, set up for a private instance without email (proof of concept) | Servers (RHEL 9.6+) | The Ansible machine: Docker Hub or a mirror (`gitlab_image`), for the image. The server: no |
 
 Each role's options: [Role options](#role-options).
 

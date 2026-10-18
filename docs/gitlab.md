@@ -15,8 +15,8 @@ VM. A proof of concept: plain HTTP, no email, no backups or runner yet.
   too old for the service.
 - **The machine that runs Ansible**, the server itself or another one:
   ansible-core and aslib.infra ([Install aslib.infra](install.md)), and Podman
-  4.9 or newer with access to Docker Hub, to download GitLab's image (about
-  1.5 GB). Without that access, copy the archive into `images/` there
+  4.9 or newer with access to Docker Hub or a mirror of it (`gitlab_image`), to
+  download GitLab's image (about 1.5 GB). Without that access, copy the archive into `images/` there
   (`gitlab-ce-<version>.tar`).
 - **A directory** on that machine for `gitlab.env` and your inventory, if any,
   such as `~/infra`. Without an inventory, or without a group `gitlab` in it,

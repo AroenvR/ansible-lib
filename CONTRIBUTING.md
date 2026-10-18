@@ -54,7 +54,7 @@ root there, away from the host and the local network. See
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
 | `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code's deploy, side by side with the Node.js service |
 | `roles/claude_code/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
-| `roles/claude_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`sudo make test-vm-<ansible-core>`) |
+| `roles/claude_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`sudo make test-vm-2.16`; CI runs it on GitHub) |
 | `roles/gitlab/molecule/gitlab/` | Deploys and uses GitLab on the RHEL 9 test server; not part of `make test` (`make test-gitlab-<ansible-core>`). `mock/` is a stand-in for GitLab's image (`gitlab_test_real: false`) |
 | `playbooks/` | Ready-made playbooks for people who don't write Ansible: `ansible-playbook aslib.infra.<name>` |
 | `plugins/callback/` | Callback plugins (`run_log`). ansible-lint skips them; `make lint` loads their documentation with ansible-doc |
@@ -93,7 +93,7 @@ so a local run does exactly what a pipeline does. `make help` lists them:
 | `make test` | The three above, with ansible-core 2.14 and 2.16 |
 | `make test-native` | `make dist`, the images `ubuntu2404` and `ubuntu2404-native`, then `dev/native-test.sh` with the roles in `UBUNTU_ROLES` |
 | `make test-gitlab-<ansible-core>` | Molecule scenario `gitlab`, on the RHEL 9 test server; not part of `make test` |
-| `make test-vm-<ansible-core>` | Molecule scenario `vm`, on this machine, which needs KVM; not part of `make test` |
+| `make test-vm-<ansible-core>` | Molecule scenario `vm`, on this machine, which needs KVM; with 2.16 only, as claude_vm needs it; not part of `make test` |
 | `make build` | `lint`, `test` and `test-native`: what CI runs before a release, except GitLab's test |
 | `make dist` | `build.yml`: a tarball to try out, `dist/aslib-infra.<branch>.<commit>.<UTC time>.tgz` |
 | `make dist-release` | `build.yml -e release=true`: a release, as CI makes one from main, `dist/aslib-infra-<next version>.tar.gz`. It writes the version into `galaxy.yml` first, so only CI should run it |
@@ -112,7 +112,7 @@ Run the tests that way too, the server tests above all: CI proves only that
 way, and a rootless run has failed where a rootful one passed (the causes found
 so far are in [AGENTS.md, Known pitfalls](AGENTS.md#known-pitfalls)).
 `make test-vm-<ansible-core>` needs root in any case
-(`sudo make test-vm-2.14`). `setup`, `lint`, `dist` and `version` run as
+(`sudo make test-vm-2.16`). `setup`, `lint`, `dist` and `version` run as
 yourself.
 
 ## Tests
@@ -130,7 +130,7 @@ without taking another's account, UID or files.
 |---|---|---|---|
 | `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
 | `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code`'s setup and image) | The machine running the tests | `make test-build-machine-<ansible-core>` |
-| `roles/claude_vm/molecule/vm/` | A host with KVM (`claude_vm`) | The machine running the tests, which needs KVM; not part of `make test` | `sudo make test-vm-<ansible-core>` |
+| `roles/claude_vm/molecule/vm/` | A host with KVM (`claude_vm`) | The machine running the tests, which needs KVM; not part of `make test`; with 2.16 only | `sudo make test-vm-2.16` |
 | `roles/gitlab/molecule/gitlab/` | A server running GitLab (`gitlab`) | The RHEL 9 test server; needs Docker Hub, about 4 GB of memory, 15 GB of disk and half an hour, so not part of `make test` (with `gitlab_test_real: false` in its `vars/test.yml`, a stand-in takes minutes, offline) | `make test-gitlab-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with
@@ -286,13 +286,22 @@ Then push; open a pull request into `accept` once the gates in
 
 ### Offline servers and repositories
 
-- Never assume internet access. Every repository, key or download URL is a role
-  variable whose default points upstream, so sites can point it at a mirror or
-  proxy. Three are not yet and are to become variables: GitLab's image, nvm's
-  URL in claude_code's Containerfile, and the UBI RPM repositories in the image
-  builds. npm's settings come from the project's `.npmrc` and, below it, the
-  build machine's `~/.npmrc`; images also follow the build machine's
-  `registries.conf`. The sources are listed in node_image's
+- Never assume internet access. Everything a build or a deploy downloads can
+  come from a mirror (a Nexus, say), through each tool's own configuration and
+  in its own order, defaulting to what the developer or the machine already
+  provides:
+  - npm: the project's `.npmrc` and, below it, the build machine's `~/.npmrc`;
+  - images: a role variable for the name, and the build machine's
+    `registries.conf` for where it comes from;
+  - RPMs in image builds: a directory of `.repo` files (`node_image_rpm_repos`,
+    `claude_code_rpm_repos`), which replaces the images' own repositories for
+    the build instead of adding to them;
+  - anything else (a repository, a key, a script): a role variable whose
+    default points upstream, checked by fingerprint or checksum.
+
+  aslib.infra adds a setting only where a build cuts a tool off from its own
+  configuration, carries files into the build step only and never into an
+  image, and merges nothing. The sources are listed in node_image's
   [Download sources](roles/node_image/README.md#download-sources) and in the
   tables of the same name in the project guides (`templates/README.md.j2` of
   node_setup and claude_code).
@@ -411,6 +420,7 @@ requests. main and accept get pipelines of their own later.
 | build-machine roles · ansible-core 2.14 / 2.16 | `make test-build-machine-<ansible-core>`, `make test-dist-<ansible-core>` | Same, plus access to Red Hat's registry, Anthropic's repository, npm and GitHub |
 | Ubuntu 24.04's own ansible-core and Podman | `make test-native` | Same |
 | GitLab · ansible-core 2.14 / 2.16 | `make image-rhel9 test-gitlab-<ansible-core>` | As server roles, plus Docker Hub, about 4 GB of memory and 15 GB of disk |
+| claude_vm · ansible-core 2.16 (GitHub only) | `make test-vm-2.16` | KVM (`/dev/kvm`), which GitHub's Linux runners have; Ubuntu's archive, its cloud image, the deadsnakes and Anthropic's repositories |
 | branch build (every branch but main) | `make dist BRANCH=<branch>` | All jobs above green |
 | release (main) | `make dist-release` | All jobs above green |
 
@@ -421,6 +431,7 @@ container, which the runner has to allow. The `runner-check` job reports what
 the runner offers (OS, user, privileges, Podman) and the test jobs only start
 once it passes. If it fails, its log says what the runner admin needs to
 change. Until then GitLab publishes nothing, on purpose: nothing ships untested.
+GitLab has no claude_vm job: its runner would need KVM too.
 
 ## Releases
 

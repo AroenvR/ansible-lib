@@ -2,7 +2,7 @@
 # local network, at boot before libvirt starts the VM.
 [Unit]
 Description=Firewall rules for the VM {{ __claude_vm_name }}
-Before=libvirtd.service virtqemud.service
+Before=libvirtd.service
 
 [Service]
 Type=oneshot

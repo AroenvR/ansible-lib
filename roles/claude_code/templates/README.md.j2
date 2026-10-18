@@ -124,8 +124,12 @@ zone) from the server's repositories when it is missing.
 |---|---|---|
 | Red Hat's UBI 9 image, by default from `registry.access.redhat.com` | `claude_code_base_image` | `registries.conf` |
 | Claude Code, by default from `downloads.claude.ai` | `claude_code_repository`, `claude_code_key_url` | |
-| The tools in the Containerfile | | Red Hat's UBI repositories, as set up in the base image |
-| nvm, by default from `raw.githubusercontent.com` | `NVM_URL` in `../Containerfile` (aslib.infra's file: an update keeps your change as `Containerfile.bak`, to merge back) | |
+| The tools in the Containerfile | `claude_code_rpm_repos`: a directory of `.repo` files, e.g. a mirror's | Without it, Red Hat's UBI repositories, as set up in the base image; a subscribed RHEL host adds its subscription |
+| nvm, by default from `raw.githubusercontent.com` | `claude_code_nvm_url`, `claude_code_nvm_sha256` | |
+
+`claude_code_rpm_repos` is mounted over the base image's `/etc/yum.repos.d` for
+the build only: its repositories replace the image's own rather than adding to
+them, and the image keeps its own.
 
 Claude itself needs `api.anthropic.com` and, to sign in, `claude.ai`, `claude.com`
 and `platform.claude.com`.
