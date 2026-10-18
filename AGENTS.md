@@ -537,8 +537,10 @@ since goes into 0.5.1.
   maintainer).
 - Decided with the maintainer on 2026-10-18: the release after 0.5.0 is 0.5.1,
   a patch. Its changes are fixes and refactors, claude_vm's narrowing to Ubuntu
-  hosts included (its RHEL hosts were never tested), so galaxy.yml stays at
-  0.5.0 and CI computes the next patch version.
+  hosts included (its RHEL hosts were never tested). Every merge into accept
+  raises galaxy.yml's version and adds that version's CHANGELOG section, so
+  accept never carries a released version number with different contents;
+  galaxy.yml is 0.5.1.
 
 - Decided with the maintainer on 2026-10-16: each kind of reader has one place.
   README.md is a short landing page (what aslib.infra is, who it is for, a
