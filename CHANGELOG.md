@@ -4,6 +4,67 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.6.0
+
+- Changed: claude_vm supports Ubuntu hosts only (24.04 or newer, x86_64 or
+  ARM64) and needs ansible-core 2.16 or newer, as its host and VM have Python
+  3.12, which 2.14 does not support on managed machines; it checks both first.
+  Its test runs in CI on GitHub's runners, which have KVM.
+- Added: every download source of a build can come from a mirror (a Nexus, say):
+  - `gitlab_image`, where GitLab CE's image comes from (Docker Hub's by default);
+  - `claude_code_nvm_url` and `claude_code_nvm_sha256`, nvm's script and its
+    checksum, which image.yml passes to the Containerfile, so a mirror needs no
+    change to it;
+  - `node_image_rpm_repos` and `claude_code_rpm_repos`, a directory of dnf
+    repository files, such as a mirror's, which replaces the base images' own
+    repositories while an image builds (mounted over `/etc/yum.repos.d` for the
+    build only, never stored in the image).
+- Added: claude_vm installs aslib.infra's instructions for Claude Code in the
+  VM, `/etc/claude-code/CLAUDE.md`, with every run: keep work on disk as it
+  goes (commits, a handoff file per task, memory), so an interrupted session
+  loses nothing, and treat a permission denial as a decision, sudo or not.
+- Changed: the template of a Claude Code project's `config/CLAUDE.md` asks the
+  same of the container's Claude.
+- Changed: claude_code's Containerfile imports Anthropic's key into rpm's
+  database and installs Claude Code with `--repofrompath`, so the image no
+  longer has `/etc/yum.repos.d/claude-code.repo`. `update-playbooks.yml` brings
+  the new Containerfile, keeping a changed one as `Containerfile.bak`.
+- Changed: the documentation is reorganised. README.md is a short landing page;
+  installing (compatibility, where to get a tarball, versions), a guide per job,
+  the reference of roles, playbooks and plugins, and what the tests cover are in
+  `docs/` (index: `docs/README.md`), which ships with the collection.
+- Changed: podman_service's documentation of `podman_service_health_cmd` says
+  how to quote in it: single quotes inside, as Quadlet hands the command on in
+  double quotes, which break before Podman 5.8.2.
+- Changed: galaxy.yml names no repository URL and no profile URL for its
+  author: where aslib.infra is hosted keeps changing.
+- Fixed: claude_vm's firewall rules are ordered before `virtqemud.service` again
+  (as well as `libvirtd.service`), so a host that runs libvirt as per-driver
+  daemons cannot start the VM before its rules are loaded.
+- Fixed: a second claude_vm run downloaded deadsnakes' signing key again and
+  could change it; repository keys are downloaded only where missing. The guest
+  setup ends with `sync`, so a reset soon after it loses no new files.
+- Fixed: podman_service and podman_overview run Podman as a service's account
+  with that account's own D-Bus session bus. Over SSH as root they kept root's,
+  and a command in a service's container failed (`cgroup.procs: Permission
+  denied`): gitlab's application settings, and `podman exec` in the checks.
+- Fixed: the `requirements.yml` example for a release (README's, now in
+  `docs/own-playbooks.md`) lacked the repository's address. The examples now
+  write `<repository>` for the URL of aslib.infra's repository and `<version>`
+  for a release.
+
+### Upgrading from 0.5.0
+
+- claude_vm: run it with ansible-core 2.16 or newer, on an Ubuntu host; RHEL
+  hosts are no longer supported.
+- Node.js and Claude Code projects: `ansible-playbook update-playbooks.yml`
+  brings the new settings (in `group_vars/all/defaults.yml`) and, for Claude
+  Code, the new Containerfile (a changed one is kept as `Containerfile.bak`).
+- Claude Code projects: `config/CLAUDE.md` is the project's, so an update
+  leaves it as it is. To give Claude the new instruction, add the paragraph
+  that starts "A session can end at any moment" from aslib.infra's
+  `roles/claude_code/files/CLAUDE.md` to "How we work together".
+
 ## 0.5.0
 
 - Added role `claude_vm` and playbooks `aslib.infra.claude_vm` and

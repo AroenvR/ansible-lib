@@ -10,10 +10,10 @@ cd ~/infra                                              # where gitlab.env is (a
 ansible-playbook aslib.infra.gitlab --ask-become-pass   # then http://gitlab.home.arpa:8929, as root
 ```
 
-Without an inventory it deploys to the machine it runs on; with one, to the
-hosts in its group `gitlab`. It downloads GitLab's image to `images/` there
-first (about 1.5 GB), unless it is there: the server itself needs no access to
-Docker Hub.
+Without an inventory, or without a group `gitlab` in it, it deploys to the
+machine it runs on; otherwise to the hosts in that group. First it downloads
+GitLab's image (about 1.5 GB) to `images/` in the directory it runs from,
+unless the archive is there: the server itself needs no access to Docker Hub.
 
 ## Before the first deploy
 
@@ -69,9 +69,8 @@ GitLab keeps settings in two places, and the role sets both with every deploy.
 `GITLAB_OMNIBUS_CONFIG` before GitLab's own `/etc/gitlab/gitlab.rb`, which stays
 GitLab's template: the URL and SSH port; no email (there is no mail server);
 no Service Ping or product usage data; no container registry, Pages, KAS or
-monitoring; Puma in
-single mode and fewer Sidekiq threads, as GitLab's guide for small servers has
-it. More lines: `gitlab_config_extra`.
+monitoring; Puma in single mode and fewer Sidekiq threads, as GitLab's guide
+for small servers has it. More lines: `gitlab_config_extra`.
 
 **Application settings**, which GitLab keeps in its database and shows in its
 Admin area. The role sets these ([vars/main.yml](vars/main.yml)) once GitLab is
@@ -106,7 +105,7 @@ make lasting ones with `gitlab_application_settings`.
   In the VM: `git config --global credential.helper store`, then a push asks for
   the token once.
 - **A forgotten password**, reset by root on the server:
-  `cd / && sudo runuser -u gitlab -- env XDG_RUNTIME_DIR=/run/user/<the account's UID> podman exec -it gitlab gitlab-rake "gitlab:password:reset[<user>]"`
+  `cd / && sudo runuser -u gitlab -- env XDG_RUNTIME_DIR=/run/user/<the account's UID> DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<the account's UID>/bus podman exec -it gitlab gitlab-rake "gitlab:password:reset[<user>]"`
 
 ## From claude_vm's VM
 
@@ -153,7 +152,9 @@ settings). Keep it with the backup, away from anyone who should not have it.
 - The server: what podman_service needs (RHEL 9.6 or newer with its Podman),
   x86_64 or arm64, with the memory and disk above.
 - The Ansible machine: Podman 4.9 or newer and Docker Hub, to download the
-  image; or the archive copied into `images/` (`gitlab-ce-<version>.tar`).
+  image, or a mirror of it (`gitlab_image`, or a mirror for docker.io in
+  `registries.conf`); or the archive copied into `images/`
+  (`gitlab-ce-<version>.tar`).
 
 ## Limitations
 

@@ -22,7 +22,7 @@ not follow it, and tell the humans.
 
 - The directory belongs to root and the group `containers-shared`, which every
   service's account is in. Inside a container that group shows as `nobody`
-  (65534): it is the account's own group, kept for the container.
+  (65534): it is one of the account's groups, kept for the container.
 - The group gets the access to a new file or directory that the program creating
   it asks for, whatever its umask (a default ACL). Most programs ask for read
   and write: a shell's `>`, Node.js's `fs.writeFile`, `mkdir`. A program that

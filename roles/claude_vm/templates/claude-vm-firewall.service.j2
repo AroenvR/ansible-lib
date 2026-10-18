@@ -2,6 +2,8 @@
 # local network, at boot before libvirt starts the VM.
 [Unit]
 Description=Firewall rules for the VM {{ __claude_vm_name }}
+# virtqemud starts the VM where libvirt runs as per-driver daemons; a unit that
+# does not exist makes Before= a no-op.
 Before=libvirtd.service virtqemud.service
 
 [Service]

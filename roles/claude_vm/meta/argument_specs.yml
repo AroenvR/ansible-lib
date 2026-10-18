@@ -10,8 +10,9 @@ argument_specs:
         VM away from the local network and from the host's own services; it still reaches the internet.
       - Then adds the VM to the inventory as the host claude-dev (group claude_vm), for the entry point guest. The
         playbook aslib.infra.claude_vm runs both; one host per run.
-      - The host needs Ubuntu or RHEL on x86_64 or ARM64 (aarch64, such as a Raspberry Pi 5) with KVM, and the
-        internet for its packages and the cloud image. The VM has the host's architecture; an ARM64 VM boots with
+      - The host needs Ubuntu 24.04 or newer on x86_64 or ARM64 (aarch64, such as a Raspberry Pi 4) with KVM, and the
+        internet for its packages and the cloud image. Runs with ansible-core 2.16 or newer, as the host and the VM
+        have Python 3.12, which 2.14 does not support on managed machines. The VM has the host's architecture; an ARM64 VM boots with
         UEFI firmware without Secure Boot.
     options:
       claude_vm_memory:

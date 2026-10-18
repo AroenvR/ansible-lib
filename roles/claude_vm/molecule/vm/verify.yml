@@ -129,6 +129,12 @@
       register: __claude_vm_test_policy
       failed_when: false
 
+    - name: Read the instructions Claude Code finds in the VM
+      ansible.builtin.slurp:
+        src: /etc/claude-code/CLAUDE.md
+      register: __claude_vm_test_instructions
+      failed_when: false
+
     - name: Check claude has sudo and the tools, and reaches the internet only
       ansible.builtin.assert:
         that:
@@ -145,12 +151,18 @@
           - >-
             (__claude_vm_test_policy.content | default('') | b64decode | default('{}', true) | from_json)
             == (lookup('file', playbook_dir ~ '/../../../claude_code/files/managed-settings.json') | from_json)
+          # aslib.infra's instructions for the VM (claude_vm/files/CLAUDE.md).
+          - >-
+            (__claude_vm_test_instructions.content | default('') | b64decode)
+            == lookup('file', playbook_dir ~ '/../../files/CLAUDE.md', rstrip=false)
         fail_msg: >-
           Tools: {{ __claude_vm_test_tools.stdout_lines }} {{ __claude_vm_test_tools.stderr }}; HTTP status of the
           internet, the local network, and the host's two services: {{ __claude_vm_test_reach.results | map(attribute='status') | list }};
-          policy: {{ __claude_vm_test_policy.content | default('') | b64decode }}
+          policy: {{ __claude_vm_test_policy.content | default('') | b64decode }}; instructions:
+          {{ __claude_vm_test_instructions.content | default('') | b64decode }}
         success_msg: >-
-          PASSED claude_vm: claude has sudo, Podman, Python 3.11 and Claude Code with aslib.infra's base policy,
+          PASSED claude_vm: claude has sudo, Podman, Python 3.11 and Claude Code with aslib.infra's base policy
+          and instructions,
           reaches the internet, and reaches neither a machine on the local network nor the host's own services,
           except the one port it was given, by the host's name it was given.
 

@@ -122,6 +122,7 @@
     fail_msg: >-
       GitLab has no password for root. Set one:
       cd / && sudo runuser -u {{ __podman_service_user }} -- env XDG_RUNTIME_DIR=/run/user/{{ __podman_service_uid_number }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __podman_service_uid_number }}/bus
       podman exec -it gitlab gitlab-rake "gitlab:password:reset[root]"
     success_msg: >-
       GitLab {{ gitlab_version }} runs at {{ __gitlab_url }} (SSH on port {{ gitlab_ssh_port }}), with its

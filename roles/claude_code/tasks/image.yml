@@ -2,7 +2,8 @@
 # Entry point "image": builds the project's Containerfile into
 # images/claude-code-<version>.tar, tagged localhost/claude-code:<version>. The
 # version is claude_code_version, or the newest in claude_code_repository: a
-# rebuild makes a new image only when that version (or the Containerfile) changed.
+# rebuild makes a new image only when that version, the base image or the
+# Containerfile changed.
 - name: Check this is a Claude Code project
   ansible.builtin.import_tasks: project.yml
 
@@ -102,21 +103,43 @@
   register: __claude_code_before
   changed_when: false
 
+# A directory of .repo files replaces the base image's repositories for the
+# build's steps: mounted over /etc/yum.repos.d, read-only, never in the image.
+# Podman takes a relative path for a volume's name, hence the absolute one.
+- name: Look up the RPM repositories for the build, {{ claude_code_rpm_repos }}
+  ansible.builtin.find:
+    paths: "{{ claude_code_rpm_repos | expanduser | realpath }}"
+    patterns: "*.repo"
+  register: __claude_code_rpm_repo_files
+  when: claude_code_rpm_repos | length > 0
+
+- name: Check claude_code_rpm_repos holds repository files
+  ansible.builtin.assert:
+    that: __claude_code_rpm_repo_files.matched > 0
+    fail_msg: >-
+      claude_code_rpm_repos, {{ claude_code_rpm_repos }}, is not a directory with .repo files in it
+      ({{ claude_code_rpm_repos | expanduser | realpath }}). Leave it empty to build with the base image's own
+      repositories.
+    quiet: true
+  when: claude_code_rpm_repos | length > 0
+
 - name: Build the image {{ __claude_code_tag }}
   ansible.builtin.command:
-    argv:
-      - podman
-      - build
-      - --file={{ __claude_code_root }}/Containerfile
-      - --build-arg=BASE_IMAGE={{ claude_code_base_image }}
-      - --build-arg=CLAUDE_CODE_REPOSITORY={{ claude_code_repository }}
-      - --build-arg=CLAUDE_CODE_KEY_URL={{ claude_code_key_url }}
-      - --build-arg=CLAUDE_CODE_VERSION={{ __claude_code_version }}
-      - --label=org.opencontainers.image.title={{ __claude_code_name }}
-      - --label=org.opencontainers.image.version={{ __claude_code_version }}
-      - --label=org.opencontainers.image.revision={{ __claude_code_commit.stdout | default('') }}
-      - --tag={{ __claude_code_tag }}
-      - "{{ __claude_code_root }}"
+    argv: >-
+      {{ ['podman', 'build',
+          '--file=' ~ __claude_code_root ~ '/Containerfile',
+          '--build-arg=BASE_IMAGE=' ~ claude_code_base_image,
+          '--build-arg=CLAUDE_CODE_REPOSITORY=' ~ claude_code_repository,
+          '--build-arg=CLAUDE_CODE_KEY_URL=' ~ claude_code_key_url,
+          '--build-arg=CLAUDE_CODE_VERSION=' ~ __claude_code_version,
+          '--build-arg=NVM_URL=' ~ claude_code_nvm_url,
+          '--build-arg=NVM_SHA256=' ~ claude_code_nvm_sha256]
+         + (['--volume=' ~ (claude_code_rpm_repos | expanduser | realpath) ~ ':/etc/yum.repos.d:ro,z'] if claude_code_rpm_repos else [])
+         + ['--label=org.opencontainers.image.title=' ~ __claude_code_name,
+            '--label=org.opencontainers.image.version=' ~ __claude_code_version,
+            '--label=org.opencontainers.image.revision=' ~ (__claude_code_commit.stdout | default('')),
+            '--tag=' ~ __claude_code_tag,
+            __claude_code_root] }}
   changed_when: false  # The next task decides whether the image changed.
 
 - name: Look up the image after building {{ __claude_code_tag }}

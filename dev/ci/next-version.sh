@@ -1,7 +1,7 @@
 #!/bin/sh
-# Prints the version of the next release from main: one patch above the latest
-# v<major>.<minor>.<patch> tag, or galaxy.yml's version when that is higher (raise
-# it there to release a new minor or major version). No tags yet: galaxy.yml's.
+# Prints the version of the next release from main: galaxy.yml's, which every
+# merge into accept raises, or one patch above the latest v<major>.<minor>.<patch>
+# tag should galaxy.yml's lag behind it. No tags yet: galaxy.yml's.
 set -eu
 floor=$(sed -n 's/^version: *//p' galaxy.yml)
 latest=$(git ls-remote --tags --refs origin 'v*' | sed -n 's#.*refs/tags/v##p' \

@@ -3,7 +3,7 @@
 # literal in the tasks: podman_service's handlers do not see this file's variables
 # in ansible-core 2.14.
 
-__gitlab_image: docker.io/gitlab/gitlab-ce:{{ gitlab_version }}-ce.0
+__gitlab_image: "{{ gitlab_image }}:{{ gitlab_version }}-ce.0"
 __gitlab_archive: "{{ gitlab_image_dir }}/gitlab-ce-{{ gitlab_version }}.tar"
 __gitlab_url: http://{{ gitlab_hostname }}:{{ gitlab_http_port }}
 # The image's own health check (its HEALTHCHECK), which Podman runs, once GitLab's

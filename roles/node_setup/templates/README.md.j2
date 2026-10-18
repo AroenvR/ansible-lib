@@ -35,7 +35,7 @@ The steps, in the order a project goes through them:
 ## 1. Set up
 
 `ansible-playbook aslib.infra.node_setup`, run from the project root, wrote this
-directory. Before the first deploy, look at what is yours:
+directory. Before the first deploy, look at what you can change:
 
 - `container.env`: the environment variables the app gets, one `KEY=value` per
   line, without quotes (Podman would pass them on). If it sets `PORT`, set
@@ -45,7 +45,8 @@ directory. Before the first deploy, look at what is yours:
 - `group_vars/all/project.yml`: the port on the server (`podman_service_port`),
   the service's directory, its account, the Node.js version and more.
 - `templates/service.container.j2`: the Quadlet file, for what the settings do
-  not cover. The deploy fills in the names and the version.
+  not cover. The deploy fills in the names and the version. It is aslib.infra's:
+  an update replaces it, keeping your version as `service.container.j2.bak`.
 - `inventory.yml`: the servers. It lists this machine by default.
 
 What the project needs: a `build` script that makes `dist/main.js`
@@ -62,18 +63,18 @@ ansible-playbook prebuild.yml
 
 Installing dependencies runs code from every package (install scripts), so this
 runs npm in a throwaway container of the image build's builder image instead of
-on this machine. The container gets `package.json`, `package-lock.json` and
-`.npmrc`, nothing else, and is removed afterwards. Only once the install has
-succeeded, the current `node_modules` is saved as `node_modules.<UTC time>.bak.tgz`
-and replaced. To go back:
+on this machine. The container gets `package.json`, `package-lock.json`,
+`.npmrc` and the npm settings in your `~/.npmrc`, nothing else, and is removed
+afterwards. Only once the install has succeeded, the current `node_modules` is
+saved as `node_modules.<UTC time>.bak.tgz` and replaced. To go back:
 
 ```sh
 cd .. && rm -rf node_modules && tar -xzf node_modules.<UTC time>.bak.tgz
 ```
 
 The backups stay until you delete them; keep them out of git (`*.tgz` in the
-project's `.gitignore`). The result fits Linux machines with the same Node.js
-version as `.nvmrc`.
+project's `.gitignore`). The result fits Linux machines with glibc 2.34 or newer
+(RHEL 9, Ubuntu 24.04) and the same Node.js major version as `.nvmrc`.
 
 ## 3. Build and deploy
 
@@ -125,7 +126,8 @@ service out of it.
 
 What a server needs: RHEL 9.6 or newer with Podman (`sudo dnf install podman`),
 and SSH access with sudo (or as root) for Ansible. Nothing is downloaded: the
-image comes from this directory.
+image comes from this directory. The one exception is the `acl` package for the
+shared zone, installed from the server's repositories when it is missing.
 
 **A new version:** raise the `version` in package.json and run
 `ansible-playbook build-and-deploy.yml` again. The deploy loads the new image,
@@ -141,8 +143,8 @@ ansible-playbook aslib.infra.overview      # add --ask-become-pass if sudo asks 
 
 Shows every service on the servers in `inventory.yml`, this one and others: its
 account, state, image, ports and the command that shows its log, and the latest
-log lines of each service that does not run. It changes nothing. On a server itself, the same command from any
-directory shows that server, or by hand:
+log lines of each service that does not run. It changes nothing. On a server
+itself, the same command from any directory shows that server, or by hand:
 
 ```sh
 sudo systemctl --user -M {{ __node_setup_service }}@ status {{ __node_setup_service }}
@@ -181,14 +183,15 @@ config files, stays as it is unless you ask; a later deploy hands it to the new 
 
 ## Download sources
 
-`prebuild.yml` and `image.yml` download; `deploy.yml` does not. The project
-holds what is the same everywhere, each machine what differs:
+`prebuild.yml` and `image.yml` download; `deploy.yml` does not, apart from the
+`acl` package on a server that lacks it. The project holds what is the same
+everywhere, each machine what differs:
 
 | What | Set in the project | Set on the machine that builds |
 |---|---|---|
-| Red Hat's Node.js images, from `registry.access.redhat.com` | `node_image_registry` | `/etc/containers/registries.conf` (or `~/.config/containers/registries.conf`) |
+| Red Hat's Node.js images, by default from `registry.access.redhat.com` | `node_image_registry` | `/etc/containers/registries.conf` (or `~/.config/containers/registries.conf`) |
 | Everything npm downloads: packages, Node.js headers for native modules, prebuilt binaries | `.npmrc` (wins) | `~/.npmrc` of the user who runs the playbook |
-| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | | Red Hat's UBI repositories, as set up in the base images |
+| RPMs in `node_image_build_packages` and `node_image_runtime_packages`, if any | `node_image_rpm_repos`: a directory of `.repo` files, e.g. a mirror's (in the project, or anywhere on the build machine) | Without it, Red Hat's UBI repositories, as set up in the base images; a subscribed RHEL host adds its subscription |
 
 Offline checklist for a build machine:
 
@@ -212,6 +215,21 @@ Offline checklist for a build machine:
   npm 11 and newer warn that settings it does not know itself (`disturl`,
   `sqlite3_binary_host_mirror`) "will stop working in the next major version";
   they work until then.
+
+- RPMs, if the project installs any: a directory of `.repo` files for your
+  mirror's UBI repositories, set as `node_image_rpm_repos` (relative to
+  `ansible/`), for example `rpm-repos/ubi9.repo`:
+
+  ```ini
+  [ubi9-baseos-mirror]
+  name = UBI 9 BaseOS, from the mirror
+  baseurl = http://mirror.example.com/repository/ubi9-baseos/
+  gpgcheck = 1
+  gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+  ```
+
+  and the same for AppStream. They replace the images' own repositories for the
+  build only.
 
 ## In a pipeline
 

@@ -40,7 +40,7 @@ define molecule
 	done
 endef
 
-.PHONY: help setup images lint test test-native dist dist-release version build clean $(SELF)
+.PHONY: help setup images lint test test-native dist dist-release version version-raised build clean $(SELF)
 
 help: ## List the targets
 	@grep -E '^[a-z0-9%.-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-26s %s\n", $$1, $$2}'
@@ -104,7 +104,7 @@ test-gitlab-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test GitLab on t
 	$(call molecule,$*,gitlab)
 
 # Not part of `test`: it needs KVM, which the test containers lack.
-test-vm-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test claude_vm's VM on this machine, which needs KVM, e.g. sudo make test-vm-2.14
+test-vm-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test claude_vm's VM on this machine, which needs KVM, with 2.16: sudo make test-vm-2.16
 	$(call molecule,$*,vm)
 
 test-native: dist image-ubuntu2404 image-ubuntu2404-native ## Test with the ansible-core and Podman packages Ubuntu 24.04 itself ships
@@ -122,7 +122,11 @@ dist-release: $(VENV)/lint ## Build a release, as CI does from main: dist/aslib-
 version: ## Print the collection's version (from galaxy.yml)
 	@echo $(VERSION)
 
-build: lint test test-native ## Everything CI runs before a release
+# CI fetches accept first; locally, git fetch origin does.
+version-raised: ## Check galaxy.yml's version is higher than accept's, with its CHANGELOG section (BASE=origin/accept)
+	dev/ci/version-raised.sh $(or $(BASE),origin/accept)
+
+build: lint test test-native ## What CI runs before a release, except GitLab's test (test-gitlab-%)
 
 clean: ## Remove venvs and build output
 	rm -rf $(VENV) dist

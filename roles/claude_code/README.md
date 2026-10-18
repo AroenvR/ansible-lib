@@ -42,8 +42,11 @@ Without `claude_code_version`, the version is the newest in the repository
 (`stable` by default), so every build is also the update; the image only changes
 when that version, the base image or the Containerfile did. A new image also has
 every package update of its day (`dnf upgrade`), so a pinned version also pins
-the packages. Needs Podman 4.9 or newer, Red Hat's
-registry, Anthropic's repository and GitHub (nvm), or mirrors of them.
+the packages, until the base image changes. Needs Podman 4.9 or newer, Red Hat's
+registry and UBI repositories, Anthropic's repository and GitHub (nvm), or
+mirrors of them (`claude_code_base_image` or `registries.conf`,
+`claude_code_rpm_repos`, `claude_code_repository`, `claude_code_nvm_url`: the
+project guide's "Download sources").
 
 ## On the server
 
@@ -52,7 +55,7 @@ registry, Anthropic's repository and GitHub (nvm), or mirrors of them.
 | The service and its account | `claude-code` (`podman_service_user`), no port |
 | Its home, with Claude's login, history, memory and notes | `/opt/claude-code/`, the same path in the container; a removal keeps it |
 | The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/` |
-| The shared zone | `/opt/containers/shared/`, with every other service of aslib.infra |
+| The shared zone | `/opt/containers/shared/`, with every other service of aslib.infra that has it (`podman_service_shared`) |
 | The command | `/usr/local/sbin/claude-code`, for root: runs `claude` in the container, with a terminal or without one (`claude-code -p "..."` in a script) |
 
 A new image, policy or `CLAUDE.md` restarts the service, which ends what runs in
@@ -72,7 +75,7 @@ files, in this order:
 
 | File | Whose | What |
 |---|---|---|
-| [files/managed-settings.json](files/managed-settings.json) | aslib.infra's base, the same for every project and for [claude_vm](../claude_vm/README.md)'s VM | The self-updater and telemetry off, workflows and ultracode on, plans in `plans/`; keeps Claude away from `.env` files and the files that would run code at its next start (hooks, `.mcp.json`, `.git/config`) |
+| [files/managed-settings.json](files/managed-settings.json) | aslib.infra's base, the same for every project and for [claude_vm](../claude_vm/README.md)'s VM | The self-updater and telemetry off, workflows, ultracode and agent teams (experimental) on, plans in `plans/`; keeps Claude away from `.env` files and the files that would run code at its next start (hooks, `.mcp.json`, `.git/config`) |
 | [files/managed-settings.container.json](files/managed-settings.container.json) | aslib.infra's, for the container | Claude's home and the shared zone as its working directories, its memory in `/opt/claude-code/memory`; keeps it away from its login and config (`.claude/`) and the instruction files in its home (`CLAUDE.md`, `AGENTS.md`) |
 | `config/managed-settings.json` | The project's, `{}` to start | What this project adds or changes |
 

@@ -2,14 +2,14 @@
 # Collection metadata: identity, version and what ends up in the release tarball.
 namespace: aslib
 name: infra
-# Releases are made by CI from main: each gets the next patch version after the
-# latest v* tag, or this version when it is higher. Raise it here to release a
-# new minor or major version (see CONTRIBUTING.md).
-version: 0.5.0
+# Releases are made by CI from main, as this version. Every merge into accept
+# raises it, with its CHANGELOG.md section (see CONTRIBUTING.md, Releases); should
+# it lag behind the latest v* tag, the release gets one patch above that tag.
+version: 0.6.0
 readme: README.md
 description: Tested building blocks for RHEL 9.6 and Ubuntu 24.04 servers.
 authors:
-  - AroenvR (https://github.com/AroenvR)
+  - AroenvR
 license_file: LICENSE
 tags:
   - linux
@@ -20,7 +20,8 @@ tags:
 # makes every consumer (including offline ones) ship that collection too.
 dependencies: {}
 
-repository: https://github.com/AroenvR/aslib
+# No repository URL: where aslib.infra is hosted keeps changing, so neither this
+# file nor the documentation names it. A checkout's git remote is its source.
 
 # Development-only files never ship to consumers, nor what .gitignore keeps out
 # of git (ansible-galaxy does not read it), such as private files in tmp/.

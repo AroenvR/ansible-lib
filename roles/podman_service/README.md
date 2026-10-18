@@ -1,9 +1,10 @@
 # aslib.infra.podman_service
 
 Runs an image archive (made with `podman save`) as a rootless Podman service
-that starts at boot, on RHEL 9 servers. [node_deploy](../node_deploy/README.md)
-(Node.js projects) and [claude_code](../claude_code/README.md) use it: their
-settings for the server are this role's.
+that starts at boot, on RHEL 9.6 (or newer) servers. [node_deploy](../node_deploy/README.md)
+(Node.js projects), [claude_code](../claude_code/README.md) and
+[gitlab](../gitlab/README.md) use it, and leave settings such as the account and
+its UID to this role.
 All options: `ansible-doc -t role aslib.infra.podman_service`.
 
 ```yaml
@@ -32,7 +33,7 @@ The deploy works as root (through sudo) and keeps every service apart:
 |---|---|
 | The account the service runs as | `<service>` (`podman_service_user`), lingering enabled, so its services start at boot |
 | Image archives | `/opt/containers/images/<service>/`, loaded into the account's Podman |
-| Quadlet file and environment file | `/etc/containers/systemd/users/<the account's UID>/<service>.container` and `.env` (root-owned; the `.env` readable by the account only) |
+| Quadlet file and environment file | `/etc/containers/systemd/users/<the account's UID>/<service>.container` and `.env` (root-owned; the `.env` readable by root and the account only) |
 | The service's directory | `/opt/<service>/`: the app's working directory, owned by the account, at the same path in the container |
 | The service's config files | `/opt/<service>/config/`, read-only for the app |
 | The shared zone | `/opt/containers/shared/`, the same for every service, at the same path in the container |
@@ -63,9 +64,12 @@ Fix the UIDs of all services on a server, or of none: a service without one take
 the next free UID, which may be the one another service is to get later.
 
 The account's Podman and systemd are driven with `runuser -u <account> -- env
-XDG_RUNTIME_DIR=/run/user/<UID> ...` rather than `systemctl --user -M <account>@`:
-`-M` needs a D-Bus session bus for the account, which minimal systems such as
-Red Hat's UBI images lack.
+XDG_RUNTIME_DIR=/run/user/<UID> DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<UID>/bus
+...` rather than `systemctl --user -M <account>@`: `-M` needs a D-Bus session bus
+for the account, which minimal systems such as Red Hat's UBI images lack. The bus
+address is the account's own because runuser keeps the caller's environment: a
+root login (over SSH, or `su`) brings root's, with which `podman exec` fails
+(`cgroup.procs: Permission denied`).
 
 ## The service's directory
 
@@ -91,11 +95,12 @@ or replace it, as the directory is the group's, so its SHA-256 checksum is in
 `/opt/containers/shared-checksums/`, root's and read-only in every container:
 `sha256sum --check /opt/containers/shared-checksums/README.md.sha256` says
 whether it is still aslib.infra's, and the entry point `verify` checks it too.
-A service joins with its next
-deploy; one that leaves (`podman_service_shared: false`) keeps the group but no
-longer sees the directory. With SELinux, the directory is labelled for
-containers. The default ACL needs `setfacl`: the deploy installs the `acl`
-package when a server lacks it, as a minimal RHEL install does.
+A service joins with its next deploy, which restarts the account's running
+services once, so that they get the group; one that leaves
+(`podman_service_shared: false`) keeps the group but no longer sees the
+directory. With SELinux, the directory is labelled for containers. The default
+ACL needs `setfacl`: the deploy installs the `acl` package when a server lacks
+it, as a minimal RHEL install does.
 
 ## The Quadlet file
 
@@ -105,7 +110,8 @@ what the app writes belongs to the account on the server. Its root filesystem is
 read-only, it has no capabilities and cannot gain privileges, and `/tmp` is in
 memory (`podman_service_tmp_size`) and emptied on every restart. Every service
 has its own account, UID and range of subordinate UIDs, so two services never
-share files or processes, even though both run as 1001 inside their containers.
+share processes, or files outside the shared zone, even though both run as 1001
+inside their containers.
 After a crash, systemd starts the service again every 10 seconds.
 
 **Memory.** No limit by default. With `podman_service_memory` (e.g. `4g`,
@@ -113,7 +119,7 @@ After a crash, systemd starts the service again every 10 seconds.
 more, rather than one elsewhere on the server. Roles that deploy a service
 choose its default: unlimited for [node_deploy](../node_deploy/README.md)
 (`node_deploy_memory`), 4g for [claude_code](../claude_code/README.md)
-(`claude_code_memory`).
+(`claude_code_memory`) and [gitlab](../gitlab/README.md) (`gitlab_memory`).
 
 **Health checks.** With `podman_service_health_cmd`, Podman runs that command in
 the container (with `/bin/sh`) every 2 seconds from the start until it passes,
@@ -123,16 +129,19 @@ with a working app or fails (after systemd's start timeout, 90 seconds).
 After 3 failures in a row Podman stops the container (`HealthOnFailure=kill`)
 and systemd starts it again: a hung app gets restarted, not just a crashed one.
 The command can only use what the image has: [node_deploy](../node_deploy/README.md)
-asks with the image's own Node.js.
+asks with the image's own Node.js. Quote inside it with single quotes, as in
+`node -e '...'`: Quadlet hands the command on in double quotes, which keep
+single quotes intact, while double quotes inside it break before Podman 5.8.2.
+systemd reads the line first, so write a `%` as `%%`.
 
 The app's output goes to the journal (`--log-driver=journald`), where root reads
 it. Without that, Podman writes it to a file in the account's storage whenever
 the account cannot read the journal, which is RHEL's default; `podman logs` as
 the account cannot read the journal there either.
 
-For anything the settings do not cover, such as a network,
-pass a template of your own as `podman_service_quadlet_template`; start from a
-copy of this one, which lists the variables it can use.
+For anything the settings do not cover, such as a network, pass a template of
+your own as `podman_service_quadlet_template`; start from a copy of this one,
+which lists the variables it can use.
 
 ## Settings
 
@@ -145,7 +154,7 @@ copy of this one, which lists the variables it can use.
 | `podman_service_user` | `<service>` | The account |
 | `podman_service_uid` | (any free UID) | Fix the account's UID, e.g. the same on every server |
 | `podman_service_tmp_size` | `512m` | Size limit of the app's `/tmp`, which is in memory |
-| `podman_service_memory` | `""` (no limit) | The most memory the container may use, e.g. `4g`; node_deploy and claude_code set it from their own setting |
+| `podman_service_memory` | `""` (no limit) | The most memory the container may use, e.g. `4g`; node_deploy, claude_code and gitlab set it from their own setting |
 | `podman_service_shared` | `true` | Give the service the shared zone, `/opt/containers/shared/` |
 | `podman_service_health_cmd` | `""` (none) | The health check, run in the container: exit code 0 means healthy |
 | `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |
@@ -189,7 +198,8 @@ what the service wrote there) stay.
 
 ## What a server needs
 
-- RHEL 9.6 or newer with its Podman (5.4; the role needs 5.0 or newer, for Quadlet's health checks): `sudo dnf install podman`.
+- RHEL 9.6 or newer with its Podman (5.4; the role needs 5.0 or newer, for
+  Quadlet's health checks): `sudo dnf install podman`.
 - SSH access for Ansible as root or as an account that may use sudo
   (not needed when deploying to `localhost`).
 
@@ -211,9 +221,10 @@ server's repositories (RHEL's BaseOS) when it is missing.
 
 What the deploy promised, checked any time without changing anything: the
 Quadlet file is installed, the account may run the service at boot, the service
-is active, its container passed its latest health check (if it has one), and it
-answers HTTP on its port (if it has one). The deploy and the restart end with the
-same checks.
+is active, its container passed its latest health check (if it has one), it
+answers HTTP on its port (if it has one), and the shared zone's README.md
+matches its checksum ([above](#the-shared-zone)). The deploy and the restart end
+with the same checks.
 
 ```yaml
     - name: Check the service

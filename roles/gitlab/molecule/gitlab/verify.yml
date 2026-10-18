@@ -83,7 +83,7 @@
   vars_files: [vars/test.yml]
   vars:
     __gitlab_test_api: http://127.0.0.1:8929/api/v4
-    __gitlab_test_as_account: [runuser, --user=gitlab, --, env, XDG_RUNTIME_DIR=/run/user/3200]
+    __gitlab_test_as_account: [runuser, --user=gitlab, --, env, XDG_RUNTIME_DIR=/run/user/3200, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3200/bus"]
     __gitlab_test_git_ssh: >-
       ssh -i /root/.ssh/gitlab-test -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/.ssh/gitlab-known-hosts
     # As GitLab's docs create a token programmatically; it must have 20 characters.

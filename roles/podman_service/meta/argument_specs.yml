@@ -103,8 +103,8 @@ argument_specs:
         description:
           - The most memory the container may use, e.g. C(4g); /tmp counts toward it. Past it, the kernel stops a
             process in the container rather than elsewhere on the server.
-          - Empty, the default, sets no limit. node_deploy and claude_code set this from node_deploy_memory and
-            claude_code_memory.
+          - Empty, the default, sets no limit. node_deploy, claude_code and gitlab set this from node_deploy_memory,
+            claude_code_memory and gitlab_memory.
       podman_service_shared:
         type: bool
         default: true
@@ -118,7 +118,9 @@ argument_specs:
             seconds from the start until it passes, then every 30 seconds, with tools the image has, e.g.
             C(curl --fail --silent http://127.0.0.1:3000/). With one, systemd counts the service as started once it
             passed (within systemd's start timeout, 90 seconds by default), and after 3 failures in a row Podman stops
-            the container, which systemd then starts again. Write a C(%) as C(%%) (systemd reads the line).
+            the container, which systemd then starts again. Quote inside it with single quotes, as Quadlet hands
+            it on in double quotes (double quotes inside it break before Podman 5.8.2), and write a C(%) as C(%%)
+            (systemd reads the line).
           - Empty means no health check, and the service counts as started once it runs.
   restart:
     short_description: Restart a service that aslib.infra.podman_service deployed, and wait until it is ready
@@ -150,8 +152,9 @@ argument_specs:
     short_description: Check that a service aslib.infra.podman_service deployed keeps what the deploy promised
     description:
       - Checks, changing nothing, that the service's Quadlet file is installed, its account may run it at boot
-        (lingering), it is active, its container passed its latest health check (if it has one), and it answers HTTP
-        on its port (if it has one). Fails, saying which, if not. The deploy and the restart run the same checks.
+        (lingering), it is active, its container passed its latest health check (if it has one), it answers HTTP
+        on its port (if it has one), and, with the shared zone, the zone's README.md matches its checksum. Fails,
+        saying which, if not. The deploy and the restart run the same checks.
       - Works as root on the server, like the deploy.
     options:
       podman_service_name:

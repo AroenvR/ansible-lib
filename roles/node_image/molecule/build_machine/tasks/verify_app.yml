@@ -62,6 +62,33 @@
         argv: [podman, rm, --force, node-image-verify]
       changed_when: false
 
+# The RPMs came from the mirror's repository files, which the build mounted over
+# the images' own and did not keep: the image still has UBI's ubi.repo.
+- name: Look for the RPMs and the image's own repositories in {{ node_image_test_app.name }}
+  ansible.builtin.command:
+    argv:
+      - podman
+      - run
+      - --rm
+      - --entrypoint=sh
+      - "{{ __node_image_test_package.name }}:{{ __node_image_test_package.version }}"
+      - -c
+      - for p in {{ node_image_test_app.rpm_packages | join(' ') }}; do rpm -q "$p"; done; ls /etc/yum.repos.d
+  register: __node_image_test_rpms
+  changed_when: false
+  when: node_image_test_app.rpm_packages is defined
+
+- name: Check the RPMs are in the image, and the mirror's repository files are not, in {{ node_image_test_app.name }}
+  ansible.builtin.assert:
+    that:
+      - __node_image_test_rpms.rc == 0
+      - "'ubi.repo' in __node_image_test_rpms.stdout_lines"
+      - "'ubi9.repo' not in __node_image_test_rpms.stdout_lines"
+    success_msg: >-
+      PASSED {{ node_image_test_app.name }}: {{ node_image_test_app.rpm_packages | join(', ') }} came from the build
+      machine's repository files (node_image_rpm_repos), which the image does not keep.
+  when: node_image_test_app.rpm_packages is defined
+
 - name: List the images on the build machine of {{ node_image_test_app.name }}
   ansible.builtin.command:
     argv:

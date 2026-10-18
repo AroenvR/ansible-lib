@@ -33,6 +33,17 @@ lint:
   script:
     - make lint PYTHON_LINT=python3
 
+# A branch on its way to accept raises the version: galaxy.yml's must be higher
+# than accept's, with its CHANGELOG.md section. Not for main and accept themselves.
+version-raised:
+  stage: check
+  image: $PYTHON_IMAGE
+  rules:
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_COMMIT_BRANCH != "accept"
+  script:
+    - git fetch --quiet --depth=1 origin +refs/heads/accept:refs/remotes/origin/accept
+    - make version-raised
+
 runner-check:
   stage: check
   image: $PODMAN_IMAGE

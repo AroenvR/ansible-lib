@@ -3,3 +3,14 @@
 # on a subscribed RHEL host Podman gives the container the full RHEL repositories.
 ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-init:9.6
 FROM ${BASE_IMAGE}
+# OpenSSH's server, enabled, as on a default install (ubi-init lacks it): the
+# tests reach this server over SSH as root, as Ansible reaches a real one.
+# /etc/shadow readable by its owner, root (0400; RHEL has 0000): on an Ubuntu
+# test machine (CI's runners, claude_vm's VM) AppArmor's unix-chkpwd profile
+# takes over this image's unix_chkpwd in an unconfined container (privileged or
+# rootless) and denies it the capability to read a 0000 file, so PAM refuses
+# every login, SSH's and sudo's. A real RHEL server never runs that profile.
+RUN dnf install --assumeyes --setopt=tsflags=nodocs openssh-server \
+ && dnf clean all \
+ && systemctl enable sshd \
+ && chmod 0400 /etc/shadow

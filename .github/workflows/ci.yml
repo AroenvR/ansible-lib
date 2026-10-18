@@ -27,6 +27,21 @@ jobs:
           python-version: "3.12"
       - run: make lint
 
+  # A branch on its way to accept raises the version: galaxy.yml's must be higher
+  # than accept's, with its CHANGELOG.md section. Not for main and accept
+  # themselves, nor for pull requests into main.
+  version:
+    name: version raised
+    if: >-
+      (github.event_name == 'push' && github.ref_name != github.event.repository.default_branch
+       && github.ref_name != 'accept')
+      || (github.event_name == 'pull_request' && github.base_ref != github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - run: git fetch --quiet --depth=1 origin +refs/heads/accept:refs/remotes/origin/accept
+      - run: make version-raised
+
   servers:
     name: server roles · ansible-core ${{ matrix.ansible }}
     runs-on: ubuntu-24.04
@@ -105,11 +120,31 @@ jobs:
           sudo make image-rhel9 test-gitlab-${{ matrix.ansible }}
           PYTHON_2.14="$(command -v python3.11)" PYTHON_2.16="$(command -v python3.12)"
 
+  # claude_vm's VM: GitHub's Linux runners have KVM (/dev/kvm, nested in the
+  # runner's own VM), so the test creates claude-dev on an x86_64 Ubuntu 24.04
+  # host, as on a laptop. ARM64 hosts are checked by hand (a Raspberry Pi 4).
+  # ansible-core 2.16 only: claude_vm needs it (its host and VM have Python 3.12).
+  vm:
+    name: claude_vm · ansible-core 2.16
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # The collections are installed with 2.14's ansible-galaxy, on Python 3.11.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: |
+            3.11
+            3.12
+      - run: ls -l /dev/kvm
+      - run: >-
+          sudo make test-vm-2.16
+          PYTHON_2.14="$(command -v python3.11)" PYTHON_2.16="$(command -v python3.12)"
+
   # Every other branch: a build kept for 7 days, only the newest one per branch.
   branch-build:
     name: branch build (kept 7 days)
     if: github.event_name == 'push' && github.ref_name != github.event.repository.default_branch
-    needs: [lint, servers, build-machine, native, gitlab]
+    needs: [lint, servers, build-machine, native, gitlab, vm]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -137,7 +172,7 @@ jobs:
   release:
     name: release (next version)
     if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
-    needs: [lint, servers, build-machine, native, gitlab]
+    needs: [lint, servers, build-machine, native, gitlab, vm]
     runs-on: ubuntu-24.04
     concurrency: release  # two pushes in a row must not claim the same version
     permissions:

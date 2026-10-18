@@ -3,6 +3,7 @@
 # service's own settings (its account, UID and directory) are
 # aslib.infra.podman_service's.
 gitlab_version: 19.4.1
+gitlab_image: docker.io/gitlab/gitlab-ce
 gitlab_hostname: gitlab.home.arpa
 gitlab_http_port: 8929
 gitlab_ssh_port: 2224

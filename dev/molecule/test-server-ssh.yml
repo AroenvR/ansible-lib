@@ -1,0 +1,52 @@
+---
+# The tests reach their test servers over SSH as root, as Ansible reaches a real
+# server (connection settings: .config/molecule/config.yml). Like a cloud image's
+# key through cloud-init, root's key goes in out of band: with podman exec from
+# the test machine. Every server scenario's prepare.yml imports this play first.
+# Only Molecule's inventory names a host's container (aslib_test_container): the
+# native test, which runs on the server itself, skips the key.
+- name: Let the test machine in over SSH as root
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Create the test machine's key for the test servers, where missing
+      ansible.builtin.command:
+        argv: [ssh-keygen, -q, -t, ed25519, -N, "", -C, aslib-test, -f, "{{ ansible_ssh_private_key_file }}"]
+        creates: "{{ ansible_ssh_private_key_file }}"
+      delegate_to: localhost
+      run_once: true
+      when: aslib_test_container is defined
+
+    - name: Make that key root's authorized key on the test server
+      ansible.builtin.command:
+        argv:
+          - podman
+          - exec
+          - --interactive
+          - "{{ aslib_test_container }}"
+          - sh
+          - -c
+          - install -d -m 700 /root/.ssh && cat > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+        stdin: "{{ lookup('ansible.builtin.file', ansible_ssh_private_key_file ~ '.pub') }}"
+      delegate_to: localhost
+      changed_when: true
+      when: aslib_test_container is defined
+
+    - name: Wait until the test server lets Ansible in
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Look up the SSH session Ansible's commands run in
+      ansible.builtin.command: printenv SSH_CONNECTION
+      register: __test_server_ssh
+      changed_when: false
+      failed_when: false
+      when: aslib_test_container is defined
+
+    - name: Check Ansible reaches the test server over SSH as root
+      ansible.builtin.assert:
+        that:
+          - __test_server_ssh.stdout | length > 0
+        success_msg: "PASSED test server: Ansible reaches {{ inventory_hostname }} over SSH as root ({{ __test_server_ssh.stdout }})."
+        fail_msg: Ansible does not reach {{ inventory_hostname }} over SSH; check the connection settings in .config/molecule/config.yml.
+      when: aslib_test_container is defined

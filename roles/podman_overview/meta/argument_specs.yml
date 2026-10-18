@@ -4,7 +4,7 @@ argument_specs:
     short_description: Show the rootless Podman services on a server, for root
     description:
       - Lists every service that has a Quadlet file in /etc/containers/systemd/users/<UID>/ (the convention of
-        aslib.infra.podman_service), with its account, state, start time, restarts, image and published ports and
+        aslib.infra.podman_service), with its account, state and since when, restarts, image and published ports and
         the command that shows its log, and shows the latest log lines of each service that does not run. Changes
         nothing.
       - Part of the playbook aslib.infra.overview, which shows everything aslib.infra runs on the servers.

@@ -5,7 +5,7 @@ with `visudo` before it goes live; `/etc/sudoers` itself is never edited.
 
 ## What a server needs
 
-- Nothing beyond the [baseline](../../README.md#what-a-managed-server-needs).
+- Nothing beyond the [baseline](../../docs/servers.md#what-a-managed-server-needs).
 - Package repository access **only** when `sudo` is not installed yet.
 
 ## Interface

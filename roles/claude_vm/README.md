@@ -31,19 +31,21 @@ breaks it: a broken VM is rebuilt in minutes.
 |---|---|
 | **Root** | Claude has sudo in the VM and nowhere else. Nothing of the host is shared with it: no folders, no keys |
 | **Network** | It reaches the internet, but not the local network (the private address ranges) nor the host's own services, except the ports you name (`claude_vm_host_ports`, such as GitLab's, below). The rules live on the host, out of the VM's reach |
-| **Secrets** | Only Claude's own login. Keep it that way: no keys to servers, no git credentials. Fetch Claude's work from the VM (below), review it, and push it yourself |
+| **Secrets** | Claude's own login, and a git credential of Claude's own that pushes its branches to your repository (below). Protect the branches you merge from (such as `main` and `accept`), so that only you push or merge there. No keys to servers, and none of yours |
 | **Reset** | `ansible-playbook aslib.infra.claude_vm_remove`, then `aslib.infra.claude_vm` again: a fresh VM |
 
 ## The host
 
-Ubuntu 24.04 or RHEL 9.6 (or newer) on x86_64 or ARM64 (aarch64, such as a
-Raspberry Pi 5), with virtualization enabled in the firmware (`/dev/kvm`),
-headless is fine. The playbook installs QEMU/KVM, libvirt, virt-install and
-nftables where missing (on ARM64 also the UEFI firmware the VM boots with,
-without Secure Boot), and
-downloads Ubuntu 24.04's cloud image for the host's architecture once, checked
-against its published checksums. The VM has the host's architecture: on a
-Raspberry Pi, Claude works on ARM64, and the test images it builds are ARM64's.
+Ubuntu 24.04 (or newer) on x86_64 or ARM64 (aarch64, such as a Raspberry Pi
+4), with virtualization enabled in the firmware (`/dev/kvm`), headless is fine.
+The machine that runs the playbook needs ansible-core 2.16 or newer (Ubuntu
+24.04's): the host and the VM have Python 3.12, which 2.14 does not support on
+managed machines. The playbook installs QEMU/KVM, libvirt, virt-install,
+xorriso (for the cloud-init CD) and nftables where missing (on ARM64 also the
+UEFI firmware the VM boots with, without Secure Boot), and downloads Ubuntu
+24.04's cloud image for the host's architecture once, checked against its
+published checksums. The VM has the host's architecture: on a Raspberry Pi,
+Claude works on ARM64, and the test images it builds are ARM64's.
 Mind the memory: the VM takes 4 GiB (`claude_vm_memory`) of the host's, all of
 it from the start. The playbook checks it fits with 1 GiB left for the host and
 says what does; on a Raspberry Pi with 4 GB, `-e claude_vm_memory=2560`.
@@ -77,7 +79,14 @@ base, the one Claude Code's container starts from too
 change that file, and both get it with their next run. Claude can change it with
 sudo, so here it sets defaults; the VM is the boundary.
 
-aslib.infra's tests run there as in CI:
+Its instructions, `/etc/claude-code/CLAUDE.md`, are aslib.infra's too
+([files/CLAUDE.md](files/CLAUDE.md)), rewritten with every run: work so that an
+interrupted session loses nothing (commits, a handoff file per task, memory),
+and `/tmp` empties at every boot. Claude Code also reads `~/.claude/CLAUDE.md`
+and each project's `CLAUDE.md`, which are yours and Claude's.
+
+aslib.infra's tests run there as in CI (`<repository>` is the URL of the
+aslib.infra repository you use):
 
 ```sh
 git clone <repository> ~/src/aslib && cd $_
@@ -85,7 +94,10 @@ make setup
 sudo make images test-servers-2.14
 ```
 
-**Getting Claude's work out**, from the host or through it:
+**Getting Claude's work out:** Claude pushes its branches to your repository
+with a credential of its own (an account or a key just for Claude), and you
+review them in pull or merge requests. Or, without any credential in the VM,
+fetch them from the host:
 
 ```sh
 git remote add claude-dev claude-dev:src/aslib
@@ -101,8 +113,8 @@ claude_vm_host_ports: [8929, 2224]       # GitLab's HTTP and SSH
 claude_vm_host_names: [gitlab.home.arpa]
 ```
 
-Claude's token for that account is a git credential in the VM after all: give
-it to Claude's own account only, never yours.
+Whichever server Claude pushes to, its credential belongs to an account of
+Claude's own, never yours, and the branches you merge from are protected.
 
 ## When the VM does not come up
 
@@ -127,11 +139,10 @@ VM as it was made.
 
 - A proof of concept: one VM per host, named `claude-dev`. Changing the network
   or the image needs a new VM.
-- Runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04, ARM64, KVM) with
-  `-e claude_vm_memory=2560`. Its test runs on an Ubuntu 24.04 x86_64 host
-  without KVM (QEMU's emulation, a stand-in for the cloud image, without the
-  deadsnakes and Claude Code repositories); not yet on an x86_64 host with KVM,
-  a RHEL host or in CI.
+- Ubuntu hosts only. Its test (`sudo make test-vm-2.16`, which needs KVM) runs
+  in CI on GitHub's x86_64 Ubuntu 24.04 runners, which have KVM. On ARM64 it
+  runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04) with
+  `-e claude_vm_memory=2560`, checked by hand.
 - An ARM64 VM boots without Secure Boot. Enforced, as libvirt would have it,
   Ubuntu's boot loader crashes on a Raspberry Pi 4; in a VM where Claude has
   root, it would protect nothing.

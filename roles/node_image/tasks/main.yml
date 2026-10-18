@@ -76,6 +76,25 @@
   register: __node_image_before
   changed_when: false
 
+# A directory of .repo files replaces the base images' repositories for the
+# build's steps: mounted over /etc/yum.repos.d, read-only, never in an image.
+# Podman takes a relative path for a volume's name, hence the absolute one.
+- name: Look up the RPM repositories for the build, {{ node_image_rpm_repos }}
+  ansible.builtin.find:
+    paths: "{{ node_image_rpm_repos | expanduser | realpath }}"
+    patterns: "*.repo"
+  register: __node_image_rpm_repo_files
+  when: node_image_rpm_repos | length > 0
+
+- name: Check node_image_rpm_repos holds repository files
+  ansible.builtin.assert:
+    that: __node_image_rpm_repo_files.matched > 0
+    fail_msg: >-
+      node_image_rpm_repos, {{ node_image_rpm_repos }}, is not a directory with .repo files in it
+      ({{ node_image_rpm_repos | expanduser | realpath }}). Leave it empty to build with the images' own repositories.
+    quiet: true
+  when: node_image_rpm_repos | length > 0
+
 # The build stage, with compilers and devDependencies, is tagged <name>:build and
 # kept as the cache: a rebuild without changes then gives the same image. The
 # build machine's npm settings are mounted for the install only (podman build --secret).
@@ -86,6 +105,7 @@
           '--file=' ~ node_image_output_dir ~ '/Containerfile',
           '--ignorefile=' ~ node_image_output_dir ~ '/containerignore']
          + (['--secret=id=npmrc,src=' ~ __node_image_machine_npmrc] if __node_image_machine_npmrc else [])
+         + (['--volume=' ~ (node_image_rpm_repos | expanduser | realpath) ~ ':/etc/yum.repos.d:ro,z'] if node_image_rpm_repos else [])
          + __node_image_stage.options + [node_image_source] }}
   loop:
     - { options: [--target=build, "--tag={{ __node_image_cache_tag }}"] }
