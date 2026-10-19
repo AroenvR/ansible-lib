@@ -1,0 +1,8 @@
+---
+- name: Compute Claude Code's settings, as each target does
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Compute the settings
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings

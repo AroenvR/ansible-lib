@@ -14,7 +14,7 @@ what runs: no tests, no dev tooling.
   [quick start](#quick-start).
 - **Root on a server**: every service runs rootless as an account of its own;
   [what runs on a server](docs/servers.md) shows how to see them all, and
-  [Claude Code](docs/claude-code.md) is an agent root reaches from a terminal.
+  [Claude Code](docs/claude-code-podman.md) is an agent root reaches from a terminal.
 - **Ansible users who write their own playbooks**:
   [use the roles in your own playbooks](docs/own-playbooks.md), with the
   [reference](docs/reference.md) of every role, playbook and plugin.
@@ -62,9 +62,9 @@ table and versions: [Install aslib.infra](docs/install.md).
 
 - [Deploy a Node.js backend](docs/nodejs-backend.md): from project to running
   service.
-- [Run Claude Code on a server](docs/claude-code.md): an always-on agent for
+- [Run Claude Code on a server](docs/claude-code-podman.md): an always-on agent for
   root.
-- [A VM for Claude Code, for development](docs/claude-vm.md): where Claude may
+- [A VM for Claude Code, for development](docs/claude-code-vm.md): where Claude may
   have root, away from the host and the local network (a proof of concept).
 - [Run a GitLab of your own](docs/gitlab.md): GitLab CE as a rootless Podman
   service (a proof of concept).

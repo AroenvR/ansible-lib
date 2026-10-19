@@ -11,12 +11,14 @@ README or `docs/`, and this file links to it instead of repeating it.
 ## What this is
 
 `aslib.infra` is an Ansible collection: small, tested roles for RHEL 9.6 and
-Ubuntu 24.04 (and newer) servers, and ready-made playbooks. Roles are named by
-area: `podman_` roles work for any image, and the `node_` roles (node_setup,
-node_image, node_deploy) take a Node.js backend from project to running
-service. claude_code runs an always-on Claude Code agent for root, claude_vm
-creates a VM where Claude Code may have root, for development, and gitlab runs
-GitLab CE as a rootless Podman service. node_deploy, claude_code and gitlab
+Ubuntu 24.04 (and newer) servers, and ready-made playbooks. Roles come in
+families named by domain: `podman_` roles work for any image, the `node_`
+roles (node_setup, node_image, node_deploy) take a Node.js backend from project
+to running service, and the `claude_code_` roles, indexed by `claude_code`,
+run Claude Code: claude_code_podman as an always-on agent for root,
+claude_code_vm in a VM where it may have root, for development, both starting
+sessions as claude_code_settings says. gitlab runs GitLab CE as a rootless
+Podman service. node_deploy, claude_code_podman and gitlab
 are thin layers over podman_service. Consumers install a release tarball that
 holds only runtime files; tests and tooling never ship (`build_ignore` in
 `galaxy.yml`). What it offers and how it is used: [README.md](README.md), and
@@ -49,7 +51,9 @@ the guides and the reference in [docs/](docs/README.md).
   `dev/requirements-*.txt`. Anything downloaded must be genuinely needed and
   enterprise-proven; prefer the OS repositories.
 - **KISS over edge cases.** Clarity and readability come first; do not add
-  complexity for a 1% case. SOLID applies at role level ([Role
+  complexity for a 1% case. SOLID applies at role level, with some
+  domain-driven design: families of roles by domain, one job per role, roles
+  meeting through their interfaces, not through each other's folders ([Role
   design](CONTRIBUTING.md#role-design)).
 - **Checks in tests and at runtime (test first).** Write the check first, see
   it fail, then build ([Writing a test](CONTRIBUTING.md#writing-a-test)). What
@@ -132,8 +136,8 @@ and galaxy.yml names none: a checkout's git remote is its source.
   machine you can't run things on yourself, each step you ask someone to run
   there is a playbook in the collection, not loose shell commands: an
   `overview` entry point that changes nothing, or a trial that changes only
-  what its options say (`aslib.infra.claude_vm_overview`,
-  `aslib.infra.claude_vm_boot_trial`). They stay, linted and documented like
+  what its options say (`aslib.infra.claude_code_vm_overview`,
+  `aslib.infra.claude_code_vm_boot_trial`). They stay, linted and documented like
   everything else, and add up to a debugging toolkit; the field notes below are
   candidates.
 - **Verify from a clean state** before opening a pull request: fresh venvs,
@@ -176,7 +180,7 @@ the entry says it is likely or not verified yet.
   scenarios run modules with the venv's Python (`ansible_python_interpreter`).
   2.14 supports managed machines' Python only up to 3.11 (ansible-core's support
   matrix; 2.16 up to 3.12), so a role that manages Ubuntu 24.04 machines with
-  downloads needs 2.16: claude_vm (its host and its VM) checks for it first, and
+  downloads needs 2.16: claude_code_vm (its host and its VM) checks for it first, and
   CI runs its VM test with 2.16 only (seen 2026-10-17: get_url of the cloud
   image's checksums failed with 2.14).
 - Quadlet: systemd specifiers (`%h`) work in `Volume=` and `EnvironmentFile=`.
@@ -271,11 +275,11 @@ the entry says it is likely or not verified yet.
   systemd mode mounts a tmpfs on `/var/log/journal` (persistent, readable), so
   node_deploy's test server sets `Storage=volatile`, as on RHEL.
 - `selectattr('copy', 'defined')` is true for every dict (`dict.copy` is a
-  method), so a marker key must not share a name with a dict method: claude_code's
+  method), so a marker key must not share a name with a dict method: claude_code_podman's
   file lists use `as_is`.
 - In 2.12 and 2.14 the handlers of a role brought in with `import_role` do not
   see the importing role's role variables (2.21 does); they fail with an
-  undefined variable. Pass such values as facts (claude_code's `project.yml`).
+  undefined variable. Pass such values as facts (claude_code_podman's `project.yml`).
 - A rootless container drops the account's supplementary groups unless
   `--group-add=keep-groups`: without it the shared zone gives "Permission
   denied". A new group reaches an account's services only after its systemd
@@ -339,7 +343,7 @@ the entry says it is likely or not verified yet.
   `activating` until a check passes; wait for `is-active`, not for HTTP.
 - In ansible-core 2.14 (not 2.16) the `vars:` of one `import_role` of a role
   reach a later import of the same role in the same play, for the variables the
-  later one does not set: claude_code's podman_service got node_deploy's
+  later one does not set: claude_code_podman's podman_service got node_deploy's
   `podman_service_health_cmd`, whose `node_deploy_health_check` was undefined
   there. Each import sets every variable it relies on, and such expressions
   guard with `default()`.
@@ -384,12 +388,12 @@ the entry says it is likely or not verified yet.
 - get_url without a checksum asks again on every run (If-Modified-Since) and
   replaces the file when the answer differs: keyserver.ubuntu.com ignores that
   header, and in CI a second run got a different answer for deadsnakes' key,
-  so claude_vm's idempotence step failed. claude_vm downloads its repository
+  so claude_code_vm's idempotence step failed. claude_code_vm downloads its repository
   keys only where missing and proves them by fingerprint.
 - A hard reset of a VM (`virsh reset`) loses what ext4 has not written out
-  yet, up to 30 seconds' worth: a new file comes back empty. claude_vm's test
+  yet, up to 30 seconds' worth: a new file comes back empty. claude_code_vm's test
   resets the VM first thing; on GitHub's fast runners that came 19 seconds after
-  the policy was written, which then was empty (CI, 2026-10-17). claude_vm ends
+  the policy was written, which then was empty (CI, 2026-10-17). claude_code_vm ends
   its guest setup with `sync`.
 - microdnf (librhsm) in UBI's minimal images writes `redhat.repo` into
   `/etc/yum.repos.d` at every run, unless `/var/lib/rhsm` exists (then it leaves
@@ -397,7 +401,7 @@ the entry says it is likely or not verified yet.
   there, it failed ("Read-only file system"); the runtime stage creates
   `/var/lib/rhsm` for that step only. dnf with its subscription-manager plugin
   (the full images) does not mind.
-- claude_vm's VM gets Python 3.11 from a deadsnakes source of claude_vm's own
+- claude_code_vm's VM gets Python 3.11 from a deadsnakes source of claude_code_vm's own
   (`/etc/apt/sources.list.d/deadsnakes.list`, signed by
   `/etc/apt/keyrings/deadsnakes.asc`). Adding the PPA a second time with
   `add-apt-repository ppa:deadsnakes/ppa` broke `apt-get update` there
@@ -406,7 +410,7 @@ the entry says it is likely or not verified yet.
   created 0600 (Python's tempfile) gets `group::---`, whatever the default ACL
   gives the group. A shell's `>` (0666) gets `group::rw-` even with umask 077.
 - In `podman build` (4.9.3), a changed `--build-arg` rebuilds every `RUN` after
-  that `ARG`'s declaration, not just those that use it: claude_code's ARGs come
+  that `ARG`'s declaration, not just those that use it: claude_code_podman's ARGs come
   before the first RUN, so a new Claude Code version reruns `dnf upgrade`.
 - Quadlet in Podman 5.4 has no `Memory=` key: the memory limit is
   `PodmanArgs=--memory=`. Rootless, it needs the memory controller
@@ -440,15 +444,15 @@ the entry says it is likely or not verified yet.
   email (Administrator, root, gitlab_admin_...@example.com).
 - QEMU reserves a VM's whole memory when it starts: a VM larger than the host
   can give fails with "cannot set up guest memory" (seen on a 4 GB Raspberry Pi
-  with claude_vm's 4096 MiB), and virt-install leaves it defined, so a rerun
-  would only start it again: claude_vm checks the size first and undefines a
+  with claude_code_vm's 4096 MiB), and virt-install leaves it defined, so a rerun
+  would only start it again: claude_code_vm checks the size first and undefines a
   VM that did not start. An ARM64 VM (UEFI) keeps its variables in an NVRAM
   file; `virsh undefine` refuses it without `--nvram`.
 - virt-install's `--cloud-init` runs the first boot with `on_reboot=destroy` and
   a temporary seed CD, which the VM's saved definition leaves empty; with
   `--noautoconsole` nothing starts the VM again. A restart during that boot
   (most likely UEFI's, on an ARM64 Raspberry Pi) left claude-dev shut off,
-  never on its network, and without its account. claude_vm builds the NoCloud
+  never on its network, and without its account. claude_code_vm builds the NoCloud
   seed itself (xorriso, label `cidata`) and keeps it attached; its test resets
   the VM.
 - libvirt on Ubuntu ARM64 gives a new VM `AAVMF_CODE.ms.fd`
@@ -460,7 +464,7 @@ the entry says it is likely or not verified yet.
   0x…DC296B98"). Boot trials showed it is the enforcement: the same Secure Boot
   build without keys (`AAVMF_CODE.secboot.fd`, `AAVMF_VARS.fd`) and the plain
   build boot, TPM or not. Likely, unproven: the Pi 4's Cortex-A72 lacks the ARMv8
-  crypto instructions that signature checks would use. claude_vm boots an ARM64
+  crypto instructions that signature checks would use. claude_code_vm boots an ARM64
   VM without Secure Boot (`--boot uefi,firmware.feature0.name=secure-boot,
   firmware.feature0.enabled=no`), and keeps virt-install's `ds=nocloud` SMBIOS
   serial, which tells cloud-init's early ds-identify where its data is.
@@ -475,6 +479,26 @@ the entry says it is likely or not verified yet.
 - Rootless Quadlet units wait for the system's `network-online.target`
   (`podman-user-wait-network-online.service`, up to 90 seconds each start);
   where the target never comes up, each start takes 90 s.
+- Claude Code (2.1.292, verified in a terminal) decides whether it trusts a
+  folder before it applies any settings file's `env`: `CLAUDE_CODE_SANDBOXED=1`
+  in the claude process's own environment skips the trust dialog, the same in a
+  policy's `env` does not. Trusting a folder in `~/.claude.json`
+  (`projects[<path>].hasTrustDialogAccepted`) does not reach a git repository
+  below it, whose root asks again (documented). The variable is undocumented:
+  claude_code_vm's test starts the real Claude Code to catch a release that
+  drops it.
+- Claude Code's first start shows its setup (theme, then sign-in) until its
+  `.claude.json` (in `CLAUDE_CONFIG_DIR`, else `~/.claude.json`) has
+  `hasCompletedOnboarding: true`, even with `CLAUDE_CODE_OAUTH_TOKEN` and a
+  theme set; no variable skips it. Its Bash tool keeps a `cd` only inside the
+  working directories (`additionalDirectories: ["/"]` makes that every one).
+  Its environment variables parse booleans: `0` and `false` are off.
+- In ansible-core 2.16 the template lookup turns a rendered JSON text into a
+  dict, so `| from_json` then fails; `convert_data=false` keeps it text, as in
+  2.14.
+- `dev/check_shell.py` renders shell templates with `trim_blocks`, as Ansible
+  does, and knows only the Ansible filters it lists (`quote`, `dict2items`):
+  add a stand-in there for another one a shell template uses.
 
 ## Looking inside a running service (field notes)
 
@@ -501,6 +525,27 @@ podman_service service, a smoke test after a deploy).
 
 Each with its reason, newest first. A decision is changed by a new one here.
 
+- 2026-10-18, Claude Code roles as one family (issue #25, the maintainer's
+  design): `claude_code` is the index (README and an entry point that stops
+  with the map), `claude_code_podman` (was claude_code) and `claude_code_vm`
+  (was claude_vm) the targets, `claude_code_settings` the utility both include.
+  It owns how a session starts (`claude_code_settings_*`, the same names and
+  defaults everywhere) and the base policy, moved from claude_code's
+  `files/managed-settings.json`; the container still merges its own part and
+  the project's on top (supersedes the 2026-10-09 decision's location of the
+  base). Both targets start Claude Code ready to work: bypassPermissions by
+  default (`claude_code_bypass_permissions` is gone), no trust dialog
+  (`CLAUDE_CODE_SANDBOXED=1` in the claude process's environment, through
+  claude-code.sh and the VM's `/usr/local/bin/claude`), no bypass confirmation,
+  no first-run setup, `additionalDirectories: ["/"]`. Sign-in through each
+  target's own secret channel: container.env (`CLAUDE_CODE_OAUTH_TOKEN` or
+  `ANTHROPIC_API_KEY`), and `claude_code_vm_oauth_token` (no_log everywhere,
+  root:claude 0640 in the VM, never in the policy or cloud-init). The VM's
+  chosen settings live on the host in `/etc/claude-vm/settings.yml`, appended to
+  but never rewritten, read by every run as facts (above the inventory, below
+  `-e`), kept by a removal. Old setting names stop a run, naming the new ones.
+  Names of what the roles create on hosts stay. SOLID, KISS, DDD and TDD are
+  the core design of the whole repository (CONTRIBUTING's Role design).
 - 2026-10-18, branches: a long-lived `develop` gathers finished changes, each
   a squash-merged pull request from a branch started there; `develop` goes into
   `accept` and `accept` into `main` with merge commits, never squashes, so no
@@ -528,10 +573,10 @@ Each with its reason, newest first. A decision is changed by a new one here.
   repositories. Where no convention exists (an RPM mirror for any other build
   machine), one setting names a directory of `.repo` files that replaces the
   image's repositories for the build instead of adding to them. Built as
-  `gitlab_image`, `claude_code_nvm_url` and `claude_code_nvm_sha256`,
-  `node_image_rpm_repos` and `claude_code_rpm_repos`. The directory of `.repo`
+  `gitlab_image`, `claude_code_podman_nvm_url` and `claude_code_podman_nvm_sha256`,
+  `node_image_rpm_repos` and `claude_code_podman_rpm_repos`. The directory of `.repo`
   files is mounted read-only over the base images' `/etc/yum.repos.d` for the
-  build's steps (`podman build --volume ...:ro,z`); claude_code's
+  build's steps (`podman build --volume ...:ro,z`); claude_code_podman's
   Containerfile therefore imports Anthropic's key into rpm's database and
   installs Claude Code with `--repofrompath` instead of writing
   `claude-code.repo` there. Its default is empty (the images' own
@@ -547,7 +592,7 @@ Each with its reason, newest first. A decision is changed by a new one here.
   need a real RHEL 9.6 VM, without KVM tests; pin it to 9.6, as UBI's
   repositories already serve 9.8 packages. A dedicated sudo account (issue
   #14) is closed as not planned.
-- 2026-10-17, claude_vm supports one path, an Ubuntu VM on an Ubuntu host,
+- 2026-10-17, claude_code_vm supports one path, an Ubuntu VM on an Ubuntu host,
   until hosting the VM on RHEL is needed: its hosts are Ubuntu 24.04 or newer,
   it needs ansible-core 2.16 (see Known pitfalls), and its VM test runs in
   GitHub CI, whose standard Linux runners have `/dev/kvm` since April 2024 (an
@@ -571,11 +616,11 @@ Each with its reason, newest first. A decision is changed by a new one here.
   and `<version>` for a release in examples. galaxy.yml names none either (no
   `repository`, the author without a profile URL); a checkout's git remote is
   its source. Once offline hosting works, every URL becomes dynamic.
-- 2026-10-16, claude_vm's security model allows a credential in the VM that
+- 2026-10-16, claude_code_vm's security model allows a credential in the VM that
   pushes branches of the repository Claude works on; never keys to servers.
-  claude_vm's README says so.
+  claude_code_vm's README says so.
 - 2026-10-11, gitlab: GitLab CE as a rootless Podman service (role gitlab, a
-  proof of concept) next to claude_vm's VM, so that GitLab stays out of the
+  proof of concept) next to claude_code_vm's VM, so that GitLab stays out of the
   VM's reach and Claude has an ordinary account there. Plain HTTP on a private
   network. Collection playbooks with settings in the user's inventory, not a
   project written by a setup (the shared setup mechanism waits). Next, each a
@@ -590,19 +635,20 @@ Each with its reason, newest first. A decision is changed by a new one here.
   - A runner in the VM (shell executor), matching GitLab's major.minor, from
     packages.gitlab.com (key F6403F6544A38863DAA0B6E03F01618A51312F3F, URL
     /gpgkey/gpg.key since March 2026), registered with a `glrt-` token.
-- 2026-10-09, Claude Code's policy has one aslib.infra base, claude_code's
-  `files/managed-settings.json`, which every container deploy merges with
+- 2026-10-09, Claude Code's policy has one aslib.infra base, then claude_code's
+  `files/managed-settings.json` (claude_code_settings' since 0.7.0), which every
+  container deploy merges with
   `files/managed-settings.container.json` and the project's
   `config/managed-settings.json` (later values win, lists combine, as Claude
-  Code's own drop-ins do), and which claude_vm installs in the VM. Merged by
+  Code's own drop-ins do), and which claude_code_vm installs in the VM. Merged by
   Ansible into one file rather than Claude Code's `managed-settings.d/`, where
   a drop-in, read after `managed-settings.json`, would beat the project's
   single values. The VM gets the base only: with sudo, Claude could change it.
 - 2026-10-09, from a health check that Claude Code ran in its own container:
   the shared zone's README checksum (read-only for services), `dnf upgrade` in
-  claude_code's Containerfile, and memory limits (`podman_service_memory`, no
+  claude_code_podman's Containerfile, and memory limits (`podman_service_memory`, no
   limit by default; a role restricts its own service by default, as
-  claude_code does with 4g, and the deployer can always lift it). A sticky bit
+  claude_code_podman does with 4g, and the deployer can always lift it). A sticky bit
   for the zone's README stays out (see Known pitfalls).
 - 2026-10-08, the oldest systems supported are RHEL 9.6 and Ubuntu 24.04, so
   the tests run ansible-core 2.14 and 2.16 (2.12 and Ubuntu 22.04 are gone);
@@ -671,16 +717,17 @@ Each with its reason, newest first. A decision is changed by a new one here.
   sandbox block in the project's README.md), off by default. No Podman in the
   container for now (later, if needed: nested rootless as an opt-in setting,
   never the host's socket). The project is a repository of its own, written by
-  `aslib.infra.claude_setup`, the only collection playbook for it; everything
+  `aslib.infra.claude_code_podman_setup`, the only collection playbook for it; everything
   else is in its `ansible/`. Until it is handed over, its image files
   (Containerfile, .containerignore, README.md) are aslib.infra's: every update
   rewrites them, keeping a changed one as `.bak`, and merging is the project
   maintainer's. config/ (the project's part of the policy, CLAUDE.md) is the
   project's, written once from aslib.infra's templates; the deploy merges
   aslib.infra's base policy into it (see the 2026-10-09 decision above).
-  `claude_code_bypass_permissions` is the POC's way to autonomy. Tests run it
+  `claude_code_bypass_permissions` was the POC's way to autonomy (since 0.7.0,
+  bypassPermissions is the default of claude_code_settings). Tests run it
   next to the Node.js service.
-- claude_vm, a proof of concept: for development, where Claude needs root
+- claude_code_vm, a proof of concept: for development, where Claude needs root
   (Molecule's tests use rootful Podman), the boundary is a VM of its own on a
   host with KVM, never a personal machine. What matters is what the VM holds
   (only Claude's login and a credential for its own branches, see above; no
@@ -705,27 +752,27 @@ Each with its reason, newest first. A decision is changed by a new one here.
   read-only): Claude's CLAUDE.md says to check it first, and `verify` checks
   it. A sticky bit is out (see Known pitfalls).
 - Claude's CLAUDE.md: aslib.infra ships the template
-  (claude_code/files/CLAUDE.md), each project adjusts its copy in config/.
+  (claude_code_podman/files/CLAUDE.md), each project adjusts its copy in config/.
   Positive, short, facts Claude can't infer; nothing Claude Code's own prompt
   already covers. The policy denies edits to instruction files in Claude's home
   (CLAUDE.md, CLAUDE.local.md, AGENTS.md), which would load in every session.
-- Later (SOLID at role level): node_setup and claude_code each write their
+- Later (SOLID at role level): node_setup and claude_code_podman each write their
   project with the same mechanism (theirs/ours lists, `.bak`), and node_deploy
-  and claude_code each wrap podman_service's deploy, restart and remove.
+  and claude_code_podman each wrap podman_service's deploy, restart and remove.
   Extract a shared setup mechanism when a third kind of project arrives, and
   generic lifecycle playbooks after that; not before.
 
 ## Status
 
-Last updated 2026-10-18. v0.5.0 is the latest release; 0.6.0 is on its way
-from develop through accept to main.
+Last updated 2026-10-18. v0.6.0 is the latest release; 0.7.0 (the Claude Code
+family, issue #25) is on its way from develop through accept to main.
 
 - CI passes every job before a release is tagged. Memory limits are checked
   only where cgroup v2 delegates the memory controller (CI's runners).
 - Not tested yet ([docs/status.md](docs/status.md#not-tested-yet) lists them
   for users): a real RHEL 9.6 server or VM with SELinux enforcing; a deploy as
   an account that uses sudo; GitLab CI (the `runner-check` job will report
-  whether the runner can start containers); claude_vm's firewall rules after a
+  whether the runner can start containers); claude_code_vm's firewall rules after a
   host reboot (CI resets the VM, but never reboots the host).
 - To do: a security review of how pipelines get `container.env`, and of the
   project's `.npmrc`, which stays in the layers of the `<name>:build` image on

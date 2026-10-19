@@ -1,3 +1,0 @@
----
-- name: Remove claude-dev, as aslib.infra.claude_vm_remove does
-  ansible.builtin.import_playbook: aslib.infra.claude_vm_remove

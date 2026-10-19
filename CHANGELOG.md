@@ -4,6 +4,79 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.7.0
+
+- Changed, **breaking**: the Claude Code roles are one family. claude_code,
+  the container's role, is now `claude_code_podman`, and claude_vm is
+  `claude_code_vm`, each with its settings renamed to match
+  (`claude_code_podman_*`, `claude_code_vm_*`). The playbooks are
+  `aslib.infra.claude_code_podman_setup` (was `claude_setup`) and
+  `aslib.infra.claude_code_vm`, `claude_code_vm_remove`,
+  `claude_code_vm_overview` and `claude_code_vm_boot_trial`; the guides
+  `docs/claude-code-podman.md` and `docs/claude-code-vm.md`. A run that still
+  sets a setting by its old name stops, naming the new one. What the roles
+  create on hosts keeps its name: `claude-dev`, `/etc/claude-vm`, the
+  `claude-vm` network, firewall table and service, the `claude-code` service
+  and command.
+- Added: role `claude_code`, the family's index: its README names the role for
+  each job, and its entry point stops with that list, so that a project's
+  playbook of before 0.7.0 does not silently do nothing.
+- Added: role `claude_code_settings`, what both targets share: how a session
+  starts, with the same names and defaults in the container and the VM
+  (`claude_code_settings_permission_mode` bypassPermissions,
+  `claude_code_settings_model` opus, `claude_code_settings_effort` xhigh,
+  `claude_code_settings_theme` dark, `claude_code_settings_agent_teams` false,
+  `claude_code_settings_ultracode` false), and aslib.infra's base policy, which
+  moved there from claude_code's `files/managed-settings.json`. Neither target
+  takes Claude Code's settings from the other's folder any more.
+- Changed: Claude Code starts ready to work in both targets. bypassPermissions
+  mode starts without its confirmation; no folder asks to be trusted (the
+  home, any folder in it, git repositories cloned later, the shared zone);
+  Claude Code's first-run setup is skipped; and after a `cd`, later Bash
+  commands run there, as every directory is a working directory. The
+  container's policy no longer lists its own working directories.
+- Changed: agent teams and ultracode are off by default (they were on in the
+  base policy); `claude_code_settings_agent_teams` and
+  `claude_code_settings_ultracode` turn them on.
+- Removed: `claude_code_bypass_permissions`. bypassPermissions is the default
+  in the container too now; a deploy that still sets it stops, naming
+  `claude_code_settings_permission_mode`.
+- Added: sign-in through each target's own secret channel. A Claude Code
+  project's `container.env` template names `CLAUDE_CODE_OAUTH_TOKEN=`, for the
+  token that `claude setup-token` prints, next to `ANTHROPIC_API_KEY=` (the API
+  key wins when both are set). claude_code_vm takes `claude_code_vm_oauth_token`,
+  hidden from every output and the run log, installed in the VM as
+  `/etc/claude-vm/oauth-token` (root:claude, 0640), and removed from it once
+  emptied; the VM's new `claude` command (`/usr/local/bin/claude`) passes it on.
+- Added: claude_code_vm keeps what a person chooses in `/etc/claude-vm/settings.yml`
+  on the host (root's, 0600): the VM's size, network, keys, host ports and
+  names, the token and how sessions start. A run writes it when missing and
+  adds the settings it lacks, never changing a line that is there; every run
+  takes its values from it (over the inventory's; `-e` still wins) and checks
+  them. `claude_code_vm_remove` keeps it.
+
+### Upgrading from 0.6.0
+
+1. A Claude Code project (container): in its root directory, run
+   `ansible-playbook aslib.infra.claude_code_podman_setup` once, which brings
+   its playbooks up to date (its `update-playbooks.yml` still names the old
+   role). Then, in `ansible/group_vars/all/project.yml`, rename every
+   `claude_code_` setting to `claude_code_podman_` (`claude_code_memory` to
+   `claude_code_podman_memory`, and so on), and add the
+   `claude_code_settings_*` settings you want to differ from the defaults; the
+   new `defaults.yml` lists them all.
+2. bypassPermissions is now the default in the container. To keep the
+   permission prompts, set `claude_code_settings_permission_mode: default` and
+   drop `claude_code_bypass_permissions`. Agent teams and ultracode were on:
+   `claude_code_settings_agent_teams: true` and
+   `claude_code_settings_ultracode: true` keep them.
+3. The VM: rename every `claude_vm_` setting in your inventory to
+   `claude_code_vm_`, and run `aslib.infra.claude_code_vm` instead of
+   `aslib.infra.claude_vm`. Its first run writes `/etc/claude-vm/settings.yml`
+   with the values it used; from then on, change settings there.
+4. Playbooks of your own: `aslib.infra.claude_code` is now the index and runs
+   nothing; use `aslib.infra.claude_code_podman` and `aslib.infra.claude_code_vm`.
+
 ## 0.6.0
 
 - Changed: claude_vm supports Ubuntu hosts only (24.04 or newer, x86_64 or

@@ -1,0 +1,39 @@
+---
+{% if __claude_code_podman_file.dest is search('defaults.yml$') %}
+# aslib.infra's settings for building and deploying Claude Code, every one at its
+# default. Every update (update-playbooks.yml) rewrites this file: change settings
+# in project.yml, which Ansible reads after it, so its values win.
+{% else %}
+# The project's settings for building and deploying Claude Code. The setup wrote
+# every one at its default; the file is yours from then on and updates never touch
+# it. Settings of newer aslib.infra versions appear, at their defaults, in defaults.yml.
+{% endif %}
+# All options: ansible-doc -t role aslib.infra.claude_code_podman (building),
+# aslib.infra.podman_service (the service) and aslib.infra.claude_code_settings
+# (how a session starts).
+
+# Building: ansible-playbook image.yml. Mirrors for one environment belong on the
+# machine that builds: registries.conf for the image.
+claude_code_podman_base_image: registry.access.redhat.com/ubi9/ubi   # the Containerfile's FROM; needs dnf
+claude_code_podman_repository: https://downloads.claude.ai/claude-code/rpm/stable   # or .../rpm/latest, or a mirror
+claude_code_podman_key_url: https://downloads.claude.ai/keys/claude-code.asc
+claude_code_podman_version: ""                # empty: the repository's newest, so every build updates; or e.g. "2.1.211"
+claude_code_podman_nvm_url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh   # nvm's script, or a mirror of it
+claude_code_podman_nvm_sha256: a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467   # its SHA-256: a newer release changes both
+claude_code_podman_rpm_repos: ""              # a directory of .repo files (a mirror's) for the Containerfile's packages; empty: the base image's own
+
+# Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
+claude_code_podman_memory: 4g                 # the most memory Claude's container may use; "" for no limit
+podman_service_tmp_size: 512m          # Claude's /tmp, in memory
+podman_service_shared: true            # the shared zone /opt/containers/shared/, shared with the other services
+podman_service_user: ""                # the account Claude runs as; empty: claude-code
+podman_service_uid: ""                 # that account's UID, e.g. 3100 on every server; empty: any free one
+
+# How a session starts, the same names as in claude_code_vm's VM: ansible-doc -t
+# role aslib.infra.claude_code_settings. Each deploy installs them.
+claude_code_settings_permission_mode: bypassPermissions   # or default (prompts), acceptEdits, plan, auto, dontAsk
+claude_code_settings_model: opus       # opus: the newest Opus; or sonnet, or a model ID
+claude_code_settings_effort: xhigh     # low, medium, high or xhigh
+claude_code_settings_theme: dark       # auto, dark, light, dark-daltonized, light-daltonized, dark-ansi, light-ansi
+claude_code_settings_agent_teams: false   # true: agent teams on
+claude_code_settings_ultracode: false  # true: sessions start with ultracode on

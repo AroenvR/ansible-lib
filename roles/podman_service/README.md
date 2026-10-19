@@ -2,7 +2,7 @@
 
 Runs an image archive (made with `podman save`) as a rootless Podman service
 that starts at boot, on RHEL 9.6 (or newer) servers. [node_deploy](../node_deploy/README.md)
-(Node.js projects), [claude_code](../claude_code/README.md) and
+(Node.js projects), [claude_code_podman](../claude_code_podman/README.md) and
 [gitlab](../gitlab/README.md) use it, and leave settings such as the account and
 its UID to this role.
 All options: `ansible-doc -t role aslib.infra.podman_service`.
@@ -118,8 +118,8 @@ After a crash, systemd starts the service again every 10 seconds.
 `/tmp` included), the kernel stops a process in the container once it needs
 more, rather than one elsewhere on the server. Roles that deploy a service
 choose its default: unlimited for [node_deploy](../node_deploy/README.md)
-(`node_deploy_memory`), 4g for [claude_code](../claude_code/README.md)
-(`claude_code_memory`) and [gitlab](../gitlab/README.md) (`gitlab_memory`).
+(`node_deploy_memory`), 4g for [claude_code_podman](../claude_code_podman/README.md)
+(`claude_code_podman_memory`) and [gitlab](../gitlab/README.md) (`gitlab_memory`).
 
 **Health checks.** With `podman_service_health_cmd`, Podman runs that command in
 the container (with `/bin/sh`) every 2 seconds from the start until it passes,
@@ -154,7 +154,7 @@ which lists the variables it can use.
 | `podman_service_user` | `<service>` | The account |
 | `podman_service_uid` | (any free UID) | Fix the account's UID, e.g. the same on every server |
 | `podman_service_tmp_size` | `512m` | Size limit of the app's `/tmp`, which is in memory |
-| `podman_service_memory` | `""` (no limit) | The most memory the container may use, e.g. `4g`; node_deploy, claude_code and gitlab set it from their own setting |
+| `podman_service_memory` | `""` (no limit) | The most memory the container may use, e.g. `4g`; node_deploy, claude_code_podman and gitlab set it from their own setting |
 | `podman_service_shared` | `true` | Give the service the shared zone, `/opt/containers/shared/` |
 | `podman_service_health_cmd` | `""` (none) | The health check, run in the container: exit code 0 means healthy |
 | `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |

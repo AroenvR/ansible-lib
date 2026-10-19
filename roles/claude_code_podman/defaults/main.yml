@@ -1,0 +1,16 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml. The
+# service's own settings (account, /tmp size, shared zone) are
+# aslib.infra.podman_service's, how a session starts aslib.infra.claude_code_settings's.
+claude_code_podman_project: "{{ lookup('env', 'PWD') }}"
+claude_code_podman_ansible_dir: "{{ lookup('env', 'PWD') }}"
+claude_code_podman_base_image: registry.access.redhat.com/ubi9/ubi
+claude_code_podman_repository: https://downloads.claude.ai/claude-code/rpm/stable
+claude_code_podman_key_url: https://downloads.claude.ai/keys/claude-code.asc
+claude_code_podman_version: ""
+# nvm, the Node.js version manager: one script of a release and its SHA-256, the
+# same as the Containerfile's defaults (NVM_URL, NVM_SHA256). Keep them in step.
+claude_code_podman_nvm_url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh
+claude_code_podman_nvm_sha256: a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
+claude_code_podman_rpm_repos: ""
+claude_code_podman_memory: 4g

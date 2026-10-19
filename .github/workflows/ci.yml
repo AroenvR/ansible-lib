@@ -120,12 +120,12 @@ jobs:
           sudo make image-rhel9 test-gitlab-${{ matrix.ansible }}
           PYTHON_2.14="$(command -v python3.11)" PYTHON_2.16="$(command -v python3.12)"
 
-  # claude_vm's VM: GitHub's Linux runners have KVM (/dev/kvm, nested in the
+  # claude_code_vm's VM: GitHub's Linux runners have KVM (/dev/kvm, nested in the
   # runner's own VM), so the test creates claude-dev on an x86_64 Ubuntu 24.04
   # host, as on a laptop. ARM64 hosts are checked by hand (a Raspberry Pi 4).
-  # ansible-core 2.16 only: claude_vm needs it (its host and VM have Python 3.12).
+  # ansible-core 2.16 only: claude_code_vm needs it (its host and VM have Python 3.12).
   vm:
-    name: claude_vm · ansible-core 2.16
+    name: claude_code_vm · ansible-core 2.16
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

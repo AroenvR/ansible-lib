@@ -1,0 +1,461 @@
+---
+# A stand-in for a machine on the local network: 10.231.0.2 in a network
+# namespace of its own, behind a veth pair, and two services of the host itself on
+# the VM's network. All answer the host (the control); the VM may reach only the
+# host's service on 9997 (claude_code_vm_host_ports, in molecule.yml).
+- name: Check claude-dev on the host, and set up what the VM must not reach
+  hosts: localhost
+  become: true
+  gather_facts: false
+  vars:
+    __claude_code_vm_test_virsh: [virsh, --connect, "qemu:///system"]
+  tasks:
+    # The VM must come back from a restart at any time, its first boot included:
+    # UEFI may restart an ARM64 VM then.
+    - name: Restart the VM hard, as a reset does
+      ansible.builtin.command:
+        argv: "{{ __claude_code_vm_test_virsh + ['reset', 'claude-dev'] }}"
+      changed_when: true
+
+    - name: Wait until it answers on SSH again
+      ansible.builtin.wait_for:
+        host: "{{ claude_code_vm_network_prefix | default('192.168.123') }}.10"
+        port: 22
+        delay: 5
+        timeout: 600
+
+    - name: Look up the VM, its network and the firewall rules
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - "{{ __claude_code_vm_test_virsh + ['dominfo', 'claude-dev'] }}"
+        - "{{ __claude_code_vm_test_virsh + ['net-info', 'claude-vm'] }}"
+        - [nft, list, table, inet, claude_vm]
+      register: __claude_code_vm_test_host
+      changed_when: false
+
+    - name: Check the VM runs after the restart and starts at boot, on its network, behind the firewall rules
+      ansible.builtin.assert:
+        that:
+          - "__claude_code_vm_test_host.results[0].stdout is search('^State: +running$', multiline=True)"
+          - "__claude_code_vm_test_host.results[0].stdout is search('^Autostart: +enable$', multiline=True)"
+          - "__claude_code_vm_test_host.results[1].stdout is search('^Active: +yes$', multiline=True)"
+          - "__claude_code_vm_test_host.results[1].stdout is search('^Autostart: +yes$', multiline=True)"
+          - __claude_code_vm_test_host.results[2].stdout is search('iifname "virbr-claude" drop')
+        success_msg: >-
+          PASSED claude_code_vm runs claude-dev, which came back from a reset, starts it and its network at boot, with the
+          firewall rules loaded.
+
+    - name: Remove a stand-in left by an earlier run
+      ansible.builtin.command:
+        argv: [ip, netns, delete, claude-vm-lan]
+      changed_when: false
+      failed_when: false
+
+    - name: Create the stand-in for a machine on the local network
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - [ip, netns, add, claude-vm-lan]
+        - [ip, link, add, claude-vm-lan, type, veth, peer, name, claude-vm-peer, netns, claude-vm-lan]
+        - [ip, address, add, 10.231.0.1/24, dev, claude-vm-lan]
+        - [ip, link, set, claude-vm-lan, up]
+        - [ip, netns, exec, claude-vm-lan, ip, address, add, 10.231.0.2/24, dev, claude-vm-peer]
+        - [ip, netns, exec, claude-vm-lan, ip, link, set, claude-vm-peer, up]
+        - [ip, netns, exec, claude-vm-lan, ip, route, add, default, via, 10.231.0.1]
+      changed_when: true
+
+    # Each stops by itself after 10 minutes.
+    - name: Start a web server on the stand-in, and two of the host's on the VM's network
+      ansible.builtin.command:
+        argv: "{{ item }}"
+        chdir: /
+      loop:
+        - [ip, netns, exec, claude-vm-lan, timeout, "600", python3, -m, http.server, "9999", --bind, 10.231.0.2]
+        - [timeout, "600", python3, -m, http.server, "9998", --bind, "{{ claude_code_vm_network_prefix | default('192.168.123') }}.1"]
+        - [timeout, "600", python3, -m, http.server, "9997", --bind, "{{ claude_code_vm_network_prefix | default('192.168.123') }}.1"]
+      async: 600
+      poll: 0
+      changed_when: true
+
+    - name: Wait until all three answer the host
+      ansible.builtin.uri:
+        url: "{{ item }}"
+      loop:
+        - http://10.231.0.2:9999/
+        - http://{{ claude_code_vm_network_prefix | default('192.168.123') }}.1:9998/
+        - http://{{ claude_code_vm_network_prefix | default('192.168.123') }}.1:9997/
+      register: __claude_code_vm_test_control
+      until: __claude_code_vm_test_control is succeeded
+      retries: 15
+      delay: 2
+
+    - name: Reach the VM as claude
+      ansible.builtin.add_host:
+        name: claude-dev
+        ansible_host: "{{ claude_code_vm_network_prefix | default('192.168.123') }}.10"
+        ansible_user: claude
+        ansible_ssh_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/claude-dev"
+        ansible_ssh_common_args: -o UserKnownHostsFile={{ lookup('env', 'HOME') }}/.ssh/claude-dev.known_hosts -o StrictHostKeyChecking=accept-new
+        __claude_code_vm_test_host_ip: "{{ claude_code_vm_network_prefix | default('192.168.123') }}.1"
+      changed_when: false
+
+- name: Check claude-dev from inside, as claude
+  hosts: claude-dev
+  gather_facts: false
+  tasks:
+    - name: Look up claude's sudo and the tools
+      ansible.builtin.command:
+        argv: [sh, -c, "id -un; sudo -n true && echo sudo; getent hosts host-service.home.arpa; podman --version; python3.11 --version; claude --version"]
+      register: __claude_code_vm_test_tools
+      changed_when: false
+      failed_when: false
+
+    - name: Try the internet, the machine on the local network, and the host's services
+      ansible.builtin.uri:
+        url: "{{ item }}"
+        timeout: 5
+      loop:
+        - http://archive.ubuntu.com/ubuntu/
+        - http://10.231.0.2:9999/
+        - http://{{ __claude_code_vm_test_host_ip }}:9998/
+        - http://host-service.home.arpa:9997/
+      register: __claude_code_vm_test_reach
+      failed_when: false
+
+    - name: Compute what claude_code_settings hands every target, with the settings of this run (the defaults)
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+
+    - name: Read the policy Claude Code finds in the VM
+      ansible.builtin.slurp:
+        src: /etc/claude-code/managed-settings.json
+      register: __claude_code_vm_test_policy
+      failed_when: false
+
+    - name: Read the instructions Claude Code finds in the VM
+      ansible.builtin.slurp:
+        src: /etc/claude-code/CLAUDE.md
+      register: __claude_code_vm_test_instructions
+      failed_when: false
+
+    - name: Check claude has sudo and the tools, and reaches the internet only
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_tools.stdout_lines[:2] == ['claude', 'sudo']
+          - __claude_code_vm_test_tools.stdout is search('^podman version ', multiline=True)
+          - __claude_code_vm_test_tools.stdout is search('^Python 3[.]11[.]', multiline=True)
+          - __claude_code_vm_test_tools.stdout is search('[(]Claude Code[)]$', multiline=True)
+          - __claude_code_vm_test_reach.results[0].status == 200
+          - __claude_code_vm_test_reach.results[1].status == -1
+          - __claude_code_vm_test_reach.results[2].status == -1
+          - __claude_code_vm_test_reach.results[3].status == 200
+          - __claude_code_vm_test_tools.stdout is search('^' ~ __claude_code_vm_test_host_ip ~ ' +host-service[.]home[.]arpa$', multiline=True)
+          # The policy of claude_code_settings, the base of Claude Code's container too.
+          - >-
+            (__claude_code_vm_test_policy.content | default('') | b64decode | default('{}', true) | from_json)
+            == claude_code_settings_policy
+          # aslib.infra's instructions for the VM (claude_code_vm/files/CLAUDE.md).
+          - >-
+            (__claude_code_vm_test_instructions.content | default('') | b64decode)
+            == lookup('file', playbook_dir ~ '/../../files/CLAUDE.md', rstrip=false)
+        fail_msg: >-
+          Tools: {{ __claude_code_vm_test_tools.stdout_lines }} {{ __claude_code_vm_test_tools.stderr }}; HTTP status of the
+          internet, the local network, and the host's two services: {{ __claude_code_vm_test_reach.results | map(attribute='status') | list }};
+          policy: {{ __claude_code_vm_test_policy.content | default('') | b64decode }}; instructions:
+          {{ __claude_code_vm_test_instructions.content | default('') | b64decode }}
+        success_msg: >-
+          PASSED claude_code_vm: claude has sudo, Podman, Python 3.11 and Claude Code with the policy of
+          claude_code_settings and aslib.infra's instructions,
+          reaches the internet, and reaches neither a machine on the local network nor the host's own services,
+          except the one port it was given, by the host's name it was given.
+
+- name: Check Claude Code in claude-dev starts signed in and ready to work, as claude
+  hosts: claude-dev
+  gather_facts: false
+  vars:
+    __claude_code_vm_test_token: "{{ hostvars['localhost'].claude_code_vm_oauth_token }}"
+  tasks:
+    - name: Look up Claude's token, the claude command and Claude Code's .claude.json
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/etc/claude-vm/oauth-token, /usr/local/bin/claude, /home/claude/.claude.json]
+      register: __claude_code_vm_test_files
+
+    - name: Read the token and .claude.json as claude, and try to change the token
+      ansible.builtin.command:
+        argv:
+          - sh
+          - -c
+          - >-
+            cat /etc/claude-vm/oauth-token; cat ~/.claude.json;
+            (: >> /etc/claude-vm/oauth-token) 2>/dev/null && echo writable || echo read-only; command -v claude
+      register: __claude_code_vm_test_reads
+      changed_when: false
+      no_log: true
+
+    - name: Check the token is claude's to read, not to change, and the claude command and .claude.json are there
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_files.results[0].stat.pw_name == 'root'
+          - __claude_code_vm_test_files.results[0].stat.gr_name == 'claude'
+          - __claude_code_vm_test_files.results[0].stat.mode == '0640'
+          - __claude_code_vm_test_files.results[1].stat.mode == '0755'
+          - __claude_code_vm_test_files.results[2].stat.pw_name == 'claude'
+          - __claude_code_vm_test_reads.stdout_lines[0] == __claude_code_vm_test_token
+          - "__claude_code_vm_test_reads.stdout is search('\"hasCompletedOnboarding\": true')"
+          - __claude_code_vm_test_reads.stdout_lines[-2:] == ['read-only', '/usr/local/bin/claude']
+        fail_msg: "Files: {{ __claude_code_vm_test_files.results | map(attribute='stat') | list }}"
+        success_msg: >-
+          PASSED claude_code_vm installed Claude's token as root:claude 0640, which claude reads and cannot change,
+          the claude command before Ubuntu's, and claude's .claude.json.
+
+    # As a person would: a repository cloned into the home, a terminal, claude.
+    - name: Create a new git repository in claude's home, as a clone would
+      ansible.builtin.command:
+        argv: [git, init, --quiet, /home/claude/src/claude-vm-test]
+        creates: /home/claude/src/claude-vm-test/.git
+
+    - name: Start Claude Code there in a terminal, and read its screen after 20 seconds
+      ansible.builtin.script:
+        cmd: claude-screen.py 20 claude
+        chdir: /home/claude/src/claude-vm-test
+        executable: python3
+      register: __claude_code_vm_test_screen
+      changed_when: false
+
+    - name: Check Claude Code started in bypassPermissions mode, asking nothing first
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_screen.stdout is search('bypass permissions on')
+          - __claude_code_vm_test_screen.stdout is not search('trust this folder')
+          - __claude_code_vm_test_screen.stdout is not search('Yes, I accept')
+          - __claude_code_vm_test_screen.stdout is not search("Let's get started")
+          - __claude_code_vm_test_screen.stdout is not search('Select login method')
+        fail_msg: "Claude Code's screen: {{ __claude_code_vm_test_screen.stdout[-3000:] }}"
+        success_msg: >-
+          PASSED Claude Code started in a new git repository in claude's home in bypassPermissions mode, signed in,
+          without asking to trust the folder, to accept the mode, or for its first-run setup.
+
+- name: Remove the stand-in for the local network
+  hosts: localhost
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove the stand-in's network namespace, and with it the veth pair
+      ansible.builtin.command:
+        argv: [ip, netns, delete, claude-vm-lan]
+      changed_when: true
+
+# Last, as the removal at its end takes the VM. Runs the collection's playbooks
+# as a person does, as root (sudo make), which also shows what they print.
+- name: Check the settings file on the host, which the next runs follow, and that no output shows the token
+  hosts: localhost
+  gather_facts: false
+  vars:
+    __claude_code_vm_test_file: /etc/claude-vm/settings.yml
+    __claude_code_vm_test_token: "{{ claude_code_vm_oauth_token }}"
+    __claude_code_vm_test_logs: /tmp/claude-code-vm-test-logs
+    __claude_code_vm_test_nl: "\n"
+    __claude_code_vm_test_settings_options: >-
+      {{ (lookup('file', playbook_dir ~ '/../../../claude_code_settings/meta/argument_specs.yml') | from_yaml)
+         .argument_specs.main.options.keys() | list }}
+    __claude_code_vm_test_expected: >-
+      {{ ['claude_code_vm_memory', 'claude_code_vm_vcpus', 'claude_code_vm_disk_size', 'claude_code_vm_network_prefix',
+          'claude_code_vm_lan_block', 'claude_code_vm_host_ports', 'claude_code_vm_host_names',
+          'claude_code_vm_authorized_keys', 'claude_code_vm_oauth_token'] + __claude_code_vm_test_settings_options }}
+    # Each run with its own run log, as a project's ansible.cfg enables it.
+    __claude_code_vm_test_env:
+      ANSIBLE_CALLBACKS_ENABLED: aslib.infra.run_log
+      ANSIBLE_RUN_LOG_DIR: "{{ __claude_code_vm_test_logs }}"
+  tasks:
+    - name: Look up the settings file
+      ansible.builtin.stat:
+        path: "{{ __claude_code_vm_test_file }}"
+      register: __claude_code_vm_test_stat
+
+    - name: Note what the first run wrote
+      ansible.builtin.set_fact:
+        __claude_code_vm_test_written: "{{ lookup('file', __claude_code_vm_test_file, rstrip=false) }}"
+
+    - name: Check it holds every setting at the value the run used, each after a comment, as root's only
+      vars:
+        __claude_code_vm_test_lines: "{{ __claude_code_vm_test_written.splitlines() }}"
+        __claude_code_vm_test_values: "{{ __claude_code_vm_test_written | from_yaml }}"
+        __claude_code_vm_test_setting_lines: >-
+          {{ __claude_code_vm_test_lines | select('match', '[a-z_]+: ') | list }}
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_stat.stat.pw_name == 'root'
+          - __claude_code_vm_test_stat.stat.mode == '0600'
+          - __claude_code_vm_test_values.keys() | sort == __claude_code_vm_test_expected | sort
+          - __claude_code_vm_test_values.claude_code_vm_host_ports == [9997]
+          - __claude_code_vm_test_values.claude_code_vm_host_names == ['host-service.home.arpa']
+          - __claude_code_vm_test_values.claude_code_vm_memory == 4096
+          - __claude_code_vm_test_values.claude_code_settings_theme == 'dark'
+          - __claude_code_vm_test_values.claude_code_vm_oauth_token == __claude_code_vm_test_token
+          - __claude_code_vm_test_setting_lines | length == __claude_code_vm_test_expected | length
+        fail_msg: "{{ __claude_code_vm_test_stat.stat.mode | default('none') }}: {{ __claude_code_vm_test_values.keys() | list }}"
+        success_msg: >-
+          PASSED claude_code_vm wrote /etc/claude-vm/settings.yml (root, 0600) with every setting a person chooses, at the
+          values of the run (the inventory's ports, names and token), each after a comment of its own.
+
+    - name: Check each setting comes after a comment of its own
+      vars:
+        __claude_code_vm_test_lines: "{{ __claude_code_vm_test_written.splitlines() }}"
+      ansible.builtin.assert:
+        that: __claude_code_vm_test_lines[__claude_code_vm_test_lines.index(item) - 1] is match('# .')
+        quiet: true
+      loop: "{{ __claude_code_vm_test_lines | select('match', '[a-z_]+: ') | list }}"
+      loop_control:
+        label: "{{ item.split(':') | first }}"
+
+    - name: Check the token is in neither cloud-init's data nor its CD
+      ansible.builtin.command:
+        argv: [grep, --quiet, --fixed-strings, --, "{{ __claude_code_vm_test_token }}", "{{ item }}"]
+      loop: [/etc/claude-vm/user-data, /var/lib/libvirt/images/claude-dev-seed.iso]
+      register: __claude_code_vm_test_seed
+      changed_when: false
+      failed_when: __claude_code_vm_test_seed.rc != 1
+      no_log: true
+
+    # A comment of one's own, a setting removed and one changed, and no newline at the end.
+    - name: Change the settings file by hand
+      vars:
+        __claude_code_vm_test_lines: "{{ __claude_code_vm_test_written.splitlines() }}"
+        __claude_code_vm_test_at: >-
+          {{ __claude_code_vm_test_lines.index(__claude_code_vm_test_lines | select('match', 'claude_code_settings_ultracode: ') | first) }}
+        __claude_code_vm_test_kept: >-
+          {{ __claude_code_vm_test_lines[:(__claude_code_vm_test_at | int) - 1]
+             + __claude_code_vm_test_lines[(__claude_code_vm_test_at | int) + 1:] }}
+      ansible.builtin.set_fact:
+        __claude_code_vm_test_edited: >-
+          {{ (['# Mine: a note of my own, which stays as it is']
+              + (__claude_code_vm_test_kept
+                 | map('regex_replace', '^claude_code_settings_theme: .*$', 'claude_code_settings_theme: light  # mine')
+                 | list))
+             | join(__claude_code_vm_test_nl) }}
+
+    - name: Write the changed settings file
+      ansible.builtin.copy:
+        content: "{{ __claude_code_vm_test_edited }}"
+        dest: "{{ __claude_code_vm_test_file }}"
+        mode: "0600"
+
+    - name: Remove the run logs of an earlier test
+      ansible.builtin.file:
+        path: "{{ __claude_code_vm_test_logs }}"
+        state: absent
+
+    - name: Run aslib.infra.claude_code_vm again, as a person would after changing the file
+      ansible.builtin.command:
+        argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+        chdir: /
+      environment: "{{ __claude_code_vm_test_env }}"
+      register: __claude_code_vm_test_run
+      changed_when: true
+      failed_when: __claude_code_vm_test_run.rc != 0
+
+    - name: Read the policy in the VM
+      ansible.builtin.slurp:
+        src: /etc/claude-code/managed-settings.json
+      delegate_to: claude-dev
+      register: __claude_code_vm_test_policy_after
+
+    - name: Check the run kept every line of the file, added only the setting it lacked, and took the changed one to the VM
+      vars:
+        __claude_code_vm_test_now: "{{ lookup('file', __claude_code_vm_test_file, rstrip=false) }}"
+        __claude_code_vm_test_added: "{{ __claude_code_vm_test_now.replace(__claude_code_vm_test_edited, '', 1) }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_now.startswith(__claude_code_vm_test_edited)
+          - __claude_code_vm_test_added.splitlines() | reject('eq', '') | list | length == 2
+          - __claude_code_vm_test_added.splitlines() | reject('eq', '') | first is match('# .')
+          - "__claude_code_vm_test_added.splitlines() | last == 'claude_code_settings_ultracode: false'"
+          - (__claude_code_vm_test_policy_after.content | b64decode | from_json).theme == 'light'
+        fail_msg: "Added: {{ __claude_code_vm_test_added }}"
+        success_msg: >-
+          PASSED a run kept every line of the changed settings file byte for byte, the comment of its own included,
+          added only the setting it lacked, after a comment, and gave the VM the theme changed in the file.
+
+    - name: Try a value outside each setting's type or choices, in the settings file
+      ansible.builtin.include_tasks: tasks/invalid-setting.yml
+      loop:
+        - { setting: claude_code_vm_memory, value: lots }
+        - { setting: claude_code_settings_theme, value: neon }
+      loop_control:
+        loop_var: __claude_code_vm_test_invalid
+
+    - name: Empty the token in the settings file
+      ansible.builtin.replace:
+        path: "{{ __claude_code_vm_test_file }}"
+        regexp: '^claude_code_vm_oauth_token: .*$'
+        replace: 'claude_code_vm_oauth_token: ""'
+      no_log: true
+
+    - name: Run aslib.infra.claude_code_vm again, without a token
+      ansible.builtin.command:
+        argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+        chdir: /
+      environment: "{{ __claude_code_vm_test_env }}"
+      register: __claude_code_vm_test_run_empty
+      changed_when: true
+      failed_when: __claude_code_vm_test_run_empty.rc != 0
+
+    - name: Look up Claude's token in the VM
+      ansible.builtin.stat:
+        path: /etc/claude-vm/oauth-token
+      delegate_to: claude-dev
+      register: __claude_code_vm_test_token_after
+
+    - name: Remove claude-dev, as aslib.infra.claude_code_vm_remove does
+      ansible.builtin.command:
+        argv: [ansible-playbook, aslib.infra.claude_code_vm_remove, -v]
+        chdir: /
+      environment: "{{ __claude_code_vm_test_env }}"
+      register: __claude_code_vm_test_removal
+      changed_when: true
+      failed_when: __claude_code_vm_test_removal.rc != 0
+
+    - name: Look up the settings file after the removal
+      ansible.builtin.stat:
+        path: "{{ __claude_code_vm_test_file }}"
+      register: __claude_code_vm_test_stat_after
+
+    - name: Find the run logs
+      ansible.builtin.find:
+        paths: "{{ __claude_code_vm_test_logs }}"
+        patterns: "*.log"
+      register: __claude_code_vm_test_log_files
+
+    - name: Read the run logs
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      loop: "{{ __claude_code_vm_test_log_files.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+      register: __claude_code_vm_test_log_texts
+      no_log: true
+
+    - name: Check the token is in no output and no run log, its emptying removed it from the VM, and the removal kept the file
+      vars:
+        __claude_code_vm_test_outputs: >-
+          {{ [__claude_code_vm_test_run, __claude_code_vm_test_run_empty, __claude_code_vm_test_removal]
+             | map(attribute='stdout') | list
+             + [__claude_code_vm_test_run, __claude_code_vm_test_run_empty, __claude_code_vm_test_removal]
+             | map(attribute='stderr') | list
+             + __claude_code_vm_test_log_texts.results | map(attribute='content') | map('b64decode') | list }}
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_log_files.files | length >= 3
+          - __claude_code_vm_test_outputs | select('search', __claude_code_vm_test_token) | list | length == 0
+          - __claude_code_vm_test_run.stdout is search('signed in with claude_code_vm_oauth_token')
+          - not __claude_code_vm_test_token_after.stat.exists
+          - __claude_code_vm_test_stat_after.stat.exists
+        fail_msg: >-
+          {{ __claude_code_vm_test_log_files.files | length }} run logs;
+          {{ __claude_code_vm_test_outputs | select('search', __claude_code_vm_test_token) | list | length }} outputs
+          with the token; token file after emptying: {{ __claude_code_vm_test_token_after.stat.exists }}
+        success_msg: >-
+          PASSED the token showed in no output of the runs (with -v) and in none of their run logs, though it signed
+          Claude in; emptying it in the settings file removed it from the VM; the removal kept the settings file.

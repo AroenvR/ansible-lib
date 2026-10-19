@@ -115,4 +115,4 @@ ansible-playbook remove.yml              # remove it from the servers, keeping i
   [podman_service](../roles/podman_service/README.md): the app on the server,
   the Quadlet file and every setting of the service.
 - [What runs on a server](servers.md), for root on the servers.
-- [Run Claude Code on a server](claude-code.md), next to the service.
+- [Run Claude Code on a server](claude-code-podman.md), next to the service.

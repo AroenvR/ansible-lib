@@ -1,7 +1,7 @@
 # Run a GitLab of your own
 
 GitLab Community Edition as a rootless Podman service, on the host of [the VM
-for Claude Code](claude-vm.md) or any server: repositories, merge requests,
+for Claude Code](claude-code-vm.md) or any server: repositories, merge requests,
 forks and CI configuration for a few people and agents, such as Claude in that
 VM. A proof of concept: plain HTTP, no email, no backups or runner yet.
 
@@ -9,7 +9,7 @@ VM. A proof of concept: plain HTTP, no email, no backups or runner yet.
 
 - **The server**: RHEL 9.6 or newer with its Podman, x86_64 or arm64
   ([podman_service](../roles/podman_service/README.md#what-a-server-needs));
-  it needs no access to Docker Hub. For Claude in claude_vm's VM, put it on the
+  it needs no access to Docker Hub. For Claude in claude_code_vm's VM, put it on the
   VM's host, whose ports you name are all of the local network the VM reaches;
   that host then has to be such a server too, as Ubuntu 24.04's Podman (4.9) is
   too old for the service.
@@ -60,7 +60,7 @@ aslib.infra.overview` shows it with every other service.
 
 ## Next
 
-- [From claude_vm's VM](../roles/gitlab/README.md#from-claude_vms-vm): let
+- [From claude_code_vm's VM](../roles/gitlab/README.md#from-claude_vms-vm): let
   Claude in the VM reach GitLab on the VM's host.
 - [Its settings](../roles/gitlab/README.md#its-settings): what the deploy sets
   in `gitlab.rb` and in GitLab's application settings, and why.

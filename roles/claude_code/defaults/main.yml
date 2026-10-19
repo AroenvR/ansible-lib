@@ -1,17 +1,2 @@
 ---
-# Public interface. Documented and validated in meta/argument_specs.yml. The
-# service's own settings (account, /tmp size, shared zone) are
-# aslib.infra.podman_service's.
-claude_code_project: "{{ lookup('env', 'PWD') }}"
-claude_code_ansible_dir: "{{ lookup('env', 'PWD') }}"
-claude_code_base_image: registry.access.redhat.com/ubi9/ubi
-claude_code_repository: https://downloads.claude.ai/claude-code/rpm/stable
-claude_code_key_url: https://downloads.claude.ai/keys/claude-code.asc
-claude_code_version: ""
-# nvm, the Node.js version manager: one script of a release and its SHA-256, the
-# same as the Containerfile's defaults (NVM_URL, NVM_SHA256). Keep them in step.
-claude_code_nvm_url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/nvm.sh
-claude_code_nvm_sha256: a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
-claude_code_rpm_repos: ""
-claude_code_bypass_permissions: false
-claude_code_memory: 4g
+# The index has no settings: each role of the family documents its own.

@@ -38,7 +38,7 @@ On the servers every deploy follows the same fixed conventions:
 [podman_service](../roles/podman_service/README.md#conventions) does the work
 on the servers and describes each step;
 [node_deploy](../roles/node_deploy/README.md),
-[claude_code](../roles/claude_code/README.md) and
+[claude_code_podman](../roles/claude_code_podman/README.md) and
 [gitlab](../roles/gitlab/README.md) deploy through it.
 
 ## What a managed server needs
