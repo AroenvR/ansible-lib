@@ -46,8 +46,9 @@ On every server it:
 2. copies the image archive and loads it as the account (also when the archive
    is there but the image is not);
 3. creates the service's directory and `data/` in it when missing, copies the
-   config files to its `config/` (and removes those no longer listed), installs
-   the environment file and the Quadlet file;
+   config files to its `config/` (and removes everything else there, hidden
+   files and folders included), installs the environment file and the Quadlet
+   file;
 4. reloads the account's systemd and restarts the service when the image, the
    environment file, the config files or the Quadlet file changed, or starts it
    when it is not running;

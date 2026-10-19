@@ -26,7 +26,19 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Changed: podman_service's `podman_service_config_files` takes names with
   folders (`.claude/agents/reviewer.md`) and a mapping's `src` as well as its
   `content`; config/ mirrors the list with its folders, which are the
-  account's, and a deploy removes folders no longer needed.
+  account's. A deploy now also removes hidden files and any folder in config/
+  that `podman_service_config_files` does not list, with everything in it;
+  before, it removed only the other files directly in config/.
+
+### Upgrading from 0.7.0
+
+- A service of podman_service (a Node.js project, Claude Code, GitLab) with
+  files placed by hand in its `config/` on the server
+  (`/opt/<service>/config/`): the next deploy removes those that are hidden
+  or in a folder, as it already removed the others. Move them out of
+  `config/` first, or let the deploy bring them: a Node.js project's
+  `config/production/*.json`, a Claude Code project's top-level `config/`
+  files.
 
 ## 0.7.0
 

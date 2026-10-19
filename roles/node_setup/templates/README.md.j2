@@ -103,8 +103,8 @@ options: `ansible-doc -t role aslib.infra.node_image`.
 3. installs `container.env` and the Quadlet file `{{ __node_setup_service }}.container` in
    `/etc/containers/systemd/users/<the account's UID>/`;
 4. creates `/opt/{{ __node_setup_service }}/`, the service's directory, and `data/` in it
-   when missing, and copies the config files to its `config/` (removing files the
-   project no longer has);
+   when missing, and copies the config files to its `config/` (removing everything
+   else there, files the project no longer has, hidden files and folders included);
 5. starts the service, or restarts it when something changed, and waits until it
    answers on its port (`127.0.0.1:3000` by default). If it does not, it shows
    the service's log and stops.
