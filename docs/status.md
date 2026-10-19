@@ -17,7 +17,9 @@ In CI:
   it) on the same server: separate accounts and UIDs, the shared zone both ways,
   root running Claude Code, its read-only policy with every setting of how a
   session starts, a deploy that still sets a setting of before 0.7.0 stopped,
-  and its removal; podman_service's
+  the qa skill and its five experts in its `/etc/claude-code` exactly as the
+  collection ships them and removed again when turned off, and its removal;
+  podman_service's
   checks after every deploy and restart, and the Node.js service's health check
   getting an app that answers with server errors restarted; a private file in the
   shared zone staying private, a replaced README caught by its checksum and put
@@ -37,10 +39,15 @@ In CI:
   kept by a removal; Claude's token installed for claude only, in no output and
   no run log, and removed once emptied; the real Claude Code starting in a new
   git repository in bypassPermissions mode, signed in, without asking to trust
-  the folder, to confirm the mode or for its first-run setup;
+  the folder, to confirm the mode or for its first-run setup; the qa skill and
+  its five experts in `/etc/claude-code` exactly as the collection ships them,
+  offered to the model by the real Claude Code, and removed by a run that
+  turns them off;
 - claude_code_settings with ansible-core 2.14 and 2.16: its policy with the
   defaults and with every setting changed, and a value outside the choices
-  stopping the run.
+  stopping the run; the qa skill's files off by default and handed over when
+  on, the experts' frontmatter as Claude Code needs it, and the qa skill with
+  agent teams stopping the run.
 
 ## Not tested yet
 
@@ -57,6 +64,10 @@ In CI:
 - in the container, the real Claude Code starting ready to work: the tests
   deploy a stand-in, which shows it gets the same policy and environment as
   the VM, where the real one is started.
+- the qa skill at work, which rests on the model following its texts: that
+  Claude takes it for a change request and not for a question, runs the
+  experts one at a time in the protocol's order, and stops after three BLOCKs
+  at one gate. These are checked by hand before a release.
 
 ## Known limits and open work
 

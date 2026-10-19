@@ -8,7 +8,7 @@ nothing itself (its entry point stops with this list): run one of these.
 |---|---|---|
 | [claude_code_podman](../claude_code_podman/README.md) | Claude Code as an always-on agent in a container, for root on a server, built and deployed from a project of its own; built on [podman_service](../podman_service/README.md) | Servers (RHEL 9.6, Ubuntu 24.04) and the machine that builds |
 | [claude_code_vm](../claude_code_vm/README.md) | `claude-dev`, a VM where Claude Code may have root, for development | An Ubuntu host with KVM |
-| [claude_code_settings](../claude_code_settings/README.md) | How a new session starts, the same in both: permission mode, model, effort, theme, agent teams, ultracode; and ready to work from the first start | Wherever the role that includes it runs |
+| [claude_code_settings](../claude_code_settings/README.md) | How a new session starts, the same in both: permission mode, model, effort, theme, agent teams, ultracode; ready to work from the first start; and, when turned on, the qa skill with its five expert subagents | Wherever the role that includes it runs |
 
 Each target includes claude_code_settings and adds only what is its own:
 where the files go, how Claude signs in, and, for the container, its own part

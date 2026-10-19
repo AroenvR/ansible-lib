@@ -499,6 +499,30 @@ the entry says it is likely or not verified yet.
 - `dev/check_shell.py` renders shell templates with `trim_blocks`, as Ansible
   does, and knows only the Ansible filters it lists (`quote`, `dict2items`):
   add a stand-in there for another one a shell template uses.
+- Claude Code (2.1.292, verified 2026-10-19) loads managed skills from
+  `/etc/claude-code/.claude/skills/<name>/SKILL.md` and managed subagents from
+  `/etc/claude-code/.claude/agents/` (the docs did not show the latter's
+  path), and expands `${CLAUDE_SKILL_DIR}` in a managed skill to its folder.
+  Managed ones win over a person's and a project's of the same name. A
+  stand-in for the API (`ANTHROPIC_BASE_URL` at a local server,
+  `ANTHROPIC_API_KEY` set) records what Claude Code sends, the skill listing
+  and the agent types included, with no model and no sign-in: claude_code_vm's
+  test does so (`claude-request.py`). `/agents` is gone in 2.1.292
+  (`/list-agents` lists them; `claude agents` is about background sessions),
+  and Claude Code refuses bypassPermissions mode as root.
+- `ansible.builtin.find` leaves out hidden files and folders unless `hidden:
+  true`, and folders unless `file_type` asks for them: podman_service's mirror
+  of config/ needs both since config files may sit in `.claude/`.
+- A skill's description decides whether Claude takes it unasked. With "Use
+  for any request to change a project: ...", Claude (Sonnet, `claude -p`, a
+  one-line change) edited the file itself; "Use this skill before changing
+  anything in a project: for every request to add, fix, change, ..." made it
+  take the qa skill, while questions still went without it (seen 2026-10-19).
+- Writes into a project's `.claude/` (the qa skill's `.claude/specs/`) are
+  Claude Code's protected paths: allowed in bypassPermissions only, asked in
+  `default` and `acceptEdits` (so refused in a `-p` run), refused in
+  `dontAsk`; allow rules don't change that (documented; seen in a `-p` run
+  with acceptEdits).
 
 ## Looking inside a running service (field notes)
 
@@ -525,6 +549,23 @@ podman_service service, a smoke test after a deploy).
 
 Each with its reason, newest first. A decision is changed by a new one here.
 
+- 2026-10-19, the qa skill (issue #26, for #11): claude_code_settings ships
+  the skill `qa` (with its protocol next to it) and five subagents
+  (architect, tester, reviewer, developer, documenter), which both targets
+  install in `/etc/claude-code/.claude/`. Synchronous: the session you talk to
+  becomes QA through the skill and runs the experts as subagents one at a
+  time, passing each report on; QA gives each the protocol's path
+  (`${CLAUDE_SKILL_DIR}/protocol.md`), as a subagent starts without the
+  conversation. The texts are #11's package (written for agent teams), changed
+  only where the synchronous design needs it; its settings, hook script,
+  README and examples are not shipped: Markdown and Ansible only. Off by
+  default (`claude_code_settings_qa`, the maintainer's call), as managed names
+  win over a person's and a project's. It needs agent teams off, so a run with
+  both on stops (the issue asked only for the README to say so). The targets
+  get the files as facts (`claude_code_settings_files`, and
+  `claude_code_settings_absent` for those of features turned off): the
+  container's config/ (podman_service) now mirrors names with folders; the VM
+  removes only what claude_code_settings ships, so other files there stay.
 - 2026-10-18, Claude Code roles as one family (issue #25, the maintainer's
   design): `claude_code` is the index (README and an entry point that stops
   with the map), `claude_code_podman` (was claude_code) and `claude_code_vm`
@@ -764,8 +805,9 @@ Each with its reason, newest first. A decision is changed by a new one here.
 
 ## Status
 
-Last updated 2026-10-18. v0.6.0 is the latest release; 0.7.0 (the Claude Code
-family, issue #25) is on its way from develop through accept to main.
+Last updated 2026-10-19. v0.6.0 is the latest release; 0.7.0 (the Claude Code
+family, issue #25) is in accept, and 0.8.0 (the qa skill, issue #26) on its
+way from develop.
 
 - CI passes every job before a release is tagged. Memory limits are checked
   only where cgroup v2 delegates the memory controller (CI's runners).

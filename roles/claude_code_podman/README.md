@@ -20,7 +20,7 @@ claude-code             # Claude, in the container; arguments go to claude
 
 | File | What it is | Whose |
 |---|---|---|
-| `config/` | Claude Code's `/etc/claude-code/`: the project's part of the policy `managed-settings.json` (below) and the instructions `CLAUDE.md` (a template). Mounted read-only, never in the image | The project's |
+| `config/` | Claude Code's `/etc/claude-code/`: the project's part of the policy `managed-settings.json` (below) and the instructions `CLAUDE.md` (a template). Its top-level files go to the server, mounted read-only, never in the image | The project's |
 | `Containerfile` | UBI 9, the tools Claude needs (Python 3.12, Node.js 24 with nvm, compilers, database clients), and Claude Code from Anthropic's signed dnf repository | aslib.infra's |
 | `.containerignore`, `README.md` | What stays out of the image; running it with plain Podman | aslib.infra's |
 | `ansible/inventory.yml`, `ansible/group_vars/all/project.yml`, `ansible/container.env` | The servers, the settings, the container's environment (git-ignored) | The project's |
@@ -54,11 +54,11 @@ project guide's "Download sources").
 |---|---|
 | The service and its account | `claude-code` (`podman_service_user`), no port |
 | Its home, with Claude's login, history, memory and notes | `/opt/claude-code/`, the same path in the container; a removal keeps it |
-| The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/` |
+| The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/`; with `claude_code_settings_qa`, also the qa skill and its experts, in `.claude/` |
 | The shared zone | `/opt/containers/shared/`, with every other service of aslib.infra that has it (`podman_service_shared`) |
 | The command | `/usr/local/sbin/claude-code`, for root: runs `claude` in the container, with a terminal or without one (`claude-code -p "..."` in a script) |
 
-A new image, policy or `CLAUDE.md` restarts the service, which ends what runs in
+A new image, policy, `CLAUDE.md` or qa skill restarts the service, which ends what runs in
 it; conversations stay (`claude-code --continue`, `--resume`). It has no health
 check: nothing in it serves until root runs `claude-code`, so a running
 container is all there is to check.
@@ -109,6 +109,7 @@ or with `-e`; each deploy installs them:
 | `claude_code_settings_theme` | `dark` |
 | `claude_code_settings_agent_teams` | `false` |
 | `claude_code_settings_ultracode` | `false` |
+| `claude_code_settings_qa` | `false`; `true` installs the [qa skill and its five experts](../claude_code_settings/README.md#the-qa-skill-and-its-five-experts) |
 
 Whatever they say, Claude Code starts ready to work: bypassPermissions mode
 needs no confirmation, no folder asks to be trusted (Claude's home, any

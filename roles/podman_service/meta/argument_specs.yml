@@ -54,9 +54,11 @@ argument_specs:
         elements: raw
         default: []
         description:
-          - Config files on the Ansible machine, or for a file made from a variable, a mapping with its name (C(name))
-            and text (C(content)). The deploy copies them into config/ in the service's directory, removes files that
-            are no longer listed, and restarts the service when they change.
+          - Config files on the Ansible machine, each keeping its name; or a mapping with its path in config/
+            (C(name), which may hold folders, such as C(.claude/agents/reviewer.md)) and its text (C(content)) or the
+            file on the Ansible machine to copy (C(src)). The deploy copies them into config/ in the service's
+            directory, its folders the account's, removes files and folders that are no longer listed, and restarts
+            the service when they change.
           - The app finds them read-only in config/ in its working directory.
       podman_service_quadlet_template:
         type: str

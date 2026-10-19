@@ -8,9 +8,11 @@
       ansible.builtin.include_role:
         name: aslib.infra.node_deploy
 
-    # The account takes the next free UID, as without a setting.
-    - name: Deploy Claude Code next to it
+    # The account takes the next free UID, as without a setting. With the qa
+    # skill, so that the idempotence step covers its files too.
+    - name: Deploy Claude Code next to it, with the qa skill
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_podman
       vars:
         podman_service_uid: ""
+        claude_code_settings_qa: true

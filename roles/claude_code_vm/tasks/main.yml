@@ -315,4 +315,5 @@
     claude_code_settings_theme: "{{ claude_code_settings_theme }}"
     claude_code_settings_agent_teams: "{{ claude_code_settings_agent_teams }}"
     claude_code_settings_ultracode: "{{ claude_code_settings_ultracode }}"
+    claude_code_settings_qa: "{{ claude_code_settings_qa }}"
   changed_when: false

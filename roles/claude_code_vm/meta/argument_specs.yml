@@ -114,7 +114,8 @@ argument_specs:
         apt repositories below (each key checked against its known fingerprint) and installs Podman, git, make,
         Python 3.11 next to Ubuntu's 3.12 (aslib.infra's test venvs run ansible-core 2.14 on it, as RHEL 9.6 does) and
         Claude Code, with the policy of aslib.infra.claude_code_settings (what Claude Code's container starts from
-        too) as /etc/claude-code/managed-settings.json, Claude's token and the claude command
+        too) as /etc/claude-code/managed-settings.json and its files in /etc/claude-code/.claude/ (the qa skill and its
+        experts, with claude_code_settings_qa), Claude's token and the claude command
         (/usr/local/bin/claude), which starts Claude Code with it, and a .claude.json for claude, where missing, so
         that its first start asks nothing.
       - Needs the internet, or mirrors of the repositories below and Ubuntu's.
