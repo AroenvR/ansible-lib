@@ -38,7 +38,9 @@
     name: aslib.infra.claude_code_settings
 
 # config/ becomes /etc/claude-code/ in the container: the policy, Claude's
-# instructions (CLAUDE.md) and any other file Claude Code reads there. The policy
+# instructions (CLAUDE.md) and any other file of the project's config/ that
+# Claude Code reads there, and claude_code_settings' files in .claude/ (the qa
+# skill and its experts, when on). The policy
 # Claude Code reads is, in this order: claude_code_settings' base, the
 # container's own part (files/managed-settings.container.json) and the project's
 # config/managed-settings.json. A later value replaces an earlier one, blocks
@@ -54,7 +56,8 @@
   ansible.builtin.set_fact:
     __claude_code_podman_config_files: >-
       {{ query('fileglob', __claude_code_podman_root ~ '/config/*') | reject('search', '/managed-settings[.]json$') | list
-         + [{'name': 'managed-settings.json', 'content': __claude_code_podman_policy | to_nice_json(indent=2, sort_keys=False)}] }}
+         + [{'name': 'managed-settings.json', 'content': __claude_code_podman_policy | to_nice_json(indent=2, sort_keys=False)}]
+         + claude_code_settings_files }}
     __claude_code_podman_mode: "{{ __claude_code_podman_policy.permissions.defaultMode | default('default') }}"
 
 # The Quadlet template is the project's (ansible/templates/service.container.j2,

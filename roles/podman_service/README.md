@@ -157,7 +157,7 @@ which lists the variables it can use.
 | `podman_service_memory` | `""` (no limit) | The most memory the container may use, e.g. `4g`; node_deploy, claude_code_podman and gitlab set it from their own setting |
 | `podman_service_shared` | `true` | Give the service the shared zone, `/opt/containers/shared/` |
 | `podman_service_health_cmd` | `""` (none) | The health check, run in the container: exit code 0 means healthy |
-| `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |
+| `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable, `{name: ..., src: ...}` for a file under another name; a `name` may hold folders (`.claude/agents/reviewer.md`) |
 | `podman_service_quadlet_template` | the role's | A Quadlet template of your own |
 
 ## Restart a service

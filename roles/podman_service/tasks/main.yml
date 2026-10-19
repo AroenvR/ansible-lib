@@ -159,12 +159,40 @@
   notify: Restart the service
 
 # config/ mirrors podman_service_config_files and is mounted read-only. The files
-# belong to the account, as Podman can only relabel its own files for SELinux.
-# An entry is a file's path, or a mapping with its name and content.
+# and folders belong to the account, as Podman can only relabel its own files for
+# SELinux. An entry is a file's path, which keeps its name, or a mapping with the
+# path in config/ (name, folders included) and its text (content) or the file to
+# copy (src).
+- name: Note the config files' paths in config/
+  ansible.builtin.set_fact:
+    __podman_service_config_names: >-
+      {{ podman_service_config_files | select('string') | map('basename') | list
+         + podman_service_config_files | reject('string') | map(attribute='name') | list }}
+
+- name: Check each config file's path stays inside config/
+  ansible.builtin.assert:
+    that: __podman_service_config_names | select('match', '^/|//|/$|(^|.*/)[.][.]?(/|$)') | list | length == 0
+    fail_msg: >-
+      A config file's name must be a path inside config/, without "." or "..":
+      {{ __podman_service_config_names | select('match', '^/|//|/$|(^|.*/)[.][.]?(/|$)') | join(', ') }}
+    quiet: true
+
+# The file module gives the folders it creates on the way the same owner and mode.
+- name: Create the config files' folders
+  ansible.builtin.file:
+    path: "{{ __podman_service_dir }}/config/{{ __podman_service_config_folder }}"
+    state: directory
+    owner: "{{ __podman_service_user }}"
+    group: "{{ __podman_service_user }}"
+    mode: "0755"
+  loop: "{{ __podman_service_config_names | map('dirname') | reject('eq', '') | unique | list }}"
+  loop_control:
+    loop_var: __podman_service_config_folder
+
 - name: Copy the config files
   ansible.builtin.copy:
-    src: "{{ __podman_service_config_file if __podman_service_config_file is string else omit }}"
-    content: "{{ omit if __podman_service_config_file is string else __podman_service_config_file.content }}"
+    src: "{{ __podman_service_config_file if __podman_service_config_file is string else __podman_service_config_file.src | default(omit) }}"
+    content: "{{ omit if __podman_service_config_file is string or 'src' in __podman_service_config_file else __podman_service_config_file.content }}"
     dest: "{{ __podman_service_dir }}/config/{{ __podman_service_config_name }}"
     owner: "{{ __podman_service_user }}"
     group: "{{ __podman_service_user }}"
@@ -179,22 +207,30 @@
          else __podman_service_config_file.name }}
   notify: Restart the service
 
-- name: Find config files that are no longer in podman_service_config_files
+- name: Find what config/ holds
   ansible.builtin.find:
     paths: "{{ __podman_service_dir }}/config"
-    excludes: >-
-      {{ podman_service_config_files | select('string') | map('basename') | list
-         + podman_service_config_files | reject('string') | map(attribute='name') | list }}
-  register: __podman_service_stale_config
+    file_type: any
+    recurse: true
+    hidden: true
+  register: __podman_service_config_found
 
-- name: Remove config files that are no longer in podman_service_config_files
+# What config/ holds stays when it is listed, or is a folder on the way to a
+# listed file: when it, with a slash after it, starts one of the listed paths.
+- name: Remove config files and folders that are no longer in podman_service_config_files
   ansible.builtin.file:
-    path: "{{ __podman_service_stale.path }}"
+    path: "{{ __podman_service_stale }}"
     state: absent
-  loop: "{{ __podman_service_stale_config.files }}"
+  vars:
+    # The listed paths in one text, each followed by two slashes, which no path holds.
+    __podman_service_config_listed: >-
+      {{ [__podman_service_dir ~ '/config/'] | product(__podman_service_config_names, ['//']) | map('join') | join }}
+  loop: >-
+    {{ __podman_service_config_found.files | map(attribute='path') | map('regex_replace', '$', '/')
+       | reject('in', __podman_service_config_listed) | map('regex_replace', '/$', '') | list }}
   loop_control:
     loop_var: __podman_service_stale
-    label: "{{ __podman_service_stale.path | basename }}"
+    label: "{{ __podman_service_stale | relpath(__podman_service_dir ~ '/config') }}"
   notify: Restart the service
 
 # The template sees the account and the directory in use under their public names.

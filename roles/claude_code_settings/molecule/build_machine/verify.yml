@@ -72,3 +72,155 @@
               - ansible_failed_result.msg is search('claude_code_settings_permission_mode')
             fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
             success_msg: PASSED claude_code_settings stops at a value outside the choices, naming the setting.
+
+- name: Check what claude_code_settings hands its targets for the qa skill and its five experts
+  hosts: localhost
+  gather_facts: false
+  vars:
+    __claude_code_settings_test_experts: [architect, tester, reviewer, developer, documenter]
+    __claude_code_settings_test_expert_files: >-
+      {{ __claude_code_settings_test_experts | map('regex_replace', '^', '.claude/agents/') | map('regex_replace', '$', '.md')
+         | list }}
+    __claude_code_settings_test_qa_files: >-
+      {{ ['.claude/skills/qa/SKILL.md', '.claude/skills/qa/protocol.md'] + __claude_code_settings_test_expert_files }}
+  tasks:
+    - name: Compute the settings with the defaults
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+
+    - name: Check the qa skill is off by default, and its files are to go where an earlier run installed them
+      ansible.builtin.assert:
+        that:
+          - claude_code_settings_files == []
+          - claude_code_settings_absent | sort == (['.claude/skills/qa'] + __claude_code_settings_test_expert_files) | sort
+        fail_msg: "Files: {{ claude_code_settings_files }}; absent: {{ claude_code_settings_absent }}"
+        success_msg: >-
+          PASSED claude_code_settings: by default it hands over no files for Claude Code's managed settings directory,
+          and names the qa skill's folder and its five experts' files as absent.
+
+    - name: Compute the settings with the qa skill on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+      vars:
+        claude_code_settings_qa: "true"   # as -e passes it
+
+    - name: Check it hands over the qa skill, its protocol and the five experts, each a file of the collection
+      ansible.builtin.assert:
+        that:
+          - claude_code_settings_files | map(attribute='name') | sort == __claude_code_settings_test_qa_files | sort
+          - claude_code_settings_files | map(attribute='src') | select('file') | list | length == 7
+          - claude_code_settings_absent == []
+        fail_msg: "Files: {{ claude_code_settings_files }}; absent: {{ claude_code_settings_absent }}"
+        success_msg: >-
+          PASSED claude_code_settings with claude_code_settings_qa hands over .claude/skills/qa/SKILL.md, its
+          protocol.md and the five experts in .claude/agents/, from its own files, and nothing as absent.
+
+    # Claude Code skips an agent file with broken frontmatter without a word.
+    - name: Check each file's frontmatter, which Claude Code reads to load it
+      vars:
+        __claude_code_settings_test_text: "{{ lookup('ansible.builtin.file', item.src) }}"
+        __claude_code_settings_test_front: "{{ __claude_code_settings_test_text.split('---')[1] | from_yaml }}"
+        __claude_code_settings_test_name: "{{ item.name | basename | splitext | first }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_settings_test_text is match('---\n')
+          - __claude_code_settings_test_front.name == __claude_code_settings_test_name
+          - __claude_code_settings_test_front.model == 'inherit'
+          - __claude_code_settings_test_front.tools == 'Read, Grep, Glob, Bash, Write, Edit'
+          - __claude_code_settings_test_front.description is search('^Serves the qa skill')
+        fail_msg: "{{ item.name }}: {{ __claude_code_settings_test_text.split('---')[1] }}"
+        quiet: true
+      loop: "{{ claude_code_settings_files | selectattr('name', 'in', __claude_code_settings_test_expert_files) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check the skill's frontmatter
+      vars:
+        __claude_code_settings_test_text: >-
+          {{ lookup('ansible.builtin.file', (claude_code_settings_files | selectattr('name', 'search', 'SKILL') | first).src) }}
+        __claude_code_settings_test_front: "{{ __claude_code_settings_test_text.split('---')[1] | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_settings_test_text is match('---\n')
+          - __claude_code_settings_test_front.keys() | sort == ['description', 'name']
+          - __claude_code_settings_test_front.name == 'qa'
+          - __claude_code_settings_test_front.description is search('^Use this skill before changing anything in a project')
+          - __claude_code_settings_test_front.description is search('[Nn]ot for questions')
+        fail_msg: "{{ __claude_code_settings_test_text.split('---')[1] }}"
+        success_msg: >-
+          PASSED the five experts' frontmatter names each after its file, with the package's tools, the session's
+          model and a description that says it serves the qa skill; the skill's is for change requests, not questions.
+
+    # #11's files were written for agent teams; these run synchronously, from a
+    # skill, and serve any project.
+    - name: Check no file names what the synchronous design removed, or aslib
+      vars:
+        __claude_code_settings_test_text: "{{ lookup('ansible.builtin.file', item.src) }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_settings_test_text is not search('SendMessage|Task(Create|Get|List|Update|Completed)|Agent[(]')
+          - __claude_code_settings_test_text is not search('teammate|agent team|mailbox|team config', ignorecase=True)
+          - __claude_code_settings_test_text is not search('--agent |gatecheck|settings[.](hooks|json)|README[.]md|aslib')
+          - __claude_code_settings_test_text is not search('CLAUDE[.]md') or item.name is search('documenter')
+          - __claude_code_settings_test_text is search('protocol')
+        fail_msg: "{{ item.name }} names one of them."
+        quiet: true
+      loop: "{{ claude_code_settings_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check the skill runs the experts one at a time and stops at a gate that blocks three times in a row
+      vars:
+        __claude_code_settings_test_text: >-
+          {{ lookup('ansible.builtin.file', (claude_code_settings_files | selectattr('name', 'search', 'SKILL') | first).src) }}
+      ansible.builtin.assert:
+        that:
+          - __claude_code_settings_test_text is search('one at a time')
+          - __claude_code_settings_test_text is search('three times in a row')
+          - __claude_code_settings_test_text is search('[$][{]CLAUDE_SKILL_DIR[}]/protocol[.]md')
+        success_msg: >-
+          PASSED no file names agent teams, their tools, hooks or settings, the package's README or aslib; each
+          points to the protocol, and the skill runs one expert at a time and stops at a gate that blocks three times.
+
+    - name: Try the qa skill with agent teams on
+      block:
+        - name: Compute the settings with both on
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_settings
+          vars:
+            claude_code_settings_qa: true
+            claude_code_settings_agent_teams: true
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_settings accepted the qa skill with agent teams on.
+      rescue:
+        - name: Check the run stopped, naming both settings
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_settings_qa')
+              - ansible_failed_result.msg is search('claude_code_settings_agent_teams')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: >-
+              PASSED claude_code_settings stops when the qa skill and agent teams are both on, naming both settings.
+
+    - name: Try a qa setting that is not a boolean
+      block:
+        - name: Compute the settings with it
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_settings
+          vars:
+            claude_code_settings_qa: maybe
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_settings accepted claude_code_settings_qa=maybe.
+      rescue:
+        - name: Check the run stopped, naming the setting
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_settings_qa')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: PASSED claude_code_settings stops at a qa setting that is not a boolean, naming it.

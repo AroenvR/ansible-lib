@@ -7,3 +7,4 @@ claude_code_settings_effort: xhigh
 claude_code_settings_theme: dark
 claude_code_settings_agent_teams: false
 claude_code_settings_ultracode: false
+claude_code_settings_qa: false

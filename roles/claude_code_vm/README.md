@@ -89,6 +89,11 @@ interrupted session loses nothing (commits, a handoff file per task, memory),
 and `/tmp` empties at every boot. Claude Code also reads `~/.claude/CLAUDE.md`
 and each project's `CLAUDE.md`, which are yours and Claude's.
 
+With `claude_code_settings_qa: true`, change requests go through the [qa skill
+and its five expert subagents](../claude_code_settings/README.md#the-qa-skill-and-its-five-experts),
+which every run installs in `/etc/claude-code/.claude/`; with `false` (the
+default), a run removes them and leaves any other file there alone.
+
 aslib.infra's tests run there as in CI (`<repository>` is the URL of the
 aslib.infra repository you use):
 
@@ -139,6 +144,7 @@ for one run. So change a setting in the file, then run the playbook again:
 claude_code_vm_memory: 6144
 claude_code_settings_theme: light
 claude_code_settings_permission_mode: default   # with permission prompts
+claude_code_settings_qa: true                    # the qa skill and its experts
 ```
 
 The download sources (image, repositories, keys) and the debugging options

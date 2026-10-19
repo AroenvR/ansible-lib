@@ -12,7 +12,8 @@ argument_specs:
         installs too), the container's own part (files/managed-settings.container.json) and the project's
         config/managed-settings.json, merged in that order - later values win, lists combine. How a session starts
         (permission mode, model, effort, theme, agent teams, ultracode) is claude_code_settings' settings, the same
-        names in every target. The container's environment variables come from ansible/container.env, Claude's
+        names in every target, and so is the qa skill with its five experts (claude_code_settings_qa), which the
+        deploy adds to config/.claude/. The container's environment variables come from ansible/container.env, Claude's
         sign-in too (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY). With podman_service_shared, Claude also works in
         the shared zone, /opt/containers/shared/.
       - A deploy that still sets a setting of before 0.7.0 (claude_code_bypass_permissions, claude_code_memory, ...)
