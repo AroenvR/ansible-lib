@@ -4,6 +4,42 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.8.0
+
+- Added: `claude_code_settings_qa` (off by default) installs the qa skill and
+  five expert subagents in Claude Code's `/etc/claude-code/.claude/`, in the
+  container and the VM. A request to change a project then goes through the
+  skill, which makes the session QA, the lead: it writes the spec and the
+  acceptance and runs `architect`, `tester`, `reviewer`, `developer` and
+  `documenter` one at a time through the gates G0, GA, GB and GC of the
+  protocol next to the skill, passing each one's report to the next, and
+  stops to ask after three BLOCKs at one gate; a question is answered without
+  it. The texts are the six-role team written for agent teams, changed only
+  where running the experts as subagents, one at a time, needs it. Off by
+  default because managed skills and subagents win over a person's or a
+  project's of the same names; turning it off removes the files at the next
+  deploy or run. It needs agent teams off: a run with both on stops, naming
+  both settings.
+- Added: claude_code_settings hands over `claude_code_settings_files` (the
+  files of the features that are on, for the managed settings directory) and
+  `claude_code_settings_absent` (the paths of those that are off).
+- Changed: podman_service's `podman_service_config_files` takes names with
+  folders (`.claude/agents/reviewer.md`) and a mapping's `src` as well as its
+  `content`; config/ mirrors the list with its folders, which are the
+  account's. A deploy now also removes hidden files and any folder in config/
+  that `podman_service_config_files` does not list, with everything in it;
+  before, it removed only the other files directly in config/.
+
+### Upgrading from 0.7.0
+
+- A service of podman_service (a Node.js project, Claude Code, GitLab) with
+  files placed by hand in its `config/` on the server
+  (`/opt/<service>/config/`): the next deploy removes those that are hidden
+  or in a folder, as it already removed the others. Move them out of
+  `config/` first, or let the deploy bring them: a Node.js project's
+  `config/production/*.json`, a Claude Code project's top-level `config/`
+  files.
+
 ## 0.7.0
 
 - Changed, **breaking**: the Claude Code roles are one family. claude_code,

@@ -133,6 +133,40 @@
     group: root
     mode: "0644"
 
+# claude_code_settings' files in /etc/claude-code/.claude/ (the qa skill and its
+# experts, when on), like the policy. Those of features that are off go; any
+# other file there stays.
+- name: Create the folders of claude_code_settings' files
+  ansible.builtin.file:
+    path: /etc/claude-code/{{ __claude_code_vm_folder }}
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ claude_code_settings_files | map(attribute='name') | map('dirname') | unique | list }}"
+  loop_control:
+    loop_var: __claude_code_vm_folder
+
+- name: Install claude_code_settings' files
+  ansible.builtin.copy:
+    src: "{{ __claude_code_vm_file.src }}"
+    dest: /etc/claude-code/{{ __claude_code_vm_file.name }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ claude_code_settings_files }}"
+  loop_control:
+    loop_var: __claude_code_vm_file
+    label: "{{ __claude_code_vm_file.name }}"
+
+- name: Remove claude_code_settings' files of the features that are off
+  ansible.builtin.file:
+    path: /etc/claude-code/{{ __claude_code_vm_absent }}
+    state: absent
+  loop: "{{ claude_code_settings_absent }}"
+  loop_control:
+    loop_var: __claude_code_vm_absent
+
 # Claude's sign-in: readable by claude, changeable only with sudo, and never in
 # the policy, which everyone may read.
 - name: Create the directory of Claude's token, {{ __claude_code_vm_token_file | dirname }}

@@ -237,6 +237,82 @@
           PASSED Claude Code started in a new git repository in claude's home in bypassPermissions mode, signed in,
           without asking to trust the folder, to accept the mode, or for its first-run setup.
 
+- name: Check Claude Code in claude-dev finds the qa skill and its five experts, as claude
+  hosts: claude-dev
+  gather_facts: false
+  tasks:
+    - name: Compute what claude_code_settings hands every target, with the qa skill as this run had it (on)
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+      vars:
+        claude_code_settings_qa: "{{ hostvars['localhost'].claude_code_settings_qa }}"
+
+    - name: Find the files in /etc/claude-code
+      ansible.builtin.find:
+        paths: /etc/claude-code
+        recurse: true
+        hidden: true
+        get_checksum: true
+      register: __claude_code_vm_test_managed
+
+    # Through the claude command, as a person starts it.
+    - name: Start Claude Code with a question, its API a stand-in that records what Claude Code sends
+      ansible.builtin.script:
+        cmd: claude-request.py 60 claude -p hello
+        chdir: /home/claude/src/claude-vm-test
+        executable: python3
+      register: __claude_code_vm_test_request
+      changed_when: false
+
+    - name: Check /etc/claude-code holds exactly the policy, the instructions and the qa skill's files, as the policy is owned and moded
+      vars:
+        __claude_code_vm_test_found: "{{ __claude_code_vm_test_managed.files | map(attribute='path') | map('relpath', '/etc/claude-code') | list }}"
+        __claude_code_vm_test_policy_file: >-
+          {{ __claude_code_vm_test_managed.files | selectattr('path', 'eq', '/etc/claude-code/managed-settings.json') | first }}
+        __claude_code_vm_test_installed: >-
+          {{ __claude_code_vm_test_managed.files | selectattr('path', 'search', '^/etc/claude-code/[.]claude/') | list }}
+      ansible.builtin.assert:
+        that:
+          - claude_code_settings_files | length == 7
+          - >-
+            __claude_code_vm_test_found | sort
+            == (['CLAUDE.md', 'managed-settings.json'] + claude_code_settings_files | map(attribute='name') | list) | sort
+          - __claude_code_vm_test_installed | map(attribute='pw_name') | unique == [__claude_code_vm_test_policy_file.pw_name]
+          - __claude_code_vm_test_installed | map(attribute='mode') | unique == [__claude_code_vm_test_policy_file.mode]
+        fail_msg: "/etc/claude-code: {{ __claude_code_vm_test_managed.files | map(attribute='path') | list }}"
+        success_msg: >-
+          PASSED claude_code_vm installed claude_code_settings' qa skill (SKILL.md, protocol.md) and its five experts in
+          /etc/claude-code/.claude/, {{ __claude_code_vm_test_policy_file.pw_name }}'s and
+          {{ __claude_code_vm_test_policy_file.mode }} like the policy, next to the policy and the instructions only.
+
+    - name: Check each is the same as the collection's
+      vars:
+        __claude_code_vm_test_installed: >-
+          {{ __claude_code_vm_test_managed.files | selectattr('path', 'eq', '/etc/claude-code/' ~ item.name) | first }}
+      ansible.builtin.assert:
+        that: __claude_code_vm_test_installed.checksum == lookup('ansible.builtin.file', item.src, rstrip=false) | hash('sha1')
+        fail_msg: "{{ item.name }} differs from {{ item.src }}."
+        quiet: true
+      loop: "{{ claude_code_settings_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check Claude Code lists qa among its skills and the five experts among its agents
+      vars:
+        __claude_code_vm_test_sent: "{{ __claude_code_vm_test_request.stdout | from_json | to_json }}"
+      ansible.builtin.assert:
+        that:
+          - "__claude_code_vm_test_sent is search('- qa: Use this skill before changing anything in a project')"
+          - "__claude_code_vm_test_sent is search('- architect: Serves the qa skill')"
+          - "__claude_code_vm_test_sent is search('- tester: Serves the qa skill')"
+          - "__claude_code_vm_test_sent is search('- reviewer: Serves the qa skill')"
+          - "__claude_code_vm_test_sent is search('- developer: Serves the qa skill')"
+          - "__claude_code_vm_test_sent is search('- documenter: Serves the qa skill')"
+        fail_msg: "Claude Code sent: {{ __claude_code_vm_test_sent[:3000] }}"
+        success_msg: >-
+          PASSED the real Claude Code in claude-dev, started with the claude command, offered its model the skill qa and
+          the agents architect, tester, reviewer, developer and documenter, from /etc/claude-code/.claude/.
+
 - name: Remove the stand-in for the local network
   hosts: localhost
   become: true
@@ -293,6 +369,7 @@
           - __claude_code_vm_test_values.claude_code_vm_host_names == ['host-service.home.arpa']
           - __claude_code_vm_test_values.claude_code_vm_memory == 4096
           - __claude_code_vm_test_values.claude_code_settings_theme == 'dark'
+          - __claude_code_vm_test_values.claude_code_settings_qa is true
           - __claude_code_vm_test_values.claude_code_vm_oauth_token == __claude_code_vm_test_token
           - __claude_code_vm_test_setting_lines | length == __claude_code_vm_test_expected | length
         fail_msg: "{{ __claude_code_vm_test_stat.stat.mode | default('none') }}: {{ __claude_code_vm_test_values.keys() | list }}"
@@ -393,7 +470,13 @@
         replace: 'claude_code_vm_oauth_token: ""'
       no_log: true
 
-    - name: Run aslib.infra.claude_code_vm again, without a token
+    - name: Turn the qa skill off in the settings file
+      ansible.builtin.replace:
+        path: "{{ __claude_code_vm_test_file }}"
+        regexp: '^claude_code_settings_qa: .*$'
+        replace: 'claude_code_settings_qa: false'
+
+    - name: Run aslib.infra.claude_code_vm again, without a token and without the qa skill
       ansible.builtin.command:
         argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
         chdir: /
@@ -407,6 +490,25 @@
         path: /etc/claude-vm/oauth-token
       delegate_to: claude-dev
       register: __claude_code_vm_test_token_after
+
+    - name: Find the files in the VM's /etc/claude-code
+      ansible.builtin.find:
+        paths: /etc/claude-code
+        recurse: true
+        hidden: true
+      delegate_to: claude-dev
+      register: __claude_code_vm_test_managed_after
+
+    - name: Check the run took the qa skill and its experts out of the VM
+      ansible.builtin.assert:
+        that:
+          - >-
+            __claude_code_vm_test_managed_after.files | map(attribute='path') | sort
+            == ['/etc/claude-code/CLAUDE.md', '/etc/claude-code/managed-settings.json']
+        fail_msg: "/etc/claude-code: {{ __claude_code_vm_test_managed_after.files | map(attribute='path') | list }}"
+        success_msg: >-
+          PASSED with claude_code_settings_qa false in the settings file, a run removed the qa skill and its five experts
+          from the VM's /etc/claude-code, which kept the policy and the instructions.
 
     - name: Remove claude-dev, as aslib.infra.claude_code_vm_remove does
       ansible.builtin.command:

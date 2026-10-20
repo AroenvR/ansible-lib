@@ -46,8 +46,9 @@ On every server it:
 2. copies the image archive and loads it as the account (also when the archive
    is there but the image is not);
 3. creates the service's directory and `data/` in it when missing, copies the
-   config files to its `config/` (and removes those no longer listed), installs
-   the environment file and the Quadlet file;
+   config files to its `config/` (and removes everything else there, hidden
+   files and folders included), installs the environment file and the Quadlet
+   file;
 4. reloads the account's systemd and restarts the service when the image, the
    environment file, the config files or the Quadlet file changed, or starts it
    when it is not running;
@@ -157,7 +158,7 @@ which lists the variables it can use.
 | `podman_service_memory` | `""` (no limit) | The most memory the container may use, e.g. `4g`; node_deploy, claude_code_podman and gitlab set it from their own setting |
 | `podman_service_shared` | `true` | Give the service the shared zone, `/opt/containers/shared/` |
 | `podman_service_health_cmd` | `""` (none) | The health check, run in the container: exit code 0 means healthy |
-| `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable |
+| `podman_service_config_files` | `[]` | Config files on the Ansible machine, for `config/`; or `{name: ..., content: ...}` for one made from a variable, `{name: ..., src: ...}` for a file under another name; a `name` may hold folders (`.claude/agents/reviewer.md`) |
 | `podman_service_quadlet_template` | the role's | A Quadlet template of your own |
 
 ## Restart a service

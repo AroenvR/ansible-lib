@@ -329,6 +329,90 @@
           with every folder trusted (CLAUDE_CODE_SANDBOXED) and the first-run setup done, and Claude found its
           policy and instructions in /etc/claude-code and could not change them.
 
+    # converge.yml deploys Claude Code with claude_code_settings_qa.
+    - name: Compute what claude_code_settings hands every target with the qa skill on, as the deploy had it
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+      vars:
+        claude_code_settings_qa: true
+
+    - name: Note the files of claude_code_settings
+      ansible.builtin.set_fact:
+        __node_deploy_test_qa_files: "{{ claude_code_settings_files }}"
+
+    - name: Look up the collection's files
+      ansible.builtin.stat:
+        path: "{{ item.src }}"
+      loop: "{{ __node_deploy_test_qa_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+      delegate_to: localhost
+      register: __node_deploy_test_qa_sources
+
+    - name: Find everything in config/, which the container has as /etc/claude-code
+      ansible.builtin.find:
+        paths: /opt/claude-code/config
+        file_type: any
+        recurse: true
+        hidden: true
+      register: __node_deploy_test_config
+
+    - name: List /etc/claude-code's files in Claude Code's container, with their checksums
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
+          - podman
+          - exec
+          - --workdir=/etc/claude-code/
+          - claude-code
+          - sh
+          - -c
+          - find . -type f | sort | xargs sha1sum
+        chdir: /
+      register: __node_deploy_test_qa_inside
+      changed_when: false
+
+    - name: Check config/ holds exactly the policy, the instructions and the qa skill's files, as the policy is owned and moded
+      vars:
+        __node_deploy_test_found: >-
+          {{ __node_deploy_test_config.files | map(attribute='path') | map('relpath', '/opt/claude-code/config') | list }}
+        __node_deploy_test_names: "{{ __node_deploy_test_qa_files | map(attribute='name') | list }}"
+        __node_deploy_test_policy_file: >-
+          {{ __node_deploy_test_config.files | selectattr('path', 'eq', '/opt/claude-code/config/managed-settings.json') | first }}
+        __node_deploy_test_installed: >-
+          {{ __node_deploy_test_config.files | selectattr('path', 'search', '/config/[.]claude/.+[.]md$') | list }}
+        __node_deploy_test_folders: "{{ __node_deploy_test_config.files | selectattr('isdir') | list }}"
+        __node_deploy_test_inside: >-
+          {{ __node_deploy_test_qa_inside.stdout_lines | map('split') | map('reverse') | map('join', ' ') | list }}
+        __node_deploy_test_expected_inside: >-
+          {{ (__node_deploy_test_names | map('regex_replace', '^', './') | list)
+             | zip(__node_deploy_test_qa_sources.results | map(attribute='stat.checksum'))
+             | map('join', ' ') | list }}
+      ansible.builtin.assert:
+        that:
+          - >-
+            __node_deploy_test_found | sort
+            == (['CLAUDE.md', 'managed-settings.json', '.claude', '.claude/agents', '.claude/skills', '.claude/skills/qa']
+                + __node_deploy_test_names) | sort
+          - __node_deploy_test_installed | map(attribute='pw_name') | unique == [__node_deploy_test_policy_file.pw_name]
+          - __node_deploy_test_installed | map(attribute='mode') | unique == [__node_deploy_test_policy_file.mode]
+          - __node_deploy_test_folders | map(attribute='pw_name') | unique == ['claude-code']
+          - __node_deploy_test_inside is superset(__node_deploy_test_expected_inside)
+          - __node_deploy_test_inside | length == __node_deploy_test_expected_inside | length + 2
+        fail_msg: >-
+          config/: {{ __node_deploy_test_config.files | map(attribute='path') | list }};
+          in the container: {{ __node_deploy_test_qa_inside.stdout_lines }}
+        success_msg: >-
+          PASSED claude_code_podman installed claude_code_settings' qa skill (SKILL.md, protocol.md) and its five experts
+          in config/.claude/, {{ __node_deploy_test_policy_file.pw_name }}'s and {{ __node_deploy_test_policy_file.mode }}
+          like the policy, in folders of the account; the container finds exactly these, the policy and the
+          instructions in /etc/claude-code, each the same as the collection's.
+
     - name: Check a file reaches the group only with the group's access, and the README matches its read-only checksum
       ansible.builtin.assert:
         that:
@@ -435,6 +519,7 @@
         claude_code_settings_theme: light
         claude_code_settings_agent_teams: "true"   # as -e passes it
         claude_code_settings_ultracode: true
+        claude_code_settings_qa: false
 
     - name: Check the README against its checksum again
       ansible.builtin.command:
@@ -472,6 +557,25 @@
       ansible.builtin.slurp:
         src: /opt/claude-code/config/managed-settings.json
       register: __node_deploy_test_policy
+
+    - name: Find everything in config/ after the deploy without the qa skill
+      ansible.builtin.find:
+        paths: /opt/claude-code/config
+        file_type: any
+        recurse: true
+        hidden: true
+      register: __node_deploy_test_config_after
+
+    - name: Check that deploy took the qa skill, its experts and their folders out of config/
+      ansible.builtin.assert:
+        that:
+          - >-
+            __node_deploy_test_config_after.files | map(attribute='path') | map('basename') | sort
+            == ['CLAUDE.md', 'managed-settings.json']
+        fail_msg: "config/: {{ __node_deploy_test_config_after.files | map(attribute='path') | list }}"
+        success_msg: >-
+          PASSED a deploy with claude_code_settings_qa off removed the qa skill, its five experts and their folders from
+          config/, leaving the policy and the instructions.
 
     - name: Compute what claude_code_settings hands every target, with the same settings
       ansible.builtin.include_role:

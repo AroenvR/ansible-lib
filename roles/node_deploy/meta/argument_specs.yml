@@ -26,8 +26,8 @@ argument_specs:
         default: config/production/*.json
         description:
           - The project's config files for the server, a pattern relative to the project's root. The deploy copies
-            them into config/ in the service's directory, removes files the project no longer has, and restarts the
-            service when they change.
+            them into config/ in the service's directory, removes everything else there (files the project no
+            longer has, hidden files and folders included), and restarts the service when they change.
           - The app finds them read-only in config/ in its working directory.
       node_deploy_health_check:
         type: bool

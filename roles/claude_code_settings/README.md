@@ -1,7 +1,8 @@
 # aslib.infra.claude_code_settings
 
-How a new Claude Code session starts, the same wherever aslib.infra installs
-Claude Code: in its container ([claude_code_podman](../claude_code_podman/README.md))
+How a new Claude Code session starts, and the qa skill with its five expert
+subagents where turned on, the same wherever aslib.infra installs Claude Code:
+in its container ([claude_code_podman](../claude_code_podman/README.md))
 and in its VM ([claude_code_vm](../claude_code_vm/README.md)). A utility of the
 [Claude Code roles](../claude_code/README.md): each target includes it and
 installs what it hands over where its Claude Code reads it. It changes nothing
@@ -20,11 +21,54 @@ The same names and defaults in every target. Options and their choices:
 | `claude_code_settings_theme` | `dark` | this theme |
 | `claude_code_settings_agent_teams` | `false` | agent teams on or off |
 | `claude_code_settings_ultracode` | `false` | ultracode on or off |
+| `claude_code_settings_qa` | `false` | the [qa skill and its five experts](#the-qa-skill-and-its-five-experts) on or off |
 
 `/model`, `/effort` and `/config` still change them within a session; the next
 session starts from these again. To keep the permission prompts:
 `claude_code_settings_permission_mode: default`. The policy's deny rules apply
 in every mode.
+
+## The qa skill and its five experts
+
+With `claude_code_settings_qa: true`, every target installs a skill and five
+subagents in Claude Code's managed settings directory, `/etc/claude-code/`:
+
+| File | What |
+|---|---|
+| `.claude/skills/qa/SKILL.md` | The skill `qa`: the session you talk to becomes QA, the lead |
+| `.claude/skills/qa/protocol.md` | The protocol QA and every expert follow: roles, ownership, artifacts, gates G0/GA/GB/GC, the handoff, when to stop |
+| `.claude/agents/architect.md` | Technical architecture and contracts |
+| `.claude/agents/tester.md` | Tests and their RED |
+| `.claude/agents/reviewer.md` | The gates' verdicts; never edits what it reviews |
+| `.claude/agents/developer.md` | Production code, GREEN and REFACTOR |
+| `.claude/agents/documenter.md` | Docs and code comments |
+
+Its description has Claude take the skill for any request to change a
+project, without being told; a question is answered without it, and `/qa`
+starts it by hand. QA
+writes the spec and the acceptance, and runs the experts one at a time,
+passing each one's report on to the next, in the protocol's order: spec,
+architect, reviewer G0, tester RED, reviewer GA, developer GREEN, reviewer GB,
+documenter, reviewer GC, acceptance. A small change takes the protocol's short
+route. A BLOCK goes back to the expert who owns the work and the gate runs
+again; after three BLOCKs in a row at the same gate, QA stops and asks. QA
+writes no production code, tests or docs itself, and each expert writes only
+the paths QA gives it. The artifacts go in `.claude/specs/<change-id>/` in the
+project; whether it commits them is the project's choice. Git, branches and
+releases stay under the project's own rules.
+
+Claude Code protects a project's `.claude/` folder: in bypassPermissions mode
+(the default) QA and the experts write their artifacts there freely; in `default` and
+`acceptEdits` mode Claude Code asks first (its prompt can allow it for the
+session), and in `dontAsk` mode it refuses.
+
+Off by default: managed skills and subagents win over a person's and a
+project's with the same name (`qa`, `architect`, `tester`, `reviewer`,
+`developer`, `documenter`), so turning them on hides those. Turning them off
+again removes the files at the next run. They need agent teams off
+(`claude_code_settings_agent_teams: false`, the default): with agent teams on,
+Claude starts a subagent it names as a teammate instead, and the run stops
+when both are on.
 
 ## Ready to work from the start, in every target
 
@@ -58,6 +102,8 @@ Facts, for the role that includes it:
 | `claude_code_settings_policy` | The base of Claude Code's policy, [templates/managed-settings.json.j2](templates/managed-settings.json.j2) with the settings' values | `/etc/claude-code/managed-settings.json`; the container adds its own part and the project's |
 | `claude_code_settings_environment` | Environment variables every `claude` process needs | The VM's `claude` command; the container's `claude-code` command |
 | `claude_code_settings_global_config` | Claude Code's `.claude.json` for an account without one | The account's home, written only where missing |
+| `claude_code_settings_files` | The files of the features that are on, each its path in the managed settings directory (`name`) and its file in this role (`src`) | `/etc/claude-code/`: the container's `config/`, the VM's `/etc/claude-code/` |
+| `claude_code_settings_absent` | The paths there of the features that are off (a skill's folder, an agent's file) | Removed where an earlier run installed them (the container's `config/` holds only what the deploy lists anyway) |
 
 The base policy also turns off Claude Code's auto-updater (each target updates
 it its own way) and its telemetry, turns on workflows, keeps plans in
@@ -74,4 +120,24 @@ would run code, and reads of `.env` files.
     content: "{{ claude_code_settings_policy | to_nice_json(indent=2) }}"
     dest: /etc/claude-code/managed-settings.json
     mode: "0644"
+
+- name: Create the folders of the files
+  ansible.builtin.file:
+    path: /etc/claude-code/{{ item }}
+    state: directory
+    mode: "0755"
+  loop: "{{ claude_code_settings_files | map(attribute='name') | map('dirname') | unique | list }}"
+
+- name: Install the files of the features that are on
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: /etc/claude-code/{{ item.name }}
+    mode: "0644"
+  loop: "{{ claude_code_settings_files }}"
+
+- name: Remove those of the features that are off
+  ansible.builtin.file:
+    path: /etc/claude-code/{{ item }}
+    state: absent
+  loop: "{{ claude_code_settings_absent }}"
 ```
