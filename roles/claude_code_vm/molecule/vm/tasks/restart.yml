@@ -1,0 +1,45 @@
+---
+# FR-031, AC-031: when Ubuntu's marker says the VM needs a restart after the
+# upgrade step, the run restarts it and goes on; the marker is gone afterwards.
+- name: Leave Ubuntu's marker that the VM needs a restart, as an upgrade of its kernel does
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_ssh + ['sudo -n touch /var/run/reboot-required'] }}"
+  changed_when: true
+
+- name: Look up the VM before the run
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Note the VM's boot before the run
+  ansible.builtin.set_fact:
+    __claude_code_vm_test_marked: "{{ __claude_code_vm_test_vm }}"
+
+- name: Run aslib.infra.claude_code_vm with the marker in place
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  register: __claude_code_vm_test_restart
+  changed_when: true
+  failed_when: false
+
+- name: Look up the VM after the run
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Look up the marker
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_ssh + ['test -e /var/run/reboot-required && echo present || echo absent'] }}"
+  register: __claude_code_vm_test_marker
+  changed_when: false
+
+- name: Check the run restarted the VM, which came back without the marker (AC-031)
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_restart.rc == 0
+      - __claude_code_vm_test_vm.state == 'running'
+      - __claude_code_vm_test_vm.boot != __claude_code_vm_test_marked.boot
+      - __claude_code_vm_test_marker.stdout == 'absent'
+    fail_msg: >-
+      rc {{ __claude_code_vm_test_restart.rc }}: {{ __claude_code_vm_test_restart.stdout_lines[-6:] }}; boot before
+      {{ __claude_code_vm_test_marked.boot }}, after {{ __claude_code_vm_test_vm.boot }}; marker
+      {{ __claude_code_vm_test_marker.stdout }}
+    success_msg: >-
+      PASSED with Ubuntu's restart marker in the VM, a run restarted it (a new boot), went on, and the marker is gone.

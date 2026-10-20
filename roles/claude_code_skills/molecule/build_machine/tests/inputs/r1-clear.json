@@ -1,0 +1,149 @@
+[
+  {
+    "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+    "cwd": "/home/claude/work",
+    "hook_event_name": "SessionStart",
+    "source": "startup",
+    "model": "claude-opus-4-1"
+  },
+  {
+    "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "8d197087-1621-45f0-b011-5241e4098704",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "hello"
+  },
+  {
+    "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "8d197087-1621-45f0-b011-5241e4098704",
+    "permission_mode": "bypassPermissions",
+    "effort": {
+      "level": "xhigh"
+    },
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "scheduled",
+    "background_tasks": [],
+    "session_crons": [
+      {
+        "id": "f95aac81",
+        "schedule": "* * * * *",
+        "recurring": true,
+        "prompt": "[loop-test] wake up"
+      }
+    ]
+  },
+  {
+    "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "e6fd42d5-58fc-41db-ac43-2e8332e7d18b",
+    "hook_event_name": "SessionEnd",
+    "reason": "clear"
+  },
+  {
+    "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/bbbbbbbb-2222-4222-8222-222222222222.jsonl",
+    "cwd": "/home/claude/work",
+    "hook_event_name": "SessionStart",
+    "source": "clear"
+  },
+  {
+    "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/bbbbbbbb-2222-4222-8222-222222222222.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "c9a64972-857c-4e96-8410-591994ff1102",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "[loop-test] wake up"
+  },
+  {
+    "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/bbbbbbbb-2222-4222-8222-222222222222.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "c9a64972-857c-4e96-8410-591994ff1102",
+    "permission_mode": "bypassPermissions",
+    "effort": {
+      "level": "xhigh"
+    },
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "woke",
+    "background_tasks": [],
+    "session_crons": [
+      {
+        "id": "f95aac81",
+        "schedule": "* * * * *",
+        "recurring": true,
+        "prompt": "[loop-test] wake up"
+      }
+    ]
+  },
+  {
+    "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/bbbbbbbb-2222-4222-8222-222222222222.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "621bde78-f046-42ed-a43b-5d1ef931356d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "[loop-test] wake up"
+  },
+  {
+    "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/bbbbbbbb-2222-4222-8222-222222222222.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "621bde78-f046-42ed-a43b-5d1ef931356d",
+    "permission_mode": "bypassPermissions",
+    "effort": {
+      "level": "xhigh"
+    },
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "woke",
+    "background_tasks": [],
+    "session_crons": [
+      {
+        "id": "f95aac81",
+        "schedule": "* * * * *",
+        "recurring": true,
+        "prompt": "[loop-test] wake up"
+      }
+    ]
+  },
+  {
+    "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/bbbbbbbb-2222-4222-8222-222222222222.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "c13382c7-0417-402b-81d2-4d491c073db3",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "[loop-test] wake up"
+  },
+  {
+    "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+    "transcript_path": "/home/claude/.claude/projects/-home-claude-work/bbbbbbbb-2222-4222-8222-222222222222.jsonl",
+    "cwd": "/home/claude/work",
+    "prompt_id": "c13382c7-0417-402b-81d2-4d491c073db3",
+    "permission_mode": "bypassPermissions",
+    "effort": {
+      "level": "xhigh"
+    },
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "woke",
+    "background_tasks": [],
+    "session_crons": [
+      {
+        "id": "f95aac81",
+        "schedule": "* * * * *",
+        "recurring": true,
+        "prompt": "[loop-test] wake up"
+      }
+    ]
+  }
+]

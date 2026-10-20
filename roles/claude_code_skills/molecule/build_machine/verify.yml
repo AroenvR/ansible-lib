@@ -1,0 +1,472 @@
+---
+- name: Check what claude_code_skills hands its targets
+  hosts: localhost
+  gather_facts: false
+  vars:
+    __claude_code_skills_test_experts: [architect, tester, reviewer, developer, documenter]
+    __claude_code_skills_test_expert_files: >-
+      {{ __claude_code_skills_test_experts | map('regex_replace', '^', '.claude/agents/') | map('regex_replace', '$', '.md')
+         | list }}
+    __claude_code_skills_test_qa_files: >-
+      {{ ['.claude/skills/qa/SKILL.md', '.claude/skills/qa/protocol.md'] + __claude_code_skills_test_expert_files }}
+    __claude_code_skills_test_loop_files:
+      - .claude/skills/loop-to-delivery/SKILL.md
+      - .claude/skills/loop-to-delivery/loop_to_delivery.py
+    # The hook registration loop-to-delivery needs (the policy fragment), exactly;
+    # only the maximum varies.
+    __claude_code_skills_test_program: /etc/claude-code/.claude/skills/loop-to-delivery/loop_to_delivery.py
+    __claude_code_skills_test_max: 100
+    __claude_code_skills_test_command: >-
+      [ -r {{ __claude_code_skills_test_program }} ] && /usr/bin/python3 -I {{ __claude_code_skills_test_program }}
+      hook --max-wakes {{ __claude_code_skills_test_max }}
+    __claude_code_skills_test_event: [{hooks: [{type: command, timeout: 30, command: "{{ __claude_code_skills_test_command }}"}]}]
+    __claude_code_skills_test_policy:
+      hooks:
+        UserPromptSubmit: "{{ __claude_code_skills_test_event }}"
+        Stop: "{{ __claude_code_skills_test_event }}"
+        StopFailure: "{{ __claude_code_skills_test_event }}"
+  tasks:
+    - name: Compute the skills with the defaults
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+
+    - name: Check both skills are off by default, and their files are to go where an earlier run installed them
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files is defined
+          - claude_code_skills_absent is defined
+          - claude_code_skills_policy is defined
+          - claude_code_skills_files == []
+          - claude_code_skills_absent | sort
+            == (['.claude/skills/qa', '.claude/skills/loop-to-delivery'] + __claude_code_skills_test_expert_files) | sort
+          - claude_code_skills_policy == {}
+        fail_msg: >-
+          Files: {{ claude_code_skills_files | default('undefined') }}; absent: {{ claude_code_skills_absent
+          | default('undefined') }}; policy: {{ claude_code_skills_policy | default('undefined') }}
+        success_msg: >-
+          PASSED claude_code_skills: by default it hands over no files and no policy, and names the qa skill's
+          folder, its five experts' files and loop-to-delivery's folder as absent.
+
+    - name: Compute the skills with the qa skill on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_qa: "true"   # as -e passes it
+
+    - name: Check it hands over the qa skill, its protocol and the five experts, each a file of claude_code_skills
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files | map(attribute='name') | sort == __claude_code_skills_test_qa_files | sort
+          - claude_code_skills_files | map(attribute='src') | select('file') | list | length == 7
+          - claude_code_skills_files | rejectattr('src', 'search', '/claude_code_skills/files/') | list == []
+          - claude_code_skills_absent == ['.claude/skills/loop-to-delivery']
+          - claude_code_skills_policy == {}
+        fail_msg: "Files: {{ claude_code_skills_files }}; absent: {{ claude_code_skills_absent }}"
+        success_msg: >-
+          PASSED claude_code_skills with claude_code_skills_qa hands over .claude/skills/qa/SKILL.md, its
+          protocol.md and the five experts in .claude/agents/, from its own files, loop-to-delivery's folder as
+          absent and no policy.
+
+    - name: Check each file's source is the role's file of the same name, without .claude/
+      ansible.builtin.assert:
+        that:
+          - item.src is search('/claude_code_skills/files/' ~ (item.name | regex_replace('^[.]claude/', '')) ~ '$')
+        fail_msg: "{{ item }}"
+        quiet: true
+      loop: "{{ claude_code_skills_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # Claude Code skips an agent file with broken frontmatter without a word.
+    - name: Check each expert's frontmatter, which Claude Code reads to load it
+      vars:
+        __claude_code_skills_test_text: "{{ lookup('ansible.builtin.file', item.src) }}"
+        __claude_code_skills_test_front: "{{ __claude_code_skills_test_text.split('---')[1] | from_yaml }}"
+        __claude_code_skills_test_name: "{{ item.name | basename | splitext | first }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_skills_test_text is match('---\n')
+          - __claude_code_skills_test_front.name == __claude_code_skills_test_name
+          - __claude_code_skills_test_front.model == 'inherit'
+          - __claude_code_skills_test_front.tools == 'Read, Grep, Glob, Bash, Write, Edit'
+          - __claude_code_skills_test_front.description is search('^Serves the qa skill')
+        fail_msg: "{{ item.name }}: {{ __claude_code_skills_test_text.split('---')[1] }}"
+        quiet: true
+      loop: "{{ claude_code_skills_files | selectattr('name', 'in', __claude_code_skills_test_expert_files) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check the qa skill's frontmatter
+      vars:
+        __claude_code_skills_test_text: >-
+          {{ lookup('ansible.builtin.file', (claude_code_skills_files | selectattr('name', 'search', 'qa/SKILL') | first).src) }}
+        __claude_code_skills_test_front: "{{ __claude_code_skills_test_text.split('---')[1] | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_skills_test_text is match('---\n')
+          - __claude_code_skills_test_front.keys() | sort == ['description', 'name']
+          - __claude_code_skills_test_front.name == 'qa'
+          - __claude_code_skills_test_front.description is search('^Use this skill before changing anything in a project')
+          - __claude_code_skills_test_front.description is search('[Nn]ot for questions')
+        fail_msg: "{{ __claude_code_skills_test_text.split('---')[1] }}"
+        success_msg: >-
+          PASSED the five experts' frontmatter names each after its file, with the package's tools, the session's
+          model and a description that says it serves the qa skill; the skill's is for change requests, not questions.
+
+    # #11's files were written for agent teams; these run synchronously, from a
+    # skill, and serve any project.
+    - name: Check no qa file names what the synchronous design removed, or aslib
+      vars:
+        __claude_code_skills_test_text: "{{ lookup('ansible.builtin.file', item.src) }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_skills_test_text is not search('SendMessage|Task(Create|Get|List|Update|Completed)|Agent[(]')
+          - __claude_code_skills_test_text is not search('teammate|agent team|mailbox|team config', ignorecase=True)
+          - __claude_code_skills_test_text is not search('--agent |gatecheck|settings[.](hooks|json)|README[.]md|aslib')
+          - __claude_code_skills_test_text is not search('CLAUDE[.]md') or item.name is search('documenter')
+          - __claude_code_skills_test_text is search('protocol')
+        fail_msg: "{{ item.name }} names one of them."
+        quiet: true
+      loop: "{{ claude_code_skills_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check the qa skill runs the experts one at a time and stops at a gate that blocks three times in a row
+      vars:
+        __claude_code_skills_test_text: >-
+          {{ lookup('ansible.builtin.file', (claude_code_skills_files | selectattr('name', 'search', 'qa/SKILL') | first).src) }}
+      ansible.builtin.assert:
+        that:
+          - __claude_code_skills_test_text is search('one at a time')
+          - __claude_code_skills_test_text is search('three times in a row')
+          - __claude_code_skills_test_text is search('[$][{]CLAUDE_SKILL_DIR[}]/protocol[.]md')
+        success_msg: >-
+          PASSED no qa file names agent teams, their tools, hooks or settings, the package's README or aslib; each
+          points to the protocol, and the skill runs one expert at a time and stops at a gate that blocks three times.
+
+    - name: Compute the skills with loop-to-delivery on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_loop_to_delivery: "true"   # as -e passes it
+
+    - name: Check it hands over loop-to-delivery's skill and program, and the hooks that run the program
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files | map(attribute='name') | sort == __claude_code_skills_test_loop_files
+          - claude_code_skills_files | map(attribute='src') | select('file') | list | length == 2
+          - claude_code_skills_files | rejectattr('src', 'search', '/claude_code_skills/files/skills/loop-to-delivery/')
+            | list == []
+          - claude_code_skills_absent | sort == (['.claude/skills/qa'] + __claude_code_skills_test_expert_files) | sort
+          - claude_code_skills_policy == __claude_code_skills_test_policy
+          - claude_code_skills_policy | to_json(sort_keys=true) == __claude_code_skills_test_policy | to_json(sort_keys=true)
+        fail_msg: >-
+          Files: {{ claude_code_skills_files }}; absent: {{ claude_code_skills_absent }};
+          policy: {{ claude_code_skills_policy | to_json }}; expected: {{ __claude_code_skills_test_policy | to_json }}
+        success_msg: >-
+          PASSED claude_code_skills with claude_code_skills_loop_to_delivery hands over loop-to-delivery's SKILL.md
+          and loop_to_delivery.py, the qa skill's files as absent, and a policy whose UserPromptSubmit, Stop and
+          StopFailure hooks run the program with /usr/bin/python3 -I, if it is readable, with the maximum of 100.
+
+    - name: Check loop-to-delivery's skill can be loaded, uses the program as the contract says, and is generic
+      vars:
+        __claude_code_skills_test_text: >-
+          {{ lookup('ansible.builtin.file', (claude_code_skills_files | selectattr('name', 'search', '/SKILL[.]md$') | first).src) }}
+        __claude_code_skills_test_front: "{{ __claude_code_skills_test_text.split('---')[1] | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_skills_test_text is match('---\n')
+          - __claude_code_skills_test_front.name == 'loop-to-delivery'
+          - __claude_code_skills_test_front.description is string
+          - __claude_code_skills_test_front.description | length > 0
+          - >-
+            __claude_code_skills_test_text is search('[$][{]CLAUDE_SKILL_DIR[}]/loop_to_delivery[.]py start
+            --session [$][{]CLAUDE_SESSION_ID[}] --notes ')
+          - __claude_code_skills_test_text is search('CronList')
+          - __claude_code_skills_test_text is search('CronCreate')
+          - __claude_code_skills_test_text is search('CronDelete')
+          - __claude_code_skills_test_text is search('end --reason delivered')
+          - __claude_code_skills_test_text is search('/etc/claude-code/[.]claude/skills/loop-to-delivery/loop_to_delivery[.]py stop')
+          - __claude_code_skills_test_text is search('status')
+          - __claude_code_skills_test_text is not search('aslib|github|gitlab|molecule', ignorecase=True)
+        fail_msg: "{{ __claude_code_skills_test_text }}"
+        success_msg: >-
+          PASSED loop-to-delivery's SKILL.md is named loop-to-delivery, has a description, starts a loop with the
+          session's id and its notes, creates, lists and deletes its job, ends and stops it, and names no tool of
+          aslib or a forge.
+
+    - name: Check the hook program parses as Python 3.9 and runs no other program and reaches no network
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -I
+          - -c
+          - >-
+            import ast, sys;
+            tree = ast.parse(open(sys.argv[1], encoding='utf-8').read(), feature_version=(3, 9));
+            names = {a.name.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names};
+            names |= {n.module.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module};
+            bad = names & {'subprocess', 'socket', 'urllib', 'http', 'ftplib', 'smtplib', 'ssl', 'asyncio'};
+            sys.exit('imports ' + ', '.join(sorted(bad)) if bad else 0)
+          - "{{ (claude_code_skills_files | selectattr('name', 'search', '[.]py$') | first).src }}"
+      register: __claude_code_skills_test_parse
+      changed_when: false
+      failed_when: false
+
+    - name: Check the program passed
+      ansible.builtin.assert:
+        that: __claude_code_skills_test_parse.rc == 0
+        fail_msg: "{{ __claude_code_skills_test_parse.stderr }}"
+        success_msg: >-
+          PASSED loop_to_delivery.py parses with Python 3.9's grammar and imports nothing to run programs or reach
+          a network.
+
+    - name: Look up the program's installed path on this machine
+      ansible.builtin.stat:
+        path: "{{ __claude_code_skills_test_program }}"
+      register: __claude_code_skills_test_installed
+
+    - name: Make a home for the hook command
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: claude_code_skills_test_
+      register: __claude_code_skills_test_home
+
+    # A program python3 cannot open makes it exit 2, which blocks the person's
+    # prompt; the command's test makes that a non-blocking 1.
+    - name: Run the hook command as Claude Code runs it (sh -c), where the program is absent
+      ansible.builtin.command:
+        argv: [sh, -c, "{{ claude_code_skills_policy.hooks.UserPromptSubmit[0].hooks[0].command }}"]
+      environment:
+        HOME: "{{ __claude_code_skills_test_home.path }}"
+      register: __claude_code_skills_test_hook_run
+      changed_when: false
+      failed_when: false
+
+    - name: Remove the hook command's home
+      ansible.builtin.file:
+        path: "{{ __claude_code_skills_test_home.path }}"
+        state: absent
+
+    - name: Check the hook command exited 1, with nothing on stdout
+      ansible.builtin.assert:
+        that:
+          - not __claude_code_skills_test_installed.stat.exists
+          - __claude_code_skills_test_hook_run.rc == 1
+          - __claude_code_skills_test_hook_run.stdout == ''
+        fail_msg: >-
+          {{ __claude_code_skills_test_program }} {{ 'exists on this machine, so this check cannot run here; '
+          if __claude_code_skills_test_installed.stat.exists else '' }}rc {{ __claude_code_skills_test_hook_run.rc }},
+          stdout {{ __claude_code_skills_test_hook_run.stdout }}, stderr {{ __claude_code_skills_test_hook_run.stderr }}
+        success_msg: >-
+          PASSED the hook command exits 1, a non-blocking error, with no output where its program is absent.
+
+    - name: Compute the skills with loop-to-delivery on and another maximum
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_skills_loop_to_delivery_max_wakes: "7"   # as -e passes it
+
+    - name: Check each of the three hooks passes that maximum to the program
+      vars:
+        __claude_code_skills_test_max: 7
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_policy == __claude_code_skills_test_policy
+          - claude_code_skills_policy.hooks.values() | map('first') | map(attribute='hooks') | map('first')
+            | map(attribute='command') | select('search', ' hook --max-wakes 7$') | list | length == 3
+        fail_msg: "Policy: {{ claude_code_skills_policy | to_json }}"
+        success_msg: PASSED claude_code_skills puts a changed maximum into all three hook commands.
+
+    - name: Compute the skills with both on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_qa: true
+        claude_code_skills_loop_to_delivery: true
+
+    - name: Check it hands over the qa skill's files, then loop-to-delivery's, and nothing as absent
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files | length == 9
+          - claude_code_skills_files[:7] | map(attribute='name') | sort == __claude_code_skills_test_qa_files | sort
+          - claude_code_skills_files[7:] | map(attribute='name') | sort == __claude_code_skills_test_loop_files
+          - claude_code_skills_absent == []
+          - claude_code_skills_policy == __claude_code_skills_test_policy
+        fail_msg: "Files: {{ claude_code_skills_files | map(attribute='name') | list }}; absent: {{ claude_code_skills_absent }}"
+        success_msg: >-
+          PASSED with both skills on, claude_code_skills hands over the qa skill's 7 files, then loop-to-delivery's 2,
+          and nothing as absent.
+
+    - name: Compute the skills with loop-to-delivery on and agent teams on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_agent_teams: true
+
+    - name: Check loop-to-delivery does not need agent teams off
+      ansible.builtin.assert:
+        that: claude_code_skills_policy == __claude_code_skills_test_policy
+        success_msg: PASSED loop-to-delivery works with agent teams on; only the qa skill needs them off.
+
+- name: Check claude_code_skills stops at values it cannot use, naming them
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Try a maximum of 0
+      block:
+        - name: Compute the skills with it
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_skills
+          vars:
+            claude_code_skills_loop_to_delivery: true
+            claude_code_skills_loop_to_delivery_max_wakes: 0
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_skills accepted claude_code_skills_loop_to_delivery_max_wakes=0.
+      rescue:
+        - name: Check the run stopped at 0, naming the setting
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_skills_loop_to_delivery_max_wakes')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: PASSED claude_code_skills stops at a maximum of 0, naming the setting.
+
+    - name: Try a negative maximum
+      block:
+        - name: Compute the skills with it
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_skills
+          vars:
+            claude_code_skills_loop_to_delivery: true
+            claude_code_skills_loop_to_delivery_max_wakes: "-1"   # as -e passes it
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_skills accepted claude_code_skills_loop_to_delivery_max_wakes=-1.
+      rescue:
+        - name: Check the run stopped at -1, naming the setting
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_skills_loop_to_delivery_max_wakes')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: PASSED claude_code_skills stops at a negative maximum, naming the setting.
+
+    - name: Try a maximum that is not a number
+      block:
+        - name: Compute the skills with it
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_skills
+          vars:
+            claude_code_skills_loop_to_delivery: true
+            claude_code_skills_loop_to_delivery_max_wakes: x
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_skills accepted claude_code_skills_loop_to_delivery_max_wakes=x.
+      rescue:
+        - name: Check the run stopped at x, naming the setting
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_skills_loop_to_delivery_max_wakes')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: PASSED claude_code_skills stops at a maximum that is not a number, naming the setting.
+
+    - name: Try the qa skill with agent teams on
+      block:
+        - name: Compute the skills with both on
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_skills
+          vars:
+            claude_code_skills_qa: true
+            claude_code_settings_agent_teams: true
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_skills accepted the qa skill with agent teams on.
+      rescue:
+        - name: Check the run stopped, naming both settings
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_skills_qa')
+              - ansible_failed_result.msg is search('claude_code_settings_agent_teams')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: >-
+              PASSED claude_code_skills stops when the qa skill and agent teams are both on, naming both settings.
+
+    - name: Try a qa setting that is not a boolean
+      block:
+        - name: Compute the skills with it
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_skills
+          vars:
+            claude_code_skills_qa: maybe
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_skills accepted claude_code_skills_qa=maybe.
+      rescue:
+        - name: Check the run stopped, naming the qa setting
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_skills_qa')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: PASSED claude_code_skills stops at a qa setting that is not a boolean, naming it.
+
+    - name: Try a loop-to-delivery setting that is not a boolean
+      block:
+        - name: Compute the skills with it
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_skills
+          vars:
+            claude_code_skills_loop_to_delivery: maybe
+
+        - name: Fail, as it was accepted
+          ansible.builtin.fail:
+            msg: claude_code_skills accepted claude_code_skills_loop_to_delivery=maybe.
+      rescue:
+        - name: Check the run stopped, naming the loop-to-delivery setting
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name != 'Fail, as it was accepted'
+              - ansible_failed_result.msg is search('claude_code_skills_loop_to_delivery')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: PASSED claude_code_skills stops at a loop-to-delivery setting that is not a boolean, naming it.
+
+- name: Run the hook program's unit tests with this ansible-core's Python
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    # The same suite runs in Claude Code's image with its Python 3.9
+    # (claude_code_podman's build_machine scenario).
+    - name: Run the unit tests of loop_to_delivery.py
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -I
+          - -B
+          - -m
+          - unittest
+          - discover
+          - -s
+          - "{{ playbook_dir }}/tests"
+          - -t
+          - "{{ playbook_dir }}/tests"
+      register: __claude_code_skills_test_unit
+      changed_when: false
+      failed_when: false
+
+    - name: Check the unit tests passed
+      ansible.builtin.assert:
+        that: __claude_code_skills_test_unit.rc == 0
+        fail_msg: "{{ __claude_code_skills_test_unit.stderr_lines[-60:] | join('\n') }}"
+        success_msg: >-
+          PASSED loop_to_delivery.py's unit tests: {{ __claude_code_skills_test_unit.stderr_lines[-3:] | join(' ') }}
