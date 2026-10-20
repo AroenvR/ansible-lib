@@ -18,6 +18,7 @@ import io
 import json
 import os
 import re
+import sys
 import tempfile
 import unittest
 from collections import namedtuple
@@ -45,7 +46,7 @@ SECRET = "SECRET-7f3c-must-never-be-logged"
 
 NOT_RUN_ERRORS = ("rate_limit", "overloaded", "server_error", "billing_error")
 # StopFailure values that keep the wake-up counted (QD14, QD15), with how the log
-# names them: a value outside ^[a-z_]{1,40}$, or none, is logged as "other".
+# names them (IF-008): itself when it matches ^[a-z_]{1,40}$, else "other".
 COUNTED_ERRORS = (
     ("max_output_tokens", "max_output_tokens"),
     ("invalid_request", "invalid_request"),
@@ -55,8 +56,13 @@ COUNTED_ERRORS = (
     ("account_on_hold", "account_on_hold"),
     ("model_not_found", "model_not_found"),
     ("cloud_credential_error", "cloud_credential_error"),
-    ("context_window_exceeded_v2", "context_window_exceeded_v2"),   # a value of a later Claude Code
-    ("Rate_Limit", "other"),                                        # a case variant of a transient one
+    ("context_window_exceeded", "context_window_exceeded"),   # a value of a later Claude Code
+    ("x" * 40, "x" * 40),                                     # the longest value logged as itself
+    ("context_window_exceeded_v2", "other"),                  # a later value with a digit
+    ("x" * 41, "other"),                                      # one character too long
+    ("Rate_Limit", "other"),                                  # a case variant of a transient one
+    ("rate-limit", "other"),                                  # a hyphen
+    ("", "other"),                                            # empty
 )
 
 JOB_PROMPT = (
@@ -79,7 +85,13 @@ def load_program():
         else:
             spec = importlib.util.spec_from_file_location("loop_to_delivery_under_test", PROGRAM)
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            # No __pycache__ next to the program, also when the suite runs without -B.
+            write_bytecode = sys.dont_write_bytecode
+            sys.dont_write_bytecode = True
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                sys.dont_write_bytecode = write_bytecode
             _loaded["module"] = module
     return _loaded["module"]
 
@@ -181,6 +193,16 @@ def j_create(loop):
             "prompt for this work, delete that one (CronList, CronDelete)." % (loop, create_line(loop)))
 
 
+# Texts IF-010 does not mark exact: tests check their first sentence and key parts.
+
+def end_notice_head(loop, reason):
+    """The end notice's first sentence (IF-010 Stop 6b)."""
+    return "loop-to-delivery: loop %s has ended: %s." % (loop, reason)
+
+
+CONTINUATION_HEAD = "loop-to-delivery: the work is not delivered yet and your notes moved."   # IF-010 Stop 6e
+
+
 def write(path, text):
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(text)
@@ -204,6 +226,12 @@ class LoopTestCase(unittest.TestCase):
         folder = tempfile.TemporaryDirectory(prefix="loop-to-delivery-test-")
         self.addCleanup(folder.cleanup)
         self.tmp = folder.name
+        # The process's own environment too: a program that reads os.environ or "~"
+        # instead of main()'s environ must not reach the runner's real state or session.
+        environment = mock.patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
         self.now = T0
         self.pids = 0
         self.new_home()
@@ -216,6 +244,7 @@ class LoopTestCase(unittest.TestCase):
         self.repo = os.path.join(self.work, "repo")
         self.notes = os.path.join(self.work, "notes.md")
         os.makedirs(self.home)
+        os.environ["HOME"] = self.home
         os.makedirs(self.repo)
         write(self.notes, "# Goal\nDone when the tests pass.\n")
         write(os.path.join(self.repo, "file.txt"), "one\n")

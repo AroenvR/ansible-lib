@@ -3,16 +3,9 @@
 import os
 from datetime import timedelta
 
-from harness import (A, DEADLINE, DROP, J1, J2, J3, NO_STATE_LOOP, LoopTestCase, append, b_ended, cron,
-                     j_create, stamp, write)
+from harness import (A, CONTINUATION_HEAD, DEADLINE, DROP, J1, J2, J3, NO_STATE_LOOP, LoopTestCase, append,
+                     b_ended, cron, end_notice_head, j_create, stamp, write)
 
-
-def end_notice_head(loop, reason):
-    """The end notice's first sentence (IF-010 Stop 6b; its wording is not marked exact, so tests check key parts)."""
-    return "loop-to-delivery: loop %s has ended: %s." % (loop, reason)
-
-
-CONTINUATION_HEAD = "loop-to-delivery: the work is not delivered yet and your notes moved."
 
 
 class MaximumTest(LoopTestCase):

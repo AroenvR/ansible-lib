@@ -190,7 +190,8 @@
       - __claude_code_vm_test_vm.mem_total_kib | int > 3145728
       - __claude_code_vm_test_vm.mem_total_kib | int <= 4194304
       - __claude_code_vm_test_vm.nproc | int == 2
-      - __claude_code_vm_test_from_off.stdout is not search('"shutdown", "claude-dev"')
+      # -v prints each command's cmd: an argv list ("shutdown", "claude-dev") or a shell string
+      - __claude_code_vm_test_from_off.stdout is not search('shutdown(", "| )claude-dev')
     fail_msg: >-
       rc {{ __claude_code_vm_test_from_off.rc }}: {{ __claude_code_vm_test_from_off.stdout_lines[-6:] }}
       {{ __claude_code_vm_test_from_off.stderr_lines[-6:] }}; the VM: {{ __claude_code_vm_test_vm }}

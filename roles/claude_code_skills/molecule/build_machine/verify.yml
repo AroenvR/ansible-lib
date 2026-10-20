@@ -202,12 +202,16 @@
           - -I
           - -c
           - >-
-            import ast, sys;
+            import ast, re, sys;
             tree = ast.parse(open(sys.argv[1], encoding='utf-8').read(), feature_version=(3, 9));
             names = {a.name.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names};
             names |= {n.module.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module};
-            bad = names & {'subprocess', 'socket', 'urllib', 'http', 'ftplib', 'smtplib', 'ssl', 'asyncio'};
-            sys.exit('imports ' + ', '.join(sorted(bad)) if bad else 0)
+            bad = names & {'subprocess', 'pty', 'multiprocessing', 'socket', 'socketserver', 'urllib', 'http',
+            'ftplib', 'smtplib', 'imaplib', 'poplib', 'xmlrpc', 'ssl', 'asyncio'};
+            calls = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)};
+            calls |= {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names};
+            runs = sorted(c for c in calls if re.fullmatch('system|popen|fork|forkpty|posix_spawnp?|(exec|spawn)[lv]p?e?', c));
+            sys.exit('imports ' + ', '.join(sorted(bad)) if bad else 'uses ' + ', '.join(runs) if runs else 0)
           - "{{ (claude_code_skills_files | selectattr('name', 'search', '[.]py$') | first).src }}"
       register: __claude_code_skills_test_parse
       changed_when: false
@@ -218,13 +222,8 @@
         that: __claude_code_skills_test_parse.rc == 0
         fail_msg: "{{ __claude_code_skills_test_parse.stderr }}"
         success_msg: >-
-          PASSED loop_to_delivery.py parses with Python 3.9's grammar and imports nothing to run programs or reach
-          a network.
-
-    - name: Look up the program's installed path on this machine
-      ansible.builtin.stat:
-        path: "{{ __claude_code_skills_test_program }}"
-      register: __claude_code_skills_test_installed
+          PASSED loop_to_delivery.py parses with Python 3.9's grammar and neither imports nor calls anything to
+          run programs or reach a network.
 
     - name: Make a home for the hook command
       ansible.builtin.tempfile:
@@ -233,10 +232,17 @@
       register: __claude_code_skills_test_home
 
     # A program python3 cannot open makes it exit 2, which blocks the person's
-    # prompt; the command's test makes that a non-blocking 1.
+    # prompt; the command's test makes that a non-blocking 1. The policy's own
+    # command runs with its program path pointed into the temporary home, where
+    # nothing is, so the check also runs where 0.8.1 is installed.
     - name: Run the hook command as Claude Code runs it (sh -c), where the program is absent
       ansible.builtin.command:
-        argv: [sh, -c, "{{ claude_code_skills_policy.hooks.UserPromptSubmit[0].hooks[0].command }}"]
+        argv:
+          - sh
+          - -c
+          - >-
+            {{ claude_code_skills_policy.hooks.UserPromptSubmit[0].hooks[0].command
+               | replace(__claude_code_skills_test_program, __claude_code_skills_test_home.path ~ '/absent/loop_to_delivery.py') }}
       environment:
         HOME: "{{ __claude_code_skills_test_home.path }}"
       register: __claude_code_skills_test_hook_run
@@ -251,12 +257,12 @@
     - name: Check the hook command exited 1, with nothing on stdout
       ansible.builtin.assert:
         that:
-          - not __claude_code_skills_test_installed.stat.exists
+          - __claude_code_skills_test_program in claude_code_skills_policy.hooks.UserPromptSubmit[0].hooks[0].command
+          - __claude_code_skills_test_program not in __claude_code_skills_test_hook_run.cmd[-1]
           - __claude_code_skills_test_hook_run.rc == 1
           - __claude_code_skills_test_hook_run.stdout == ''
         fail_msg: >-
-          {{ __claude_code_skills_test_program }} {{ 'exists on this machine, so this check cannot run here; '
-          if __claude_code_skills_test_installed.stat.exists else '' }}rc {{ __claude_code_skills_test_hook_run.rc }},
+          {{ __claude_code_skills_test_hook_run.cmd[-1] }}: rc {{ __claude_code_skills_test_hook_run.rc }},
           stdout {{ __claude_code_skills_test_hook_run.stdout }}, stderr {{ __claude_code_skills_test_hook_run.stderr }}
         success_msg: >-
           PASSED the hook command exits 1, a non-blocking error, with no output where its program is absent.

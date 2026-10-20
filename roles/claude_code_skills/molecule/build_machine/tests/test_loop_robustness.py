@@ -9,7 +9,8 @@ import re
 from harness import (A, B, DROP, ERROR_TEXT_RE, J1, SECRET, LoopTestCase, cron, event, failing_replace,
                      j_create, job_prompt, write)
 
-TRACE_RE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00 (?P<event>\S+) error (?P<error>.+) line \d+$")
+# IF-008's trace line; <event> may be empty where the input names none.
+TRACE_RE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00 (?P<event>\S*) ?error (?P<error>.+) line \d+$")
 ERRORS_LOG = os.path.join(".local", "state", "loop-to-delivery", "errors.log")
 
 
@@ -128,17 +129,27 @@ class WriteOrderTest(LoopTestCase):
 class FailOpenTest(LoopTestCase):
     """FR-046, QD6: every event that is not a wake-up passes on a failure, with a trace; a wake-up is blocked."""
 
-    def assertTraced(self, event_name, loop=None):
-        text = "\n".join((self.log(), self.log(loop) if loop else ""))
-        lines = [line for line in text.splitlines() if TRACE_RE.match(line)]
-        self.assertTrue(lines, "no trace line for %s" % event_name)
-        match = TRACE_RE.match(lines[-1])
-        self.assertEqual(match.group("event"), event_name)
+    def traces(self, loop=None):
+        """The trace lines of errors.log and of the loop's log, per file (both logs are append-only, IF-009)."""
+        logs = {"errors.log": self.log()}
+        if loop:
+            logs["loop log"] = self.log(loop)
+        return {name: [line for line in text.splitlines() if TRACE_RE.match(line)] for name, text in logs.items()}
+
+    def assertTraced(self, before, event_name, loop=None):
+        """The event under test added exactly one trace line (IF-008: in the loop's log or in errors.log), naming
+        that event and an IF-008 error text; lines that earlier events wrote are not judged."""
+        after = self.traces(loop)
+        added = [line for name, lines in after.items() for line in lines[len(before.get(name, [])):]]
+        self.assertEqual(len(added), 1, "%s should add one trace line, added: %r" % (event_name, added))
+        match = TRACE_RE.match(added[0])
+        if event_name is not None:
+            self.assertEqual(match.group("event"), event_name)
         self.assertRegex(match.group("error"), ERROR_TEXT_RE)
 
     def test_an_unreadable_record_passes_other_events_and_blocks_a_wake_up(self):
         """TEST-064: the conversation's record does not parse: its prompt, Stop and StopFailure pass (exit 1, one
-        stderr line, a trace); its wake-up is blocked and not counted."""
+        stderr line, a trace of their own); its wake-up is blocked and not counted."""
         loop = self.started_with_job(A, J1)
         pid = self.let_through(loop, 1, 2)
         for corrupt in ("{not json", "[]", json.dumps({"version": 1, "session_id": A, "loop": 7, "jobs": "x"})):
@@ -147,20 +158,22 @@ class FailOpenTest(LoopTestCase):
                 for name, data in (("UserPromptSubmit", self.prompt(A, "Hello")),
                                    ("Stop", self.stop(A, pid, [(J1, loop)])),
                                    ("StopFailure", self.failure(A, pid, "rate_limit"))):
+                    before = self.traces(loop)
                     result = self.hook(data)
                     self.assertFailOpen(result)
-                    self.assertTraced(name, loop)
+                    self.assertTraced(before, name, loop)
                 self.assertBlocked(self.hook(self.wake(A, loop)))
                 self.assertEqual(self.state(loop)["wakes"], 1)
 
     def test_input_that_is_not_a_json_object_passes(self):
-        """TEST-065: stdin that is not a JSON object: exit 1, no stdout, a trace; an object of another or no event
-        passes with exit 0 and writes nothing."""
+        """TEST-065: stdin that is not a JSON object: exit 1, no stdout, a trace each; an object of another or no
+        event passes with exit 0 and writes nothing."""
         for text in ("this is not JSON", "", "[]", "42", "null", '"[loop-to-delivery 0123abcd] Wake-up"'):
             with self.subTest(text):
+                before = self.traces()
                 result = self.hook(text)
                 self.assertFailOpen(result)
-        self.assertTrue(any(TRACE_RE.match(line) for line in self.log().splitlines()), "no trace: %r" % self.log())
+                self.assertTraced(before, None)   # no event name can be read from such input
         before = self.snapshot()
         for data in ({"session_id": A}, event("session-start"),
                      dict(event("user-prompt-submit"), hook_event_name="PreToolUse", prompt=job_prompt("0123abcd"))):
