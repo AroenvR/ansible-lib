@@ -316,4 +316,5 @@
     claude_code_settings_agent_teams: "{{ claude_code_settings_agent_teams }}"
     claude_code_settings_ultracode: "{{ claude_code_settings_ultracode }}"
     claude_code_settings_qa: "{{ claude_code_settings_qa }}"
+    claude_code_settings_qa_budget: "{{ claude_code_settings_qa_budget }}"
   changed_when: false

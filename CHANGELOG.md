@@ -4,6 +4,24 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.8.1
+
+- Added: `claude_code_settings_qa_budget` (off by default) installs
+  qa-budget's measuring in `/etc/claude-code/qa-budget/`, in the container
+  and the VM: a status line that shows the subscription's 5-hour and weekly
+  usage and saves each reading (only the status line receives it), and a hook
+  on `SubagentStart`, `SubagentStop` and `Stop` that keeps a ledger of each
+  agent's and session's tokens with the usage of that moment, both in
+  `~/.claude/qa-budget/`. It limits nothing yet; it is the measuring a budget
+  for the qa skill's agents builds on.
+- Changed: the base policy no longer denies edits to `/etc/claude-code/` and to
+  `settings.json`. Claude could make those changes with Bash and sudo anyway,
+  so the rules only hid that they were no boundary; the container and the VM
+  are. The other deny rules stay.
+- Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
+  files on the machine it runs on, without the rest of the VM's guest setup,
+  for Claude's own VM to apply a branch's settings to itself.
+
 ## 0.8.0
 
 - Added: `claude_code_settings_qa` (off by default) installs the qa skill and

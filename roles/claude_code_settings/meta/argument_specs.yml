@@ -65,3 +65,14 @@ argument_specs:
             as its protocol says. Questions are answered without it.
           - Off by default, as managed skills and subagents win over a person's or a project's of the same names.
             Needs C(claude_code_settings_agent_teams) off; the run stops when both are on.
+      claude_code_settings_qa_budget:
+        type: bool
+        default: false
+        description:
+          - qa-budget's measuring, in Claude Code's managed settings directory, for limiting what agents spend of a
+            subscription. A status line (qa-budget/statusline.py) shows and saves the subscription's usage, the
+            5-hour and the 7-day window, each with its percentage used and its reset; only the status line receives
+            these. A hook (qa-budget/ledger.py) on SubagentStart, SubagentStop and Stop adds a line per agent and
+            session to a ledger, with its tokens so far and the usage then. Both write in C(~/.claude/qa-budget/)
+            (C($CLAUDE_CONFIG_DIR/qa-budget/)). Measures only; it limits nothing yet.
+          - Off by default, as the managed status line replaces a person's own. Needs C(python3) on the target.

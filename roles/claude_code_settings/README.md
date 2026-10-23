@@ -22,6 +22,7 @@ The same names and defaults in every target. Options and their choices:
 | `claude_code_settings_agent_teams` | `false` | agent teams on or off |
 | `claude_code_settings_ultracode` | `false` | ultracode on or off |
 | `claude_code_settings_qa` | `false` | the [qa skill and its five experts](#the-qa-skill-and-its-five-experts) on or off |
+| `claude_code_settings_qa_budget` | `false` | [qa-budget's status line and token ledger](#qa-budget-measuring-what-agents-spend) on or off |
 
 `/model`, `/effort` and `/config` still change them within a session; the next
 session starts from these again. To keep the permission prompts:
@@ -70,6 +71,22 @@ again removes the files at the next run. They need agent teams off
 Claude starts a subagent it names as a teammate instead, and the run stops
 when both are on.
 
+## qa-budget: measuring what agents spend
+
+With `claude_code_settings_qa_budget: true`, every target installs two scripts
+in `/etc/claude-code/qa-budget/` and runs them from the policy. They measure
+only; nothing is limited yet. They need `python3` on the target.
+
+| File | Run as | What it does |
+|---|---|---|
+| `statusline.py` | The status line (`statusLine`) | Shows the model and the subscription's usage, the 5-hour and the 7-day window with their resets in UTC, and saves it: `rate-limits.json` (the latest reading) and `rate-limits.jsonl` (each change) |
+| `ledger.py` | Hook on `SubagentStart`, `SubagentStop` and `Stop` | Adds a line to `ledger.jsonl` per agent and session: its tokens so far (input, cache write, cache read, output, each API response once) and the usage of that moment |
+
+Both write in `~/.claude/qa-budget/` (`$CLAUDE_CONFIG_DIR/qa-budget/`). Only
+Claude Code's status line receives the usage (`rate_limits`), hooks do not,
+so the ledger reads the status line's latest reading; it lags one response.
+Off by default: the managed status line replaces a person's own.
+
 ## Ready to work from the start, in every target
 
 Whatever the settings say:
@@ -107,8 +124,12 @@ Facts, for the role that includes it:
 
 The base policy also turns off Claude Code's auto-updater (each target updates
 it its own way) and its telemetry, turns on workflows, keeps plans in
-`./plans`, and denies edits to the policy itself, to settings and hooks that
-would run code, and reads of `.env` files.
+`./plans`, and denies edits to `settings.local.json`, hooks, `.mcp.json` and
+git's hooks and config, which would run code, and reads of `.env` files. It
+does not deny edits to the policy (`/etc/claude-code/`) or to `settings.json`:
+a deny rule guards Claude's Edit tool only, and Claude could change either
+with Bash and sudo anyway. A rule that Claude can route around without noticing
+is no boundary; the target (the container, the VM) is.
 
 ```yaml
 - name: Compute Claude Code's settings
