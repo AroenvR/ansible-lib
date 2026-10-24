@@ -76,6 +76,17 @@
 - name: Look up the installed packages
   ansible.builtin.package_facts:
 
+# With package lists older than the mirror, apt asks for files the mirror no
+# longer has (404), as on CI runners whose image is a few weeks old.
+- name: Refresh apt's package lists, when older than an hour and something is missing
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  vars:
+    __claude_code_vm_missing: >-
+      {{ __claude_code_vm_host_packages[ansible_facts.architecture] | difference(ansible_facts.packages.keys()) }}
+  when: __claude_code_vm_missing | length > 0
+
 - name: Install QEMU/KVM, libvirt, virt-install, xorriso and nftables where missing
   ansible.builtin.package:
     name: "{{ __claude_code_vm_missing }}"

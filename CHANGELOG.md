@@ -24,6 +24,9 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   `settings.json`. Claude could make those changes with Bash and sudo anyway,
   so the rules only hid that they were no boundary; the container and the VM
   are. The other deny rules stay.
+- Fixed: claude_code_vm refreshes apt's package lists (when older than an
+  hour) before it installs the host's missing packages; with stale lists, apt
+  asked the mirror for files it no longer had (404), as on CI runners.
 - Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
   files on the machine it runs on, without the rest of the VM's guest setup,
   for Claude's own VM to apply a branch's settings to itself.
