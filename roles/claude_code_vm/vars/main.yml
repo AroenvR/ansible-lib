@@ -57,7 +57,7 @@ __claude_code_vm_settings:
   - name: claude_code_settings_qa
     comment: true installs the qa skill and its five expert subagents, for change requests; needs agent teams off.
   - name: claude_code_settings_qa_budget
-    comment: true installs qa-budget's status line and token ledger (in ~/.claude/qa-budget/), replacing any other status line.
+    comment: true installs qa-budget, which measures and limits what agents spend of the subscription; its status line replaces any other.
 
 __claude_code_vm_settings_header:
   - "# claude_code_vm's settings on this host (aslib.infra.claude_code_vm): what you"

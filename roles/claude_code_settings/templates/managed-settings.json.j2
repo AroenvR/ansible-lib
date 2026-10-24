@@ -14,8 +14,9 @@
 {% if claude_code_settings_qa_budget | bool %}
   "statusLine": {"type": "command", "command": "python3 /etc/claude-code/qa-budget/statusline.py"},
   "hooks": {
-{% for __claude_code_settings_event in ['SubagentStart', 'SubagentStop', 'Stop'] %}
-    "{{ __claude_code_settings_event }}": [{"hooks": [{"type": "command", "command": "python3 /etc/claude-code/qa-budget/ledger.py"}]}]{{ '' if loop.last else ',' }}
+{% for __claude_code_settings_event, __claude_code_settings_script in [('SubagentStart', 'ledger'), ('SubagentStop', 'ledger'),
+      ('Stop', 'ledger'), ('UserPromptSubmit', 'guard'), ('PreToolUse', 'guard')] %}
+    "{{ __claude_code_settings_event }}": [{"hooks": [{"type": "command", "command": "python3 /etc/claude-code/qa-budget/{{ __claude_code_settings_script }}.py"}]}]{{ '' if loop.last else ',' }}
 {% endfor %}
   },
 {% endif %}

@@ -246,17 +246,25 @@
       ansible.builtin.assert:
         that:
           - claude_code_settings_policy.statusLine.command == 'python3 /etc/claude-code/qa-budget/statusline.py'
-          - claude_code_settings_policy.hooks.keys() | sort == ['Stop', 'SubagentStart', 'SubagentStop']
-          - claude_code_settings_policy.hooks | dict2items | map(attribute='value') | flatten | map(attribute='hooks')
-            | flatten | map(attribute='command') | unique | list == [__claude_code_settings_test_ledger]
-          - claude_code_settings_files | map(attribute='name') | sort == ['qa-budget/ledger.py', 'qa-budget/statusline.py']
-          - claude_code_settings_files | map(attribute='src') | select('file') | list | length == 2
+          - claude_code_settings_policy.hooks.keys() | sort == ['PreToolUse', 'Stop', 'SubagentStart', 'SubagentStop', 'UserPromptSubmit']
+          - __claude_code_settings_test_commands.SubagentStart == __claude_code_settings_test_ledger
+          - __claude_code_settings_test_commands.SubagentStop == __claude_code_settings_test_ledger
+          - __claude_code_settings_test_commands.Stop == __claude_code_settings_test_ledger
+          - __claude_code_settings_test_commands.UserPromptSubmit == 'python3 /etc/claude-code/qa-budget/guard.py'
+          - __claude_code_settings_test_commands.PreToolUse == 'python3 /etc/claude-code/qa-budget/guard.py'
+          - claude_code_settings_files | map(attribute='name') | map('dirname') | unique | list == ['qa-budget']
+          - claude_code_settings_files | map(attribute='name') | map('basename') | sort == ['budget.md', 'guard.py', 'ledger.py', 'statusline.py']
+          - claude_code_settings_files | map(attribute='src') | select('file') | list | length == 4
           - claude_code_settings_absent | sort == (['.claude/skills/qa'] + __claude_code_settings_test_absent_experts) | sort
         fail_msg: "Policy: {{ claude_code_settings_policy }}; files: {{ claude_code_settings_files }}"
         success_msg: >-
-          PASSED with claude_code_settings_qa_budget, the policy runs qa-budget's status line and its ledger on
-          SubagentStart, SubagentStop and Stop, and both scripts come along.
+          PASSED with claude_code_settings_qa_budget, the policy runs qa-budget's status line, its guard on UserPromptSubmit and PreToolUse, and its ledger on
+          SubagentStart, SubagentStop and Stop, and its files come along.
       vars:
+        __claude_code_settings_test_commands: >-
+          {{ dict(claude_code_settings_policy.hooks.keys()
+                  | zip(claude_code_settings_policy.hooks.values() | map('first') | map(attribute='hooks') | map('first')
+                        | map(attribute='command'))) }}
         __claude_code_settings_test_absent_experts: >-
           {{ ['architect', 'tester', 'reviewer', 'developer', 'documenter'] | map('regex_replace', '^', '.claude/agents/')
              | map('regex_replace', '$', '.md') | list }}
@@ -339,3 +347,23 @@
       ansible.builtin.file:
         path: "{{ __claude_code_settings_test_dir.path }}"
         state: absent
+
+    # files/test_qa_budget.py runs the guard as Claude Code does, one case per test.
+    - name: Run the guard's tests
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/files/test_qa_budget.py"
+          - "{{ claude_code_settings_files | selectattr('name', 'eq', 'qa-budget/guard.py') | map(attribute='src') | first | dirname }}"
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      register: __claude_code_settings_test_guard
+      changed_when: false
+
+    - name: Show the guard's tests passed
+      ansible.builtin.debug:
+        msg: >-
+          PASSED qa-budget's guard: {{ __claude_code_settings_test_guard.stderr_lines | select('match', '^Ran ') | first }}:
+          automatic prompts blocked and expert runs denied at a ceiling, the person asked instead, readings from
+          before a reset as 0, the spend-down only while the person is inactive (also when someone else's use shows),
+          every tool paused at the limit in automatic turns only, the run cap per session, the token budget per run.

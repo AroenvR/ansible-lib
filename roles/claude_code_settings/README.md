@@ -22,7 +22,7 @@ The same names and defaults in every target. Options and their choices:
 | `claude_code_settings_agent_teams` | `false` | agent teams on or off |
 | `claude_code_settings_ultracode` | `false` | ultracode on or off |
 | `claude_code_settings_qa` | `false` | the [qa skill and its five experts](#the-qa-skill-and-its-five-experts) on or off |
-| `claude_code_settings_qa_budget` | `false` | [qa-budget's status line and token ledger](#qa-budget-measuring-what-agents-spend) on or off |
+| `claude_code_settings_qa_budget` | `false` | [qa-budget](#qa-budget-a-budget-for-agent-work): measuring and limiting what agents spend of the subscription, on or off |
 
 `/model`, `/effort` and `/config` still change them within a session; the next
 session starts from these again. To keep the permission prompts:
@@ -71,21 +71,51 @@ again removes the files at the next run. They need agent teams off
 Claude starts a subagent it names as a teammate instead, and the run stops
 when both are on.
 
-## qa-budget: measuring what agents spend
+## qa-budget: a budget for agent work
 
-With `claude_code_settings_qa_budget: true`, every target installs two scripts
-in `/etc/claude-code/qa-budget/` and runs them from the policy. They measure
-only; nothing is limited yet. They need `python3` on the target.
+With `claude_code_settings_qa_budget: true`, every target installs qa-budget in
+`/etc/claude-code/qa-budget/` and runs it from the policy: it measures what
+agents spend of the subscription and keeps agent work within a budget, so that
+wake-ups, loops and expert runs never use up what the person needs. It needs
+`python3` on the target.
 
 | File | Run as | What it does |
 |---|---|---|
 | `statusline.py` | The status line (`statusLine`) | Shows the model and the subscription's usage, the 5-hour and the 7-day window with their resets in UTC, and saves it: `rate-limits.json` (the latest reading) and `rate-limits.jsonl` (each change) |
 | `ledger.py` | Hook on `SubagentStart`, `SubagentStop` and `Stop` | Adds a line to `ledger.jsonl` per agent and session: its tokens so far (input, cache write, cache read, output, each API response once) and the usage of that moment |
+| `guard.py` | Hook on `UserPromptSubmit` and `PreToolUse` | Enforces the budget, below |
+| `budget.md` | Read by the qa skill (its `SKILL.md` points to it) | How QA and the experts work within the budget: plan it, deliver with a list of improvements or pause when the guard says so, report each run's tokens |
 
 Both write in `~/.claude/qa-budget/` (`$CLAUDE_CONFIG_DIR/qa-budget/`). Only
 Claude Code's status line receives the usage (`rate_limits`), hooks do not,
 so the ledger reads the status line's latest reading; it lags one response.
 Off by default: the managed status line replaces a person's own.
+
+The guard tells a turn the person started from one no person started: a prompt
+that begins with a `[tag]` (as wake-ups and loops write them) or holds an
+autonomous-loop sentinel.
+
+| Where | A turn the person started | A turn no person started |
+|---|---|---|
+| The prompt, at a ceiling or the limit | Runs | Blocked, before it costs anything |
+| A new expert run (Agent tool), at a ceiling, the limit or the session's run cap | Asks the person | Denied: deliver with a list of improvements, or pause |
+| Any tool, at the limit | Runs (the person may go into extra usage) | Denied: pause |
+| An expert's tool call, once its run used its token budget | Denied: the expert reports now | The same |
+
+| Limit | Default | Environment variable |
+|---|---|---|
+| Weekly ceiling for agent work | 60% of the 7-day window | `QA_BUDGET_WEEKLY` |
+| 5-hour ceiling | 90% | `QA_BUDGET_FIVE_HOUR` |
+| The subscription's limit, as the guard sees it (readings lag a response) | 98% | `QA_BUDGET_LIMIT` |
+| Spend-down: from this many hours before the weekly reset, while the person has been inactive for `QA_BUDGET_INACTIVE_HOURS` (3), the weekly ceiling is the limit | 4 | `QA_BUDGET_SPEND_DOWN_HOURS` |
+| Expert runs per session | 12 | `QA_BUDGET_RUNS` |
+| Tokens per expert run, weighted by price (input 1, cache write 1.25, cache read 0.1, output 5) | 1,500,000 | `QA_BUDGET_RUN_TOKENS` |
+
+The person counts as active for 3 hours after a prompt they typed, and also
+when the weekly usage rose by more than a point between two readings at least
+30 minutes apart: someone else used the subscription meanwhile. A reading from
+before a window's reset counts as 0. The defaults suit a Pro subscription; set
+the variables in a settings file's `env` to change them.
 
 ## Ready to work from the start, in every target
 

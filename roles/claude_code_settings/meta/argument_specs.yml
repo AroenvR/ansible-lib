@@ -69,10 +69,14 @@ argument_specs:
         type: bool
         default: false
         description:
-          - qa-budget's measuring, in Claude Code's managed settings directory, for limiting what agents spend of a
-            subscription. A status line (qa-budget/statusline.py) shows and saves the subscription's usage, the
+          - qa-budget, in Claude Code's managed settings directory, measures what agents spend of a subscription and
+            keeps agent work within a budget. A status line (qa-budget/statusline.py) shows and saves the subscription's usage, the
             5-hour and the 7-day window, each with its percentage used and its reset; only the status line receives
             these. A hook (qa-budget/ledger.py) on SubagentStart, SubagentStop and Stop adds a line per agent and
             session to a ledger, with its tokens so far and the usage then. Both write in C(~/.claude/qa-budget/)
-            (C($CLAUDE_CONFIG_DIR/qa-budget/)). Measures only; it limits nothing yet.
+            (C($CLAUDE_CONFIG_DIR/qa-budget/)). A hook (qa-budget/guard.py) on UserPromptSubmit and PreToolUse
+            enforces the budget - ceilings on the weekly and the 5-hour usage, a spend-down before the weekly reset
+            while the person is inactive, expert runs per session and tokens per run - and never lets a turn that no
+            person started go into extra usage; qa-budget/budget.md tells the qa skill how to work within it. Its
+            README lists the limits and the environment variables that change them.
           - Off by default, as the managed status line replaces a person's own. Needs C(python3) on the target.

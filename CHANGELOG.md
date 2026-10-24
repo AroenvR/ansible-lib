@@ -6,14 +6,20 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 
 ## 0.8.1
 
-- Added: `claude_code_settings_qa_budget` (off by default) installs
-  qa-budget's measuring in `/etc/claude-code/qa-budget/`, in the container
-  and the VM: a status line that shows the subscription's 5-hour and weekly
-  usage and saves each reading (only the status line receives it), and a hook
-  on `SubagentStart`, `SubagentStop` and `Stop` that keeps a ledger of each
-  agent's and session's tokens with the usage of that moment, both in
-  `~/.claude/qa-budget/`. It limits nothing yet; it is the measuring a budget
-  for the qa skill's agents builds on.
+- Added: `claude_code_settings_qa_budget` (off by default) installs qa-budget
+  in `/etc/claude-code/qa-budget/`, in the container and the VM, which keeps
+  agent work within a budget of the subscription. A status line shows the
+  subscription's 5-hour and weekly usage and saves each reading (only the
+  status line receives it); a hook on `SubagentStart`, `SubagentStop` and
+  `Stop` keeps a ledger of each agent's and session's tokens with the usage of
+  that moment, both in `~/.claude/qa-budget/`. A guard on `UserPromptSubmit`
+  and `PreToolUse` enforces ceilings (weekly 60%, 5-hour 90%), a spend-down
+  before the weekly reset while the person is inactive, 12 expert runs per
+  session and a token budget per run: a turn no person started (a wake-up, a
+  loop) is blocked or denied there and never goes into extra usage, while the
+  person is asked. The qa skill's `SKILL.md` points to `budget.md`, which says
+  how to work within it: two review rounds per gate, low findings into a list
+  of improvements, deliver or pause when the guard says so.
 - Changed: the base policy no longer denies edits to `/etc/claude-code/` and to
   `settings.json`. Claude could make those changes with Bash and sudo anyway,
   so the rules only hid that they were no boundary; the container and the VM
