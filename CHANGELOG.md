@@ -16,8 +16,8 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   and `PreToolUse` enforces ceilings (weekly 60%, 5-hour 90%), a spend-down
   before the weekly reset while the person is inactive, 12 expert runs per
   session and a token budget per run: a turn no person started (a wake-up, a
-  loop) is blocked or denied there and never goes into extra usage, while the
-  person is asked. The qa skill's `SKILL.md` points to `budget.md`, which says
+  loop; its prompt begins with an `[auto ...]` tag) is blocked or denied there
+  and never goes into extra usage, while the person is asked. The qa skill's `SKILL.md` points to `budget.md`, which says
   how to work within it: two review rounds per gate, low findings into a list
   of improvements, deliver or pause when the guard says so.
 - Changed: the base policy no longer denies edits to `/etc/claude-code/` and to

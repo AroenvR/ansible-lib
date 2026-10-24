@@ -13,13 +13,17 @@ and decides with the limits below, each overridable by an environment variable
   QA_BUDGET_INACTIVE_HOURS=3     once the person has been inactive this long
   QA_BUDGET_RUNS=12            expert runs (subagents) per session
   QA_BUDGET_RUN_TOKENS=1500000 tokens per run, weighted by price: input 1, cache write 1.25, cache read 0.1, output 5
-  QA_BUDGET_AUTO_PROMPT=...    regular expression for prompts no person typed (wake-ups, loops); default: a
-                               leading [tag] or an autonomous-loop sentinel
+  QA_BUDGET_STALE_MINUTES=10   a usage reading older than this is unknown
+  QA_BUDGET_AUTO_PROMPT=...    regular expression for prompts no person typed; default: a leading [auto ...] tag
+                               (e.g. "[auto qa-budget step 3] Read ...") or an autonomous-loop sentinel
 
-A turn is automatic when its prompt matches QA_BUDGET_AUTO_PROMPT, else the person's.
+A turn is automatic when its prompt matches QA_BUDGET_AUTO_PROMPT: every wake-up and loop prompt must carry the
+tag. A session the guard has not seen a prompt of counts as automatic, unless the person typed a prompt within
+QA_BUDGET_INACTIVE_HOURS.
 - An automatic prompt is blocked (costs nothing) at a ceiling or the limit.
-- A new expert run (the Agent tool) at a ceiling, the limit or the run cap is denied in an automatic turn, and
-  asked of the person in theirs: only they may go on, into extra usage too.
+- A new expert run (the Agent or Workflow tool) at a ceiling, the limit or the run cap is denied in an automatic
+  turn, and asked of the person in theirs: only they may go on, into extra usage too. In an automatic turn, it is
+  also denied while the usage is unknown (no reading, or a stale one).
 - In an automatic turn at the limit, every tool is denied: pause, never into extra usage.
 - An expert over its token budget gets its tool calls denied: it reports now, with what remains as improvements.
 The person is active while they typed a prompt within QA_BUDGET_INACTIVE_HOURS, or while the weekly usage rose
@@ -31,13 +35,15 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ledger  # noqa: E402  (same folder)
 
 DEFAULTS = {"WEEKLY": 60, "FIVE_HOUR": 90, "LIMIT": 98, "SPEND_DOWN_HOURS": 4, "INACTIVE_HOURS": 3,
-            "RUNS": 12, "RUN_TOKENS": 1500000}
-AUTO_PROMPT = r"^\s*\[[^\]\n]+\]|<<autonomous-loop"
+            "RUNS": 12, "RUN_TOKENS": 1500000, "STALE_MINUTES": 10}
+AUTO_PROMPT = r"^\s*\[auto\b[^\]\n]*\]|<<autonomous-loop"
+RUN_TOOLS = ("Agent", "Task", "Workflow")
 WEIGHTS = {"input_tokens": 1, "cache_creation_input_tokens": 1.25, "cache_read_input_tokens": 0.1, "output_tokens": 5}
 GAP = datetime.timedelta(minutes=30)
 
@@ -73,9 +79,14 @@ def load(name, default):
 
 
 def usage_now(moment):
-    """Used % per window from the latest reading; a window whose reset has passed counts as 0."""
-    limits = (load("rate-limits.json", {}) or {}).get("rate_limits") or {}
-    used = {}
+    """Used % per window from the latest reading; a window whose reset has passed counts as 0. "known" is False
+    without a reading, or with one older than QA_BUDGET_STALE_MINUTES."""
+    latest = load("rate-limits.json", {})
+    latest = latest if isinstance(latest, dict) else {}
+    limits = latest.get("rate_limits") or {}
+    read_at = parse(latest.get("time"))
+    used = {"known": bool(limits) and read_at is not None
+            and moment - read_at <= datetime.timedelta(minutes=limit("STALE_MINUTES"))}
     for window in ("five_hour", "seven_day"):
         reading = limits.get(window) or {}
         reset = reading.get("resets_at")
@@ -171,11 +182,15 @@ def agent_transcript(event):
 
 
 def save_activity(activity):
-    os.makedirs(ledger.state_dir(), mode=0o700, exist_ok=True)
-    tmp = path(".activity.json.tmp")
-    with open(tmp, "w") as f:
-        json.dump(activity, f)
-    os.replace(tmp, path("activity.json"))
+    """Best effort: a failed save must not change the decision."""
+    try:
+        os.makedirs(ledger.state_dir(), mode=0o700, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=ledger.state_dir(), prefix=".activity.")
+        with os.fdopen(fd, "w") as f:
+            json.dump(activity, f)
+        os.replace(tmp, path("activity.json"))
+    except OSError as error:
+        sys.stderr.write("qa-budget guard: activity not saved: %s\n" % error)
 
 
 def on_prompt(event, activity, moment):
@@ -186,13 +201,23 @@ def on_prompt(event, activity, moment):
     activity["sessions"] = sessions
     if not automatic:
         activity["person_prompt_at"] = moment.isoformat()
-    save_activity(activity)
+    answer = None
     if automatic:
-        reached = over(usage_now(moment), activity, moment)
+        used = usage_now(moment)
+        reached = over(used, activity, moment)
         if reached:
-            return {"decision": "block", "reason": "qa-budget: automatic prompt not run, %s is reached; %s. "
-                    "It runs again after the reset, or when a person starts the turn." % (reached, resets(usage_now(moment)))}
-    return None
+            answer = {"decision": "block", "reason": "qa-budget: automatic prompt not run, %s is reached; %s. "
+                      "It runs again after the reset, or when a person starts the turn." % (reached, resets(used))}
+    save_activity(activity)
+    return answer
+
+
+def automatic_turn(activity, session, moment):
+    turn = ((activity.get("sessions") or {}).get(session) or {}).get("turn")
+    if turn:
+        return turn == "automatic"
+    person = parse(activity.get("person_prompt_at"))
+    return person is None or moment - person >= datetime.timedelta(hours=limit("INACTIVE_HOURS"))
 
 
 def decide(kind, reason):
@@ -202,7 +227,7 @@ def decide(kind, reason):
 
 def on_tool(event, activity, moment):
     session = event.get("session_id")
-    automatic = ((activity.get("sessions") or {}).get(session) or {}).get("turn") == "automatic"
+    automatic = automatic_turn(activity, session, moment)
     used = usage_now(moment)
     reached = over(used, activity, moment)
     pause = ("Pause: write what is done and what comes next to the task's handoff file, then stop; %s." % resets(used))
@@ -216,11 +241,13 @@ def on_tool(event, activity, moment):
                 return decide("deny", "this run used %.0f of its %.0f weighted tokens. Use no more tools: write your "
                               "report now, with what remains as a list of improvements." % (spent, limit("RUN_TOKENS")))
         return None
-    if event.get("tool_name") not in ("Agent", "Task"):
+    if event.get("tool_name") not in RUN_TOOLS:
         return None
     count = runs(session)
     if count >= limit("RUNS"):
         reached = reached or "the cap of %.0f expert runs in this session (%d run)" % (limit("RUNS"), count)
+    if automatic and not used["known"]:
+        reached = reached or "an unknown usage (no status line reading of the last %.0f minutes)" % limit("STALE_MINUTES")
     if not reached:
         return None
     if automatic:

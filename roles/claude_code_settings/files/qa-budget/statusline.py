@@ -46,6 +46,14 @@ def save(limits, session):
             before = json.load(f).get("rate_limits")
     except (OSError, ValueError, AttributeError):
         before = None
+    # Usage never falls within a window: a lower value for the same reset is an
+    # older reading (another session's), so the higher one stays.
+    limits = dict(limits)
+    for window in WINDOWS:
+        old, new = (before or {}).get(window), limits.get(window)
+        if (isinstance(old, dict) and isinstance(new, dict) and old.get("resets_at") == new.get("resets_at")
+                and (old.get("used_percentage") or 0) > (new.get("used_percentage") or 0)):
+            limits[window] = old
     reading = {
         "time": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "session_id": session.get("session_id"),

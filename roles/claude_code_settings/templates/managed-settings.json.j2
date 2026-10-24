@@ -12,7 +12,7 @@
   "theme": {{ claude_code_settings_theme | to_json }},
   "skipDangerousModePermissionPrompt": true,
 {% if claude_code_settings_qa_budget | bool %}
-  "statusLine": {"type": "command", "command": "python3 /etc/claude-code/qa-budget/statusline.py"},
+  "statusLine": {"type": "command", "command": "python3 /etc/claude-code/qa-budget/statusline.py", "refreshInterval": 60},
   "hooks": {
 {% for __claude_code_settings_event, __claude_code_settings_script in [('SubagentStart', 'ledger'), ('SubagentStop', 'ledger'),
       ('Stop', 'ledger'), ('UserPromptSubmit', 'guard'), ('PreToolUse', 'guard')] %}

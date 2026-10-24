@@ -246,6 +246,7 @@
       ansible.builtin.assert:
         that:
           - claude_code_settings_policy.statusLine.command == 'python3 /etc/claude-code/qa-budget/statusline.py'
+          - claude_code_settings_policy.statusLine.refreshInterval == 60
           - claude_code_settings_policy.hooks.keys() | sort == ['PreToolUse', 'Stop', 'SubagentStart', 'SubagentStop', 'UserPromptSubmit']
           - __claude_code_settings_test_commands.SubagentStart == __claude_code_settings_test_ledger
           - __claude_code_settings_test_commands.SubagentStop == __claude_code_settings_test_ledger

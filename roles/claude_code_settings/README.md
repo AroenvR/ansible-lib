@@ -91,14 +91,17 @@ Claude Code's status line receives the usage (`rate_limits`), hooks do not,
 so the ledger reads the status line's latest reading; it lags one response.
 Off by default: the managed status line replaces a person's own.
 
-The guard tells a turn the person started from one no person started: a prompt
-that begins with a `[tag]` (as wake-ups and loops write them) or holds an
-autonomous-loop sentinel.
+The guard tells a turn the person started from one no person started by its
+prompt: every wake-up and loop prompt must begin with an `[auto ...]` tag
+(`[auto qa-budget step 3] Read ...`) or hold an autonomous-loop sentinel. A
+session it has seen no prompt of counts as one no person started, unless the
+person typed a prompt in the last 3 hours. The status line refreshes every
+minute, also while an expert runs.
 
 | Where | A turn the person started | A turn no person started |
 |---|---|---|
 | The prompt, at a ceiling or the limit | Runs | Blocked, before it costs anything |
-| A new expert run (Agent tool), at a ceiling, the limit or the session's run cap | Asks the person | Denied: deliver with a list of improvements, or pause |
+| A new expert run (Agent or Workflow tool), at a ceiling, the limit or the session's run cap | Asks the person | Denied: deliver with a list of improvements, or pause; also while the usage is unknown (no reading, or one older than 10 minutes, `QA_BUDGET_STALE_MINUTES`) |
 | Any tool, at the limit | Runs (the person may go into extra usage) | Denied: pause |
 | An expert's tool call, once its run used its token budget | Denied: the expert reports now | The same |
 

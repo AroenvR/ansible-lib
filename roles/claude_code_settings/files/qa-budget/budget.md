@@ -23,7 +23,10 @@ the limit 98%, 12 expert runs per session, a token budget per run).
   expert run, and only they may go on, into extra usage too.
 - A turn no person started (a wake-up, a loop) stops at the ceilings and never
   goes into extra usage: its prompt is blocked, a new expert run is denied, and
-  at the limit every tool is denied.
+  at the limit every tool is denied. Every prompt you schedule (a wake-up, a
+  loop) must therefore begin with an `[auto ...]` tag, e.g.
+  `[auto qa-budget step 3] Read ...`: without it, the guard takes it for the
+  person's.
 - In the last hours before the weekly reset, while the person is inactive, the
   weekly ceiling rises to the limit: what would expire is used, nothing more.
 
