@@ -1,0 +1,18 @@
+{
+  "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+  "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+  "cwd": "/home/claude/work",
+  "prompt_id": "47ebc3ba-de20-44bf-a948-ae21bf135269",
+  "permission_mode": "bypassPermissions",
+  "agent_id": "a6a6426aff7977e1e",
+  "agent_type": "",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111/subagents/agent-a6a6426aff7977e1e.jsonl",
+  "last_assistant_message": "summary of the conversation",
+  "background_tasks": [],
+  "session_crons": []
+}

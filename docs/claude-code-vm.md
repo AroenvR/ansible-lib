@@ -58,11 +58,14 @@ What you choose, the VM's size and network, keys, the token and how sessions
 start, lives on the host in `/etc/claude-vm/settings.yml`, which the first run
 writes: change it there and run the playbook again
 ([Settings](../roles/claude_code_vm/README.md#settings)). With
-`claude_code_settings_qa: true` there, a request to change a project goes
+`claude_code_skills_qa: true` there, a request to change a project goes
 through the [qa
-skill](../roles/claude_code_settings/README.md#the-qa-skill-and-its-five-experts)
-and its five experts; off by default, as its names win over skills and agents
-of your own.
+skill](../roles/claude_code_skills/README.md#the-qa-skill-and-its-five-experts)
+and its five experts; with `claude_code_skills_loop_to_delivery: true`, Claude
+[keeps long work
+going](../roles/claude_code_skills/README.md#the-loop-to-delivery-skill) by
+itself until it is delivered. Both are off by default, as their names win over
+skills and agents of your own.
 
 To work on aslib.infra there, clone it in the VM (`<repository>` is the URL of
 the aslib.infra repository you use) and run its tests as CI does; the rest is
@@ -90,6 +93,18 @@ Or give Claude an account of its own on a GitLab on the host: [Run a GitLab of
 your own](gitlab.md). For a fresh VM, `ansible-playbook
 aslib.infra.claude_code_vm_remove --ask-become-pass`, then `aslib.infra.claude_code_vm`
 again.
+
+## Change its size, and keep it up to date
+
+Run the playbook again to change the VM or to update it. Change
+`claude_code_vm_memory` or `claude_code_vm_vcpus` in
+`/etc/claude-vm/settings.yml`, and the run shuts the VM down cleanly, gives it
+the new values and starts it again; a VM that does not shut down is never forced
+off, and the run says how to go on. The disk size and the network are for a new
+VM. Every run also brings all of the VM's packages up to date, Claude Code's
+included, and restarts the VM when Ubuntu says it needs that. A restart ends the
+sessions in the VM, so run the playbook when that suits ([Resizing, updates and
+restarts](../roles/claude_code_vm/README.md#resizing-updates-and-restarts)).
 
 ## When it does not come up
 

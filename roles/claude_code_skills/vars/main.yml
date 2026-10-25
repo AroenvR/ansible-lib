@@ -1,0 +1,35 @@
+---
+# What claude_code_skills ships for Claude Code's managed settings directory
+# (/etc/claude-code on Linux), as paths there: each comes from files/ with
+# .claude/ left out. A skill is its folder, an agent its file.
+__claude_code_skills_qa_files:
+  - .claude/skills/qa/SKILL.md
+  - .claude/skills/qa/protocol.md
+  - .claude/agents/architect.md
+  - .claude/agents/tester.md
+  - .claude/agents/reviewer.md
+  - .claude/agents/developer.md
+  - .claude/agents/documenter.md
+__claude_code_skills_loop_files:
+  - .claude/skills/loop-to-delivery/SKILL.md
+  - .claude/skills/loop-to-delivery/loop_to_delivery.py
+
+# loop-to-delivery's hooks, in the policy (managed-settings.json): one command
+# for the three events, which the program tells apart. Its test keeps a missing
+# or unreadable program from making python3 exit 2, which would block the
+# person's prompt; /usr/bin/python3 -I runs it whatever PATH and PYTHON*
+# variables Claude's or a project's environment has.
+__claude_code_skills_program: /etc/claude-code/.claude/skills/loop-to-delivery/loop_to_delivery.py
+__claude_code_skills_hook_command: >-
+  [ -r {{ __claude_code_skills_program }} ] && /usr/bin/python3 -I {{ __claude_code_skills_program }}
+  hook --max-wakes {{ claude_code_skills_loop_to_delivery_max_wakes | int }}
+__claude_code_skills_hook:
+  - hooks:
+      - type: command
+        timeout: 30
+        command: "{{ __claude_code_skills_hook_command }}"
+__claude_code_skills_loop_policy:
+  hooks:
+    UserPromptSubmit: "{{ __claude_code_skills_hook }}"
+    Stop: "{{ __claude_code_skills_hook }}"
+    StopFailure: "{{ __claude_code_skills_hook }}"

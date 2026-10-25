@@ -1,0 +1,51 @@
+---
+# claude-dev as libvirt defines it for its next start, its state, and what the
+# running guest itself sees: its boot, memory and processors. Sets
+# __claude_code_vm_test_vm. The guest is read over SSH of its own (no
+# connection kept), as the VM restarts between these reads.
+- name: Read claude-dev's definition for its next start, and its state
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_virsh + __claude_code_vm_test_query }}"
+  loop:
+    - [dumpxml, --inactive, claude-dev]
+    - [domstate, claude-dev]
+  loop_control:
+    loop_var: __claude_code_vm_test_query
+  register: __claude_code_vm_test_libvirt
+  changed_when: false
+
+- name: Wait until the guest answers on SSH, as it runs
+  ansible.builtin.wait_for:
+    host: "{{ __claude_code_vm_test_ip }}"
+    port: 22
+    timeout: 300
+  when: __claude_code_vm_test_libvirt.results[1].stdout is search('running')
+
+- name: Read the guest's boot, memory and processors
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_ssh + ['cat /proc/sys/kernel/random/boot_id; grep ^MemTotal: /proc/meminfo; nproc'] }}"
+  register: __claude_code_vm_test_guest
+  changed_when: false
+  until: __claude_code_vm_test_guest.rc == 0
+  retries: 20
+  delay: 6
+  when: __claude_code_vm_test_libvirt.results[1].stdout is search('running')
+
+- name: Note what libvirt and the guest say
+  vars:
+    __claude_code_vm_test_xml: "{{ __claude_code_vm_test_libvirt.results[0].stdout }}"
+    __claude_code_vm_test_max_vcpus: "{{ __claude_code_vm_test_xml | regex_findall(__claude_code_vm_test_vcpu_re) | first | default('none') }}"
+    __claude_code_vm_test_lines: "{{ __claude_code_vm_test_guest.stdout_lines | default([]) }}"
+  ansible.builtin.set_fact:
+    __claude_code_vm_test_vm:
+      state: "{{ __claude_code_vm_test_libvirt.results[1].stdout | trim }}"
+      memory_kib: "{{ __claude_code_vm_test_xml | regex_findall(__claude_code_vm_test_memory_re) | first | default('none') }}"
+      current_memory_kib: >-
+        {{ __claude_code_vm_test_xml | regex_findall(__claude_code_vm_test_current_memory_re) | first | default('none') }}
+      vcpus: "{{ __claude_code_vm_test_max_vcpus }}"
+      current_vcpus: >-
+        {{ __claude_code_vm_test_xml | regex_findall(__claude_code_vm_test_vcpu_current_re) | first
+           | default(__claude_code_vm_test_max_vcpus) }}
+      boot: "{{ __claude_code_vm_test_lines[0] | default('') }}"
+      mem_total_kib: "{{ (__claude_code_vm_test_lines[1] | default('MemTotal: 0 kB')).split()[1] }}"
+      nproc: "{{ __claude_code_vm_test_lines[2] | default('0') }}"

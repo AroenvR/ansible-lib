@@ -69,7 +69,9 @@ of whoever runs `ansible-playbook`, root's with `sudo`.
 Ubuntu 24.04 with the account `claude` (sudo without a password), Podman, git,
 make, Python 3.11 next to Ubuntu's 3.12 (from the deadsnakes PPA: aslib.infra's
 test venvs run ansible-core 2.14 on it, as RHEL 9.6 does) and Claude Code from
-Anthropic's signed apt repository, which updates with `sudo apt upgrade`.
+Anthropic's signed apt repository. Every run of the playbook brings all of the
+VM's packages up to date, Claude Code's included, and restarts the VM when
+they need it ([Resizing, updates and restarts](#resizing-updates-and-restarts)).
 
 Claude Code starts ready to work: in bypassPermissions mode, without
 permission prompts (the VM is what that mode needs), without asking to trust a
@@ -89,10 +91,13 @@ interrupted session loses nothing (commits, a handoff file per task, memory),
 and `/tmp` empties at every boot. Claude Code also reads `~/.claude/CLAUDE.md`
 and each project's `CLAUDE.md`, which are yours and Claude's.
 
-With `claude_code_settings_qa: true`, change requests go through the [qa skill
-and its five expert subagents](../claude_code_settings/README.md#the-qa-skill-and-its-five-experts),
+With `claude_code_skills_qa: true`, change requests go through the [qa skill
+and its five expert subagents](../claude_code_skills/README.md#the-qa-skill-and-its-five-experts),
 which every run installs in `/etc/claude-code/.claude/`; with `false` (the
-default), a run removes them and leaves any other file there alone.
+default), a run removes them and leaves any other file there alone. With
+`claude_code_skills_loop_to_delivery: true`, Claude keeps long work going by
+itself until it is delivered: [loop-to-delivery](../claude_code_skills/README.md#the-loop-to-delivery-skill),
+installed the same way, with its hooks in the policy. Both are off by default.
 
 aslib.infra's tests run there as in CI (`<repository>` is the URL of the
 aslib.infra repository you use):
@@ -144,15 +149,43 @@ for one run. So change a setting in the file, then run the playbook again:
 claude_code_vm_memory: 6144
 claude_code_settings_theme: light
 claude_code_settings_permission_mode: default   # with permission prompts
-claude_code_settings_qa: true                    # the qa skill and its experts
+claude_code_skills_qa: true                      # the qa skill and its experts
+claude_code_skills_loop_to_delivery: true        # Claude keeps long work going until it is delivered
 ```
 
 The download sources (image, repositories, keys) and the debugging options
 are not in it: they stay aslib.infra's, so that an update can change them. A
 removal (`aslib.infra.claude_code_vm_remove`) keeps the file, so a reset keeps
 your settings; to start from the defaults again, delete it first:
-`sudo rm /etc/claude-vm/settings.yml`. A size or network change needs a new VM,
-as the file's comments say.
+`sudo rm /etc/claude-vm/settings.yml`. The disk size and the network are for a
+new VM, as the file's comments say; the memory and the vCPUs apply to the VM
+you have, below. 0.8.0's setting `claude_code_settings_qa` in
+the file, the inventory or `-e` stops the run, naming `claude_code_skills_qa`:
+rename it (a run never changes a line of the file).
+
+## Resizing, updates and restarts
+
+A run restarts the VM in two cases. A restart ends every session in it and what
+runs there, so run the playbook when that suits.
+
+- **New memory or vCPUs.** Change `claude_code_vm_memory` or
+  `claude_code_vm_vcpus` in the settings file, higher or lower, and run the
+  playbook: after the check that the memory fits the host, it shuts the VM
+  down cleanly, as its power button would, gives it the new values and starts
+  it again. A VM that is shut off just starts with them. A VM that does not
+  shut down within 5 minutes is never forced off: the run stops, says the VM
+  still runs with its old values, and how to go on (shut it down from inside
+  with `sudo poweroff`, then run again). Values that match change nothing and
+  do not restart it.
+- **Updates.** Every run brings all of the VM's packages up to date from its
+  repositories (Ubuntu's, and Anthropic's for Claude Code) as `apt upgrade`
+  does, so it takes as long as apt needs: new dependencies such as a new kernel
+  come in, nothing is removed. When Ubuntu says the VM needs a restart (its own
+  marker, `/var/run/reboot-required`, also one that unattended-upgrades left
+  between runs), the run restarts it cleanly and goes on once it is back; one
+  that does not come back within 15 minutes stops the run, pointing at
+  `claude_code_vm_overview`. A run with nothing to upgrade and no restart
+  pending changes nothing.
 
 ## Signing in
 
@@ -204,8 +237,8 @@ VM as it was made.
 
 ## Limitations
 
-- A proof of concept: one VM per host, named `claude-dev`. Changing the network
-  or the image needs a new VM.
+- A proof of concept: one VM per host, named `claude-dev`. Changing the disk
+  size, the network or the image needs a new VM.
 - Ubuntu hosts only. Its test (`sudo make test-vm-2.16`, which needs KVM) runs
   in CI on GitHub's x86_64 Ubuntu 24.04 runners, which have KVM. On ARM64 it
   runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04) with
@@ -225,7 +258,8 @@ VM as it was made.
 ## Options
 
 `ansible-doc -t role aslib.infra.claude_code_vm` (entry points `main`, `guest`,
-`remove`, and for debugging `overview` and `boot_trial`), and
-`ansible-doc -t role aslib.infra.claude_code_settings` for how sessions start.
+`remove`, and for debugging `overview` and `boot_trial`),
+`ansible-doc -t role aslib.infra.claude_code_settings` for how sessions start and
+`ansible-doc -t role aslib.infra.claude_code_skills` for the skills.
 A setting of before 0.7.0 (`claude_vm_*`) stops the run, naming it: rename it
 `claude_code_vm_*`.

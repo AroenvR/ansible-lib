@@ -1,0 +1,20 @@
+---
+# Checks what claude_code_skills hands its targets: its defaults, the qa skill
+# and loop-to-delivery each on, both on, the hook policy with the default and a
+# changed maximum, the stops (a maximum that is not a positive whole number,
+# qa with agent teams, values that are not booleans), the hook command where
+# its program is absent, and the hook program's unit tests with this
+# ansible-core's Python. Nothing to set up: the role only computes, where
+# Ansible runs.
+scenario:
+  name: build_machine
+driver:
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      # The tested ansible-core's own Python, see node_image's build_machine scenario.
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+platforms:
+  - name: localhost

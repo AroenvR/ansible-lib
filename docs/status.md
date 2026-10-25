@@ -16,16 +16,20 @@ In CI:
   account, on a RHEL 9.6 test container, next to Claude Code (with a stand-in for
   it) on the same server: separate accounts and UIDs, the shared zone both ways,
   root running Claude Code, its read-only policy with every setting of how a
-  session starts, a deploy that still sets a setting of before 0.7.0 stopped,
-  the qa skill and its five experts in its `/etc/claude-code` exactly as the
-  collection ships them and removed again when turned off, and its removal;
+  session starts, a deploy that still sets a setting of before 0.7.0 or
+  `claude_code_settings_qa` stopped, the qa skill with its five experts and
+  loop-to-delivery in its `/etc/claude-code` exactly as the collection ships
+  them, with the loop's hooks in the policy and their command run on a prompt
+  and a wake-up, and removed again when turned off, and its removal;
   podman_service's
   checks after every deploy and restart, and the Node.js service's health check
   getting an app that answers with server errors restarted; a private file in the
   shared zone staying private, a replaced README caught by its checksum and put
   back by the next deploy, and Claude Code's 4 GiB memory limit;
 - the Claude Code project's setup, update and real image build, with every
-  package up to date;
+  package up to date, the loop's hook program running its unit tests in the
+  image's own Python, and an update that passes in a project of 0.8.0 whose
+  settings still hold `claude_code_settings_qa`, while a build then stops;
 - GitLab 19.4.1, deployed and used as a person would: an account and token, a
   private project, pushes and clones over HTTP and SSH, a fork, its settings, a
   restart, and a removal and new deploy on the data it left;
@@ -42,12 +46,23 @@ In CI:
   the folder, to confirm the mode or for its first-run setup; the qa skill and
   its five experts in `/etc/claude-code` exactly as the collection ships them,
   offered to the model by the real Claude Code, and removed by a run that
-  turns them off;
+  turns them off; loop-to-delivery's files and hooks, its hook command run by
+  the VM's own Python; the memory and vCPUs of an existing VM changed, higher
+  and lower (the VM restarted, the guest reporting the new values), left
+  alone when they match, applied to a VM that is shut off, a VM that does not
+  shut down left running with its old values, and a value that does not fit
+  stopping the run first; every package up to date after a run, and the VM
+  restarted when Ubuntu asks for it; `claude_code_settings_qa` in the settings
+  file or in `-e` stopping the run, the file untouched;
 - claude_code_settings with ansible-core 2.14 and 2.16: its policy with the
   defaults and with every setting changed, and a value outside the choices
-  stopping the run; the qa skill's files off by default and handed over when
-  on, the experts' frontmatter as Claude Code needs it, and the qa skill with
-  agent teams stopping the run.
+  stopping the run;
+- claude_code_skills with ansible-core 2.14 and 2.16: the files and the part of
+  the policy it hands over with each skill off, on and both on, the hook command
+  with the default maximum and a changed one, the experts' frontmatter as
+  Claude Code needs it, and a maximum that is not above 0, or the qa skill with
+  agent teams, stopping the run; and the hook program's unit tests, run with
+  the Python of the ansible-core under test.
 
 ## Not tested yet
 
@@ -60,6 +75,9 @@ In CI:
   checked by hand;
 - claude_code_vm's firewall rules after a reboot of the host: CI resets the VM, but
   never reboots the host;
+- the shutdown and restart of an ARM64 VM (the memory and vCPUs of an existing
+  VM, a restart for upgraded packages): CI's VM is x86_64, and a Raspberry Pi 4
+  is checked by hand;
 - GitLab CI: `.gitlab-ci.yml` is written but has not run;
 - in the container, the real Claude Code starting ready to work: the tests
   deploy a stand-in, which shows it gets the same policy and environment as
@@ -68,6 +86,10 @@ In CI:
   Claude takes it for a change request and not for a question, runs the
   experts one at a time in the protocol's order, and stops after three BLOCKs
   at one gate. These are checked by hand before a release.
+- loop-to-delivery at work with a real model: the hook program is tested with
+  recorded hook inputs, and the real Claude Code only against a stand-in for
+  the API, so that no real loop (set up, a wake-up, delivered) runs in CI. One
+  is checked by hand before a release.
 
 ## Known limits and open work
 

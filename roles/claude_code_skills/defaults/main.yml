@@ -1,0 +1,7 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml: the
+# skills Claude Code gets, with the subagents they use, the same in every
+# target that includes this role.
+claude_code_skills_qa: false
+claude_code_skills_loop_to_delivery: false
+claude_code_skills_loop_to_delivery_max_wakes: 100

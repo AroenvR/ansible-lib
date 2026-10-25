@@ -8,11 +8,15 @@
       ansible.builtin.include_role:
         name: aslib.infra.node_deploy
 
-    # The account takes the next free UID, as without a setting. With the qa
-    # skill, so that the idempotence step covers its files too.
-    - name: Deploy Claude Code next to it, with the qa skill
+    # The account takes the next free UID, as without a setting. With both
+    # skills, so that the idempotence step covers their files too, and a
+    # maximum of wake-ups other than the default, which verify.yml expects in
+    # the installed hooks.
+    - name: Deploy Claude Code next to it, with the qa skill and loop-to-delivery
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_podman
       vars:
         podman_service_uid: ""
-        claude_code_settings_qa: true
+        claude_code_skills_qa: true
+        claude_code_skills_loop_to_delivery: true
+        claude_code_skills_loop_to_delivery_max_wakes: 7

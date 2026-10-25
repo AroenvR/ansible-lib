@@ -4,6 +4,136 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.9.0
+
+- Added: role `claude_code_skills`, the skills Claude Code gets, with the same
+  names and defaults in the container and the VM. Both skills are off by
+  default, and turning one off removes its files at the next run or deploy.
+- Changed, **breaking**: the qa skill moved from claude_code_settings to
+  claude_code_skills, and its setting is now `claude_code_skills_qa` (was
+  `claude_code_settings_qa`; the skill, its default and its behavior are the
+  same). A run, build or deploy that still sets the old name stops, naming the
+  new one.
+- Added: the skill loop-to-delivery, turned on with
+  `claude_code_skills_loop_to_delivery: true`. For work that outlasts a turn,
+  such as a change request or waiting on CI, a review or an answer, Claude
+  keeps notes and a wake-up job every half hour while the conversation is idle,
+  so that the work goes on after an interruption (a rate or credit limit, a
+  closed laptop) until it is delivered. Hooks in the policy run a small Python
+  program that lets a wake-up through only for the conversation that started
+  the loop and within its limits, and blocks it otherwise before it costs a
+  model call: at most `claude_code_skills_loop_to_delivery_max_wakes` wake-ups
+  (100 by default), 6 in a row without progress, and 7 days. A person's own
+  prompts are never blocked. It needs `/usr/bin/python3`: the VM's Ubuntu has
+  it, the container's base image must provide it (UBI 9 does). Claude's loops
+  are listed and stopped with the program's `status` and `stop`; its README
+  says how.
+- Added: claude_code_vm applies `claude_code_vm_memory` and
+  `claude_code_vm_vcpus` of the settings file to a VM that exists. A run where
+  they differ shuts the VM down cleanly, gives it the new values and starts it;
+  it never forces a VM off that has not shut down within 5 minutes, but stops,
+  saying how to go on. The disk size and the network still apply to a new VM
+  only.
+- Changed: claude_code_vm brings all of the VM's packages up to date on every
+  run, as `apt upgrade` does (Ubuntu's, and Anthropic's for Claude Code; new
+  dependencies such as a new kernel come in, nothing is removed), and restarts
+  the VM cleanly when Ubuntu says it needs a restart, also one that
+  unattended-upgrades left between runs. A restart ends the sessions in the
+  VM, as a new memory or vCPUs does. The VM needed the internet already; every
+  other role, and the host, still install a package only when it is missing.
+- Changed: the qa skill's files and absent paths, `claude_code_settings_files`
+  and `claude_code_settings_absent` of 0.8.0, are now `claude_code_skills_files`
+  and `claude_code_skills_absent`, with the loop's `claude_code_skills_policy`;
+  claude_code_settings' two facts now hold only qa-budget's files. The targets
+  include claude_code_skills after claude_code_settings and merge its part into
+  the policy. A playbook of your own that includes claude_code_settings and
+  installs its files includes claude_code_skills too.
+- Added: `claude_code_settings_qa_budget` (off by default) installs qa-budget
+  in `/etc/claude-code/qa-budget/`, in the container and the VM, which keeps
+  agent work within a budget of the subscription. A status line shows the
+  subscription's 5-hour and weekly usage and saves each reading (only the
+  status line receives it); a hook on `SubagentStart`, `SubagentStop` and
+  `Stop` keeps a ledger of each agent's and session's tokens with the usage of
+  that moment, both in `~/.claude/qa-budget/`. A guard on `UserPromptSubmit`
+  and `PreToolUse` enforces ceilings (weekly 60%, 5-hour 90%), a spend-down
+  before the weekly reset while the person is inactive, 12 expert runs per
+  session and a token budget per run: a turn no person started (a wake-up, a
+  loop; its prompt begins with an `[auto ...]` tag) is blocked or denied there
+  and never goes into extra usage, while the person is asked. The qa skill's
+  `SKILL.md` points to `budget.md`, which says how to work within it: one
+  review round per gate, low findings into a list of improvements, deliver or
+  pause when the guard says so.
+- Changed: the base policy no longer denies edits to `/etc/claude-code/` and to
+  `settings.json`. Claude could make those changes with Bash and sudo anyway,
+  so the rules only hid that they were no boundary; the container and the VM
+  are. The other deny rules stay.
+- Fixed: claude_code_vm refreshes apt's package lists (when older than an
+  hour) before it installs the host's missing packages; with stale lists, apt
+  asked the mirror for files it no longer had (404), as on CI runners.
+- Added: `dev/claude-dev-settings.yml` installs Claude Code's policy,
+  qa-budget's files and the skills on the machine it runs on, without the rest
+  of the VM's guest setup, for Claude's own VM to apply a branch's settings to
+  itself.
+- Changed: the qa skill and its experts ask less of the person and waste less.
+  QA decides what the project's rules decide (the version number, who fixes a
+  finding, re-running an expert within the budget) and lists those decisions in
+  its report; it asks only what is the person's to decide, in one batch while
+  it writes the spec, each question with its recommendation. It makes
+  corrections that change no behavior itself, with a mechanical proof, for the
+  next review to check; it sizes each expert's task to one run and runs the
+  tests that only CI can run as soon as they exist; each gate takes one review
+  round, and lower findings go to a list of improvements. Messages, pull
+  requests and everything that ships use plain words: no labels from the spec,
+  and only the version file and the changelog's heading carry the upcoming
+  version. qa-budget's `budget.md` makes the budget a share of the week, agreed
+  once, within which QA decides.
+- Added: `make lint` checks that no folded YAML block (`>`) keeps a line break
+  before `&&`, `||`, `|` or `;`, which a shell command fails on only when it
+  runs (`dev/check_folded.py`); the test setup tries Ansible Galaxy three times.
+
+### Upgrading from 0.8.0
+
+1. A VM host: the settings file, `/etc/claude-vm/settings.yml`, that 0.8.0
+   wrote has a `claude_code_settings_qa: <value>` line. The first run of this
+   version stops until you rename it to `claude_code_skills_qa`, keeping the
+   value; the run then adds the two loop settings, off and 100, and
+   `claude_code_settings_qa_budget`, off. An inventory or a `-e`
+   that sets the old name stops likewise.
+2. The first run restarts the VM if its memory or vCPUs in the file differ from
+   what the VM has, and if Ubuntu's `/var/run/reboot-required` is there (an
+   Ubuntu VM that has not restarted since a kernel update has it). The
+   sessions in the VM end. The run also upgrades the VM's packages, which takes
+   as long as apt needs.
+3. A Claude Code project (container) set up with 0.8.0 has
+   `claude_code_settings_qa` in `ansible/group_vars/all/project.yml`: the setup
+   wrote every setting at its default, `false` included. After installing
+   this version, in the project's `ansible/` directory, run
+   `ansible-playbook update-playbooks.yml` (it still runs, and rewrites
+   `defaults.yml`), rename the line in `project.yml` to `claude_code_skills_qa`
+   or delete it, and then run `build-and-deploy.yml` or `deploy.yml`; they stop
+   at the old name. A project set up before 0.8.0 has no such line.
+4. Turn loop-to-delivery on with `claude_code_skills_loop_to_delivery: true`
+   (in the VM's settings file, or the project's `project.yml`), and set the
+   maximum of wake-ups if 100 does not suit. Sessions that were open before may
+   not have its hooks: start new ones. Turn it off only with no loop running,
+   or after ending the sessions that hold one (`status` shows the loops);
+   otherwise each such job costs one model call before Claude deletes it.
+
+Rolling back to 0.8.0:
+
+- A VM host: 0.8.0 stops on the `claude_code_skills_*` lines in the settings
+  file. Remove them and put `claude_code_settings_qa` back. The VM keeps its
+  size and its upgraded packages. 0.8.0 removes only what it ships, so
+  `/etc/claude-code/.claude/skills/loop-to-delivery/` stays while 0.8.0's
+  policy drops the hooks: turn loop-to-delivery off before rolling
+  back, or remove that folder by hand; otherwise the skill is offered without
+  its guard, and a job it creates costs one model call before Claude deletes
+  it.
+- A Claude Code project: rename the line in `project.yml` back to
+  `claude_code_settings_qa` and deploy. 0.8.0 mirrors `config/` without the
+  loop's files and writes the policy without its hooks.
+- What a loop left in Claude's home is inert without the hooks.
+
 ## 0.8.0
 
 - Added: `claude_code_settings_qa` (off by default) installs the qa skill and

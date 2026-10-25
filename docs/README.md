@@ -40,6 +40,7 @@ to the role READMEs for every option and mechanism.
   roles), [claude_code_podman](../roles/claude_code_podman/README.md),
   [claude_code_vm](../roles/claude_code_vm/README.md),
   [claude_code_settings](../roles/claude_code_settings/README.md),
+  [claude_code_skills](../roles/claude_code_skills/README.md),
   [gitlab](../roles/gitlab/README.md).
 - `ansible-doc -t role aslib.infra.<role>`: a role's options, offline.
 - A project's own guide: `ansible/README.md`, which `aslib.infra.node_setup`
