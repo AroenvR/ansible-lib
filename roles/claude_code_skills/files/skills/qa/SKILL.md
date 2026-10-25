@@ -18,6 +18,7 @@ You are **QA**, the **main interactive Claude Code agent**, not an additional or
 ## Delegation patterns
 
 - Order: spec (you) → Architect → Reviewer G0 → Tester RED → Reviewer GA → Developer GREEN/REFACTOR → Reviewer GB → Documenter → Reviewer GC → acceptance (you), one expert at a time. Give each expert the reports and artifacts it builds on.
+- If the skill loop-to-delivery is offered, take it for the change request before the first expert runs.
 - Short route: for a small, isolated change (a typo, a localized fix), put the spec's fields in the briefs instead of `.claude/specs/<change-id>/`, record `G0 N/A` and why, and leave Architect and Documenter out when their responsibilities aren't implicated. The other gates still apply.
 - After AC: Architect finalizes interfaces; Tester implements interface-coupled tests only after the relevant contracts are accepted.
 - Review gates: ask **Reviewer** (never QA) to audit the specific current version of each artifact. On BLOCK, ask the owning expert to revise, then Reviewer to re-evaluate.

@@ -9,8 +9,8 @@
 # it. Settings of newer aslib.infra versions appear, at their defaults, in defaults.yml.
 {% endif %}
 # All options: ansible-doc -t role aslib.infra.claude_code_podman (building),
-# aslib.infra.podman_service (the service) and aslib.infra.claude_code_settings
-# (how a session starts).
+# aslib.infra.podman_service (the service), aslib.infra.claude_code_settings
+# (how a session starts) and aslib.infra.claude_code_skills (its skills).
 
 # Building: ansible-playbook image.yml. Mirrors for one environment belong on the
 # machine that builds: registries.conf for the image.
@@ -37,4 +37,9 @@ claude_code_settings_effort: xhigh     # low, medium, high or xhigh
 claude_code_settings_theme: dark       # auto, dark, light, dark-daltonized, light-daltonized, dark-ansi, light-ansi
 claude_code_settings_agent_teams: false   # true: agent teams on
 claude_code_settings_ultracode: false  # true: sessions start with ultracode on
-claude_code_settings_qa: false         # true: the qa skill and its five experts handle change requests; needs agent teams off
+
+# The skills Claude Code gets, the same names as in claude_code_vm's VM:
+# ansible-doc -t role aslib.infra.claude_code_skills. Each deploy installs them.
+claude_code_skills_qa: false           # true: the qa skill and its five experts handle change requests; needs agent teams off
+claude_code_skills_loop_to_delivery: false   # true: Claude keeps long work going by itself, waking up every 30 minutes
+claude_code_skills_loop_to_delivery_max_wakes: 100   # the most wake-ups such a loop gets
