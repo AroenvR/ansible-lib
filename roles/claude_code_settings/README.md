@@ -22,6 +22,7 @@ The same names and defaults in every target. Options and their choices:
 | `claude_code_settings_agent_teams` | `false` | agent teams on or off |
 | `claude_code_settings_ultracode` | `false` | ultracode on or off |
 | `claude_code_settings_qa` | `false` | the [qa skill and its five experts](#the-qa-skill-and-its-five-experts) on or off |
+| `claude_code_settings_qa_budget` | `false` | [qa-budget](#qa-budget-a-budget-for-agent-work): measuring and limiting what agents spend of the subscription, on or off |
 
 `/model`, `/effort` and `/config` still change them within a session; the next
 session starts from these again. To keep the permission prompts:
@@ -70,6 +71,55 @@ again removes the files at the next run. They need agent teams off
 Claude starts a subagent it names as a teammate instead, and the run stops
 when both are on.
 
+## qa-budget: a budget for agent work
+
+With `claude_code_settings_qa_budget: true`, every target installs qa-budget in
+`/etc/claude-code/qa-budget/` and runs it from the policy: it measures what
+agents spend of the subscription and keeps agent work within a budget, so that
+wake-ups, loops and expert runs never use up what the person needs. It needs
+`python3` on the target.
+
+| File | Run as | What it does |
+|---|---|---|
+| `statusline.py` | The status line (`statusLine`) | Shows the model and the subscription's usage, the 5-hour and the 7-day window with their resets in UTC, and saves it: `rate-limits.json` (the latest reading) and `rate-limits.jsonl` (each change) |
+| `ledger.py` | Hook on `SubagentStart`, `SubagentStop` and `Stop` | Adds a line to `ledger.jsonl` per agent and session: its tokens so far (input, cache write, cache read, output, each API response once) and the usage of that moment |
+| `guard.py` | Hook on `UserPromptSubmit` and `PreToolUse` | Enforces the budget, below |
+| `budget.md` | Read by the qa skill (its `SKILL.md` points to it) | How QA and the experts work within the budget: plan it, deliver with a list of improvements or pause when the guard says so, report each run's tokens |
+
+Both write in `~/.claude/qa-budget/` (`$CLAUDE_CONFIG_DIR/qa-budget/`). Only
+Claude Code's status line receives the usage (`rate_limits`), hooks do not,
+so the ledger reads the status line's latest reading; it lags one response.
+Off by default: the managed status line replaces a person's own.
+
+The guard tells a turn the person started from one no person started by its
+prompt: every wake-up and loop prompt must begin with an `[auto ...]` tag
+(`[auto qa-budget step 3] Read ...`) or hold an autonomous-loop sentinel. A
+session it has seen no prompt of counts as one no person started, unless the
+person typed a prompt in the last 3 hours. The status line refreshes every
+minute, also while an expert runs.
+
+| Where | A turn the person started | A turn no person started |
+|---|---|---|
+| The prompt, at a ceiling or the limit | Runs | Blocked, before it costs anything |
+| A new expert run (Agent or Workflow tool), at a ceiling, the limit or the session's run cap | Asks the person | Denied: deliver with a list of improvements, or pause; also while the usage is unknown (no reading, or one older than 10 minutes, `QA_BUDGET_STALE_MINUTES`) |
+| Any tool, at the limit | Runs (the person may go into extra usage) | Denied: pause |
+| An expert's tool call, once its run used its token budget | Denied: the expert reports now | The same |
+
+| Limit | Default | Environment variable |
+|---|---|---|
+| Weekly ceiling for agent work | 60% of the 7-day window | `QA_BUDGET_WEEKLY` |
+| 5-hour ceiling | 90% | `QA_BUDGET_FIVE_HOUR` |
+| The subscription's limit, as the guard sees it (readings lag a response) | 98% | `QA_BUDGET_LIMIT` |
+| Spend-down: from this many hours before the weekly reset, while the person has been inactive for `QA_BUDGET_INACTIVE_HOURS` (3), the weekly ceiling is the limit | 4 | `QA_BUDGET_SPEND_DOWN_HOURS` |
+| Expert runs per session | 12 | `QA_BUDGET_RUNS` |
+| Tokens per expert run, weighted by price (input 1, cache write 1.25, cache read 0.1, output 5) | 1,500,000 | `QA_BUDGET_RUN_TOKENS` |
+
+The person counts as active for 3 hours after a prompt they typed, and also
+when the weekly usage rose by more than a point between two readings at least
+30 minutes apart: someone else used the subscription meanwhile. A reading from
+before a window's reset counts as 0. The defaults suit a Pro subscription; set
+the variables in a settings file's `env` to change them.
+
 ## Ready to work from the start, in every target
 
 Whatever the settings say:
@@ -106,9 +156,29 @@ Facts, for the role that includes it:
 | `claude_code_settings_absent` | The paths there of the features that are off (a skill's folder, an agent's file) | Removed where an earlier run installed them (the container's `config/` holds only what the deploy lists anyway) |
 
 The base policy also turns off Claude Code's auto-updater (each target updates
-it its own way) and its telemetry, turns on workflows, keeps plans in
-`./plans`, and denies edits to the policy itself, to settings and hooks that
-would run code, and reads of `.env` files.
+it its own way) and its telemetry, turns on workflows and keeps plans in
+`./plans`.
+
+Its deny rules follow one rule: a deny marks a change the person makes or
+approves, not one Claude makes in its work. Those are Claude Code's own
+controls (`settings.json` and `settings.local.json`, which hold its permissions
+and hooks, the scripts in `.claude/hooks/`, and `.mcp.json`, which declares MCP
+servers), the code git runs by itself (its hooks and config), and reads of
+`.env` secrets. With `settings.json` editable, a hook added there would get
+round the deny on hooks. A deny is not a boundary: Bash can write the same
+files, and the container and the VM are the boundary. It holds for every tool,
+Bash and sudo included, because the targets' instructions have Claude ask about
+a denial instead of reaching the same result another way. A program keeping its
+own files in its ordinary work (git recording a branch or a remote in
+`.git/config`) is not such a change; changing what they run or allow is.
+
+The policy in `/etc/claude-code/` is the one exception, with no deny. It
+changes only through the playbooks that install it: claude_code_vm's runs, and,
+where the person approves it, Claude applying a branch of the playbooks under
+review to its own VM (aslib.infra's development VM does). A deny there would
+make that approved path "another way" around the denial. In
+the container, `/etc/claude-code/` is the project's `config/`, mounted
+read-only, so the rule changes nothing there.
 
 ```yaml
 - name: Compute Claude Code's settings

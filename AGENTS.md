@@ -124,9 +124,10 @@ and galaxy.yml names none: a checkout's git remote is its source.
   a version's worth, a pull request from develop into accept proposes it.
 - **Commits and pull requests** are plain text, without attribution trailers
   (no Co-Authored-By, no session links, no "Generated with" footers), and
-  nothing in the repository carries a mark of the tool that wrote it. A pull
-  request's description stands on its own, for any reviewer now or later: what
-  changed and why, compatibility, how it was tested, open points.
+  nothing in the repository carries a mark of the tool that wrote it. A squash
+  commit that completes an issue ends with `Closes #N`. A pull request's
+  description stands on its own, for any reviewer now or later: what changed and
+  why, compatibility, how it was tested, open points.
 - **Never touch the maintainer's own files**: `.tools/`, `libs/` (a Bash
   library, a git subtree), `.env.example` and personal files like them. They
   stay exactly as the branch has them; the release tarball leaves them out
@@ -549,6 +550,29 @@ podman_service service, a smoke test after a deploy).
 
 Each with its reason, newest first. A decision is changed by a new one here.
 
+- 2026-10-25, deny rules of the base policy (pull request #35, after the
+  maintainer's review): the policy no longer denies edits to `/etc/claude-code/`;
+  the deny on `**/.claude/settings.json`, which the same pull request had
+  dropped on 2026-10-23, stays. The rule: a deny marks a change the person makes
+  or approves, not one Claude makes in its work. Those are Claude Code's own
+  controls (`settings.json` and `settings.local.json`, which hold its
+  permissions and hooks, the hook scripts, `.mcp.json`), the code git runs by
+  itself (its hooks and config), and reads of `.env` secrets. A deny is not a
+  boundary: Bash can write the same files, so "Claude could do it with Bash
+  anyway" is no reason to drop one (that was the reason on 2026-10-23); the
+  container and the VM are the boundary. It holds for every tool, Bash and sudo
+  included, because the instructions say a denial is a decision and Claude asks
+  instead of reaching the same result another way. A deny is dropped only where
+  a reviewed path lets Claude make that change with approval. The policy in
+  `/etc/claude-code/` changes only through the project's playbooks (in the VM,
+  by applying a branch of aslib.infra with Ansible, each change on a branch with
+  a pull request), and a deny there would make that path "another way" around
+  the denial; in the container that folder is the project's `config/`, mounted
+  read-only, so the rule changes nothing there. `settings.json` stays denied: it
+  holds Claude Code's permissions and hooks, so editable, a hook added there
+  would get round the deny on hooks. The need that led to dropping it (resume
+  hooks written by hand into `~/.claude/settings.json`) is gone, as hooks come
+  from the managed policy, which the playbooks install.
 - 2026-10-19, the qa skill (issue #26, for #11): claude_code_settings ships
   the skill `qa` (with its protocol next to it) and five subagents
   (architect, tester, reviewer, developer, documenter), which both targets

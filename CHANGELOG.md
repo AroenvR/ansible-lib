@@ -4,6 +4,47 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
+## 0.9.0
+
+- Added: `claude_code_settings_qa_budget` (off by default) installs qa-budget
+  in `/etc/claude-code/qa-budget/`, in the container and the VM, which keeps
+  agent work within a budget of the subscription. A status line shows the
+  subscription's 5-hour and weekly usage and saves each reading (only the
+  status line receives it); a hook on `SubagentStart`, `SubagentStop` and
+  `Stop` keeps a ledger of each agent's and session's tokens with the usage of
+  that moment, both in `~/.claude/qa-budget/`. A guard on `UserPromptSubmit`
+  and `PreToolUse` enforces ceilings (weekly 60%, 5-hour 90%), a spend-down
+  before the weekly reset while the person is inactive, 12 expert runs per
+  session and a token budget per run: a turn no person started (a wake-up, a
+  loop; its prompt begins with an `[auto ...]` tag) is blocked or denied there
+  and never goes into extra usage, while the person is asked. The qa skill's `SKILL.md` points to `budget.md`, which says
+  how to work within it: two review rounds per gate, low findings into a list
+  of improvements, deliver or pause when the guard says so.
+- Changed: the base policy no longer denies edits to `/etc/claude-code/`, the
+  policy itself. It changes only through the project's playbooks, and a deny
+  there would make that approved path "another way" around the denial. The
+  other deny rules stay, `settings.json`'s among them: a deny marks a change
+  the person makes or approves (Claude Code's own controls, what git runs by
+  itself, reads of `.env` files), and the container and the VM are the
+  boundary. claude_code_settings' README says which and why.
+- Fixed: claude_code_vm refreshes apt's package lists (when older than an
+  hour) before it installs the host's missing packages; with stale lists, apt
+  asked the mirror for files it no longer had (404), as on CI runners.
+- Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
+  files on the machine it runs on, without the rest of the VM's guest setup,
+  for Claude's own VM to apply a branch's settings to itself.
+
+### Upgrading from 0.8.0
+
+- In the VM (claude_code_vm), Claude's Edit tool no longer refuses changes to
+  the policy in `/etc/claude-code/` (its files are root's, so a change needs
+  sudo). The VM's instructions say the policy changes only through the
+  project's playbooks, in a way the person has approved. Edits to
+  `settings.json` stay denied.
+- In a container project (claude_code_podman), the policy is read-only, so
+  nothing changes. The project can add deny rules in `config/managed-settings.json`
+  (lists combine with the base's).
+
 ## 0.8.0
 
 - Added: `claude_code_settings_qa` (off by default) installs the qa skill and

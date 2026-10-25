@@ -11,14 +11,22 @@
   "effortLevel": {{ claude_code_settings_effort | to_json }},
   "theme": {{ claude_code_settings_theme | to_json }},
   "skipDangerousModePermissionPrompt": true,
+{% if claude_code_settings_qa_budget | bool %}
+  "statusLine": {"type": "command", "command": "python3 /etc/claude-code/qa-budget/statusline.py", "refreshInterval": 60},
+  "hooks": {
+{% for __claude_code_settings_event, __claude_code_settings_script in [('SubagentStart', 'ledger'), ('SubagentStop', 'ledger'),
+      ('Stop', 'ledger'), ('UserPromptSubmit', 'guard'), ('PreToolUse', 'guard')] %}
+    "{{ __claude_code_settings_event }}": [{"hooks": [{"type": "command", "command": "python3 /etc/claude-code/qa-budget/{{ __claude_code_settings_script }}.py"}]}]{{ '' if loop.last else ',' }}
+{% endfor %}
+  },
+{% endif %}
   "permissions": {
     "defaultMode": {{ claude_code_settings_permission_mode | to_json }},
     "additionalDirectories": ["/"],
     "deny": [
-      "Edit(//etc/claude-code/**)",
       "Read(.env)",
-      "Edit(**/.claude/settings.json)",
       "Edit(**/.claude/settings.local.json)",
+      "Edit(**/.claude/settings.json)",
       "Edit(**/.claude/hooks/**)",
       "Edit(**/.mcp.json)",
       "Edit(**/.git/hooks/**)",
