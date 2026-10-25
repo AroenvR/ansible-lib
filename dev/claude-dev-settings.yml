@@ -1,0 +1,67 @@
+---
+# Installs Claude Code's policy, qa-budget's files and the skills on the machine
+# it runs on, as claude_code_vm's guest setup does in the VM, and nothing else
+# of that setup:
+# Claude's own VM (claude-dev) applies a branch's Claude Code settings to itself
+# with it, while the rest of the guest setup (its authorized_keys, apt
+# repositories, token) stays as the host's run left it. Run in the VM from a
+# checkout, with the settings the VM has (its host's settings file) and the
+# branch's new ones, e.g.:
+#   ANSIBLE_COLLECTIONS_PATH=.venv/self:.venv/collections ansible-playbook dev/claude-dev-settings.yml \
+#     -e claude_code_skills_qa=true -e claude_code_settings_qa_budget=true
+# Claude Code reads the new policy in sessions it starts from then on.
+- name: Install Claude Code's policy, qa-budget's files and the skills on this machine
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Compute Claude Code's settings
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+
+    - name: Compute the skills
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+
+    - name: Create the folders of qa-budget's and the skills' files
+      ansible.builtin.file:
+        path: /etc/claude-code/{{ __claude_dev_folder }}
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop: "{{ (claude_code_settings_files + claude_code_skills_files) | map(attribute='name') | map('dirname') | unique | list }}"
+      loop_control:
+        loop_var: __claude_dev_folder
+
+    - name: Install qa-budget's and the skills' files
+      ansible.builtin.copy:
+        src: "{{ __claude_dev_file.src }}"
+        dest: /etc/claude-code/{{ __claude_dev_file.name }}
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ claude_code_settings_files + claude_code_skills_files }}"
+      loop_control:
+        loop_var: __claude_dev_file
+        label: "{{ __claude_dev_file.name }}"
+
+    - name: Install Claude Code's policy
+      ansible.builtin.copy:
+        content: >-
+          {{ claude_code_settings_policy | combine(claude_code_skills_policy, recursive=True, list_merge='append_rp')
+             | to_nice_json(indent=2, sort_keys=False) }}{{ '\n' }}
+        dest: /etc/claude-code/managed-settings.json
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+
+    - name: Remove the files of what is off
+      ansible.builtin.file:
+        path: /etc/claude-code/{{ __claude_dev_absent }}
+        state: absent
+      loop: "{{ claude_code_settings_absent + claude_code_skills_absent }}"
+      loop_control:
+        loop_var: __claude_dev_absent

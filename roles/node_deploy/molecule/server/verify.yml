@@ -329,25 +329,36 @@
           with every folder trusted (CLAUDE_CODE_SANDBOXED) and the first-run setup done, and Claude found its
           policy and instructions in /etc/claude-code and could not change them.
 
-    # converge.yml deploys Claude Code with claude_code_settings_qa.
-    - name: Compute what claude_code_settings hands every target with the qa skill on, as the deploy had it
+    # converge.yml deploys Claude Code with both skills on and a maximum of 7 wake-ups.
+    - name: Compute what claude_code_skills hands every target with both skills on, as the deploy had them
       ansible.builtin.include_role:
-        name: aslib.infra.claude_code_settings
+        name: aslib.infra.claude_code_skills
       vars:
-        claude_code_settings_qa: true
+        claude_code_skills_qa: true
+        claude_code_skills_loop_to_delivery: true
+        claude_code_skills_loop_to_delivery_max_wakes: 7
 
-    - name: Note the files of claude_code_settings
+    - name: Check claude_code_skills handed over its files and its policy
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files is defined
+          - claude_code_skills_policy is defined
+        fail_msg: aslib.infra.claude_code_skills handed over no files or no policy.
+        quiet: true
+
+    - name: Note the files and the policy of claude_code_skills
       ansible.builtin.set_fact:
-        __node_deploy_test_qa_files: "{{ claude_code_settings_files }}"
+        __node_deploy_test_skill_files: "{{ claude_code_skills_files }}"
+        __node_deploy_test_skills_policy: "{{ claude_code_skills_policy }}"
 
     - name: Look up the collection's files
       ansible.builtin.stat:
         path: "{{ item.src }}"
-      loop: "{{ __node_deploy_test_qa_files }}"
+      loop: "{{ __node_deploy_test_skill_files }}"
       loop_control:
         label: "{{ item.name }}"
       delegate_to: localhost
-      register: __node_deploy_test_qa_sources
+      register: __node_deploy_test_skill_sources
 
     - name: Find everything in config/, which the container has as /etc/claude-code
       ansible.builtin.find:
@@ -374,31 +385,33 @@
           - -c
           - find . -type f | sort | xargs sha1sum
         chdir: /
-      register: __node_deploy_test_qa_inside
+      register: __node_deploy_test_skills_inside
       changed_when: false
 
-    - name: Check config/ holds exactly the policy, the instructions and the qa skill's files, as the policy is owned and moded
+    - name: Check config/ holds exactly the policy, the instructions and both skills' files, as the policy is owned and moded
       vars:
         __node_deploy_test_found: >-
           {{ __node_deploy_test_config.files | map(attribute='path') | map('relpath', '/opt/claude-code/config') | list }}
-        __node_deploy_test_names: "{{ __node_deploy_test_qa_files | map(attribute='name') | list }}"
+        __node_deploy_test_names: "{{ __node_deploy_test_skill_files | map(attribute='name') | list }}"
         __node_deploy_test_policy_file: >-
           {{ __node_deploy_test_config.files | selectattr('path', 'eq', '/opt/claude-code/config/managed-settings.json') | first }}
         __node_deploy_test_installed: >-
-          {{ __node_deploy_test_config.files | selectattr('path', 'search', '/config/[.]claude/.+[.]md$') | list }}
+          {{ __node_deploy_test_config.files | selectattr('path', 'search', '/config/[.]claude/.+[.](md|py)$') | list }}
         __node_deploy_test_folders: "{{ __node_deploy_test_config.files | selectattr('isdir') | list }}"
         __node_deploy_test_inside: >-
-          {{ __node_deploy_test_qa_inside.stdout_lines | map('split') | map('reverse') | map('join', ' ') | list }}
+          {{ __node_deploy_test_skills_inside.stdout_lines | map('split') | map('reverse') | map('join', ' ') | list }}
         __node_deploy_test_expected_inside: >-
           {{ (__node_deploy_test_names | map('regex_replace', '^', './') | list)
-             | zip(__node_deploy_test_qa_sources.results | map(attribute='stat.checksum'))
+             | zip(__node_deploy_test_skill_sources.results | map(attribute='stat.checksum'))
              | map('join', ' ') | list }}
       ansible.builtin.assert:
         that:
+          - __node_deploy_test_names | length == 9
           - >-
             __node_deploy_test_found | sort
-            == (['CLAUDE.md', 'managed-settings.json', '.claude', '.claude/agents', '.claude/skills', '.claude/skills/qa']
-                + __node_deploy_test_names) | sort
+            == (['CLAUDE.md', 'managed-settings.json', '.claude', '.claude/agents', '.claude/skills', '.claude/skills/qa',
+                 '.claude/skills/loop-to-delivery'] + __node_deploy_test_names) | sort
+          - __node_deploy_test_installed | length == 9
           - __node_deploy_test_installed | map(attribute='pw_name') | unique == [__node_deploy_test_policy_file.pw_name]
           - __node_deploy_test_installed | map(attribute='mode') | unique == [__node_deploy_test_policy_file.mode]
           - __node_deploy_test_folders | map(attribute='pw_name') | unique == ['claude-code']
@@ -406,12 +419,142 @@
           - __node_deploy_test_inside | length == __node_deploy_test_expected_inside | length + 2
         fail_msg: >-
           config/: {{ __node_deploy_test_config.files | map(attribute='path') | list }};
-          in the container: {{ __node_deploy_test_qa_inside.stdout_lines }}
+          in the container: {{ __node_deploy_test_skills_inside.stdout_lines }}
         success_msg: >-
-          PASSED claude_code_podman installed claude_code_settings' qa skill (SKILL.md, protocol.md) and its five experts
-          in config/.claude/, {{ __node_deploy_test_policy_file.pw_name }}'s and {{ __node_deploy_test_policy_file.mode }}
-          like the policy, in folders of the account; the container finds exactly these, the policy and the
-          instructions in /etc/claude-code, each the same as the collection's.
+          PASSED claude_code_podman installed claude_code_skills' qa skill (SKILL.md, protocol.md), its five experts and
+          loop-to-delivery (SKILL.md, loop_to_delivery.py) in config/.claude/, {{ __node_deploy_test_policy_file.pw_name }}'s
+          and {{ __node_deploy_test_policy_file.mode }} like the policy, in folders of the account; the container finds
+          exactly these, the policy and the instructions in /etc/claude-code, each the same as the collection's.
+
+    - name: Read the policy the deploy with both skills installed
+      ansible.builtin.slurp:
+        src: /opt/claude-code/config/managed-settings.json
+      register: __node_deploy_test_policy_on
+
+    # Neither the container's part nor this project's has hooks: the policy's
+    # hooks are exactly claude_code_skills'.
+    - name: Check the installed policy runs loop-to-delivery's program at each of its three events, with the deploy's maximum
+      vars:
+        __node_deploy_test_installed_on: "{{ __node_deploy_test_policy_on.content | b64decode | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_installed_on.hooks is defined
+          - __node_deploy_test_installed_on.hooks == __node_deploy_test_skills_policy.hooks
+          - __node_deploy_test_installed_on.hooks.keys() | sort == ['Stop', 'StopFailure', 'UserPromptSubmit']
+          - >-
+            __node_deploy_test_installed_on.hooks.values() | map('first') | map(attribute='hooks') | map('first')
+            | map(attribute='command') | select('search', ' hook --max-wakes 7$') | list | length == 3
+          # Claude could edit it with Bash anyway: a deny it can route around is no boundary.
+          - "'Edit(//etc/claude-code/**)' not in __node_deploy_test_installed_on.permissions.deny"
+        fail_msg: "The installed policy: {{ __node_deploy_test_installed_on | to_json }}"
+        success_msg: >-
+          PASSED the installed policy merges claude_code_skills' hooks: UserPromptSubmit, Stop and StopFailure run
+          loop_to_delivery.py with the deploy's maximum of 7, and no deny rule for /etc/claude-code, which Claude could
+          route around.
+
+    # The installed program and hook command, outside the container: the policy's
+    # /etc/claude-code is /opt/claude-code/config on the server, whose python3
+    # (RHEL 9: 3.9) is the image's too. State goes to a temporary home.
+    - name: Make a home for loop-to-delivery's state
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: node_deploy_test_loop_
+      register: __node_deploy_test_loop_home
+
+    - name: Write the notes of a loop
+      ansible.builtin.copy:
+        content: "# Goal\nDone when the test passes.\n"
+        dest: "{{ __node_deploy_test_loop_home.path }}/notes.md"
+        mode: "0600"
+
+    - name: Note the installed program and the installed hook command, as the server reaches them
+      ansible.builtin.set_fact:
+        __node_deploy_test_loop_program: /opt/claude-code/config/.claude/skills/loop-to-delivery/loop_to_delivery.py
+        __node_deploy_test_loop_session: cccccccc-3333-4333-8333-333333333333
+        __node_deploy_test_loop_command: >-
+          {{ ((__node_deploy_test_policy_on.content | b64decode | from_json).hooks.UserPromptSubmit[0].hooks[0].command
+              | default('false'))
+             | replace('/etc/claude-code/', '/opt/claude-code/config/') }}
+
+    - name: Run the installed hook command for a prompt of a conversation without a loop
+      ansible.builtin.command:
+        argv: [sh, -c, "{{ __node_deploy_test_loop_command }}"]
+        stdin: >-
+          {{ {'session_id': __node_deploy_test_loop_session, 'prompt_id': 'p-1', 'hook_event_name': 'UserPromptSubmit',
+              'prompt': 'Hello'} | to_json }}
+        chdir: /
+      environment:
+        HOME: "{{ __node_deploy_test_loop_home.path }}"
+      register: __node_deploy_test_loop_unknown
+      changed_when: false
+      failed_when: false
+
+    - name: Start a loop with the installed program, as Claude does in that conversation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -I
+          - "{{ __node_deploy_test_loop_program }}"
+          - start
+          - --session
+          - "{{ __node_deploy_test_loop_session }}"
+          - --notes
+          - "{{ __node_deploy_test_loop_home.path }}/notes.md"
+        chdir: /
+      environment:
+        HOME: "{{ __node_deploy_test_loop_home.path }}"
+      register: __node_deploy_test_loop_start
+      changed_when: false
+      failed_when: false
+
+    - name: Run the installed hook command for the wake-up job start printed, in that conversation
+      ansible.builtin.command:
+        argv: [sh, -c, "{{ __node_deploy_test_loop_command }}"]
+        stdin: >-
+          {{ {'session_id': __node_deploy_test_loop_session, 'prompt_id': 'p-2', 'hook_event_name': 'UserPromptSubmit',
+              'prompt': (__node_deploy_test_loop_start.stdout_lines[-1] | regex_replace('^CronCreate ', '') | from_json).prompt}
+             | to_json }}
+        chdir: /
+      environment:
+        HOME: "{{ __node_deploy_test_loop_home.path }}"
+      register: __node_deploy_test_loop_wake
+      changed_when: false
+      failed_when: false
+      when: __node_deploy_test_loop_start.rc == 0 and __node_deploy_test_loop_start.stdout_lines[-1] is match('CronCreate [{]')
+
+    - name: Look up the test server's python3
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, --version]
+      register: __node_deploy_test_loop_python
+      changed_when: false
+
+    - name: Remove loop-to-delivery's home
+      ansible.builtin.file:
+        path: "{{ __node_deploy_test_loop_home.path }}"
+        state: absent
+
+    - name: Check the installed program passed the prompt and let the wake-up through as wake-up 1 of the deploy's maximum
+      vars:
+        __node_deploy_test_loop_context: >-
+          {{ (__node_deploy_test_loop_wake.stdout | from_json).hookSpecificOutput.additionalContext
+             if __node_deploy_test_loop_wake.stdout | default('') is match('[{]') else '' }}
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_loop_unknown.rc == 0
+          - __node_deploy_test_loop_unknown.stdout == ''
+          - __node_deploy_test_loop_start.rc == 0
+          - __node_deploy_test_loop_wake.rc | default(1) == 0
+          - >-
+            __node_deploy_test_loop_context is match('loop-to-delivery: wake-up 1 of 7 of loop [0-9a-f]{8}')
+        fail_msg: >-
+          A prompt: rc {{ __node_deploy_test_loop_unknown.rc }} {{ __node_deploy_test_loop_unknown.stdout }}
+          {{ __node_deploy_test_loop_unknown.stderr }}; start: rc {{ __node_deploy_test_loop_start.rc }}
+          {{ __node_deploy_test_loop_start.stdout }} {{ __node_deploy_test_loop_start.stderr }}; the wake-up:
+          {{ __node_deploy_test_loop_wake.stdout | default('not run') }} {{ __node_deploy_test_loop_wake.stderr | default('') }}
+        success_msg: >-
+          PASSED with the test server's {{ __node_deploy_test_loop_python.stdout }}, the installed hook command passed
+          a prompt of a conversation without a loop with no output, and let the job's wake-up of a loop started in
+          that conversation through as "{{ __node_deploy_test_loop_context[:60] }}".
 
     - name: Check a file reaches the group only with the group's access, and the README matches its read-only checksum
       ansible.builtin.assert:
@@ -507,8 +650,50 @@
               PASSED claude_code_podman stops a deploy that sets claude_code_bypass_permissions, naming
               claude_code_settings_permission_mode.
 
+    # claude_code_skills_qa replaced it after 0.8.0; a 0.8.0 project's settings
+    # have it, false by default, which stops a deploy too.
+    - name: Look up the installed policy before a deploy that sets claude_code_settings_qa
+      ansible.builtin.stat:
+        path: /opt/claude-code/config/managed-settings.json
+      register: __node_deploy_test_before_rename
+
+    - name: Deploy Claude Code with claude_code_settings_qa, as a 0.8.0 project does
+      block:
+        - name: Deploy Claude Code with claude_code_settings_qa
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_podman
+          vars:
+            podman_service_uid: ""
+            claude_code_settings_qa: false
+
+        - name: Fail, as the deploy went ahead
+          ansible.builtin.fail:
+            msg: claude_code_podman deployed with claude_code_settings_qa set.
+      rescue:
+        - name: Note what stopped the deploy
+          ansible.builtin.set_fact:
+            __node_deploy_test_rename_task: "{{ ansible_failed_task.name }}"
+            __node_deploy_test_rename_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+
+        - name: Look up the installed policy after the stopped deploy
+          ansible.builtin.stat:
+            path: /opt/claude-code/config/managed-settings.json
+          register: __node_deploy_test_after_rename
+
+        - name: Check the deploy stopped before changing anything, naming the new name and the steps in order
+          ansible.builtin.assert:
+            that:
+              - __node_deploy_test_rename_task != 'Fail, as the deploy went ahead'
+              - __node_deploy_test_rename_msg is search('claude_code_skills_qa')
+              - __node_deploy_test_rename_msg is search('update-playbooks[.]yml.*project[.]yml')
+              - __node_deploy_test_after_rename.stat.checksum == __node_deploy_test_before_rename.stat.checksum
+            fail_msg: "{{ __node_deploy_test_rename_task }}: {{ __node_deploy_test_rename_msg }}"
+            success_msg: >-
+              PASSED claude_code_podman stops a deploy that sets claude_code_settings_qa before changing the policy,
+              naming claude_code_skills_qa, update-playbooks.yml and then project.yml.
+
     # Every deploy writes the README again, as this one does.
-    - name: Deploy Claude Code again, with every setting of claude_code_settings changed
+    - name: Deploy Claude Code again, with every setting of claude_code_settings changed and both skills off
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_podman
       vars: &node_deploy_test_settings
@@ -519,7 +704,8 @@
         claude_code_settings_theme: light
         claude_code_settings_agent_teams: "true"   # as -e passes it
         claude_code_settings_ultracode: true
-        claude_code_settings_qa: false
+        claude_code_skills_qa: false
+        claude_code_skills_loop_to_delivery: false
 
     - name: Check the README against its checksum again
       ansible.builtin.command:
@@ -558,7 +744,7 @@
         src: /opt/claude-code/config/managed-settings.json
       register: __node_deploy_test_policy
 
-    - name: Find everything in config/ after the deploy without the qa skill
+    - name: Find everything in config/ after the deploy without the skills
       ansible.builtin.find:
         paths: /opt/claude-code/config
         file_type: any
@@ -566,16 +752,19 @@
         hidden: true
       register: __node_deploy_test_config_after
 
-    - name: Check that deploy took the qa skill, its experts and their folders out of config/
+    - name: Check that deploy took both skills, the experts, their folders and the hooks out
       ansible.builtin.assert:
         that:
           - >-
             __node_deploy_test_config_after.files | map(attribute='path') | map('basename') | sort
             == ['CLAUDE.md', 'managed-settings.json']
-        fail_msg: "config/: {{ __node_deploy_test_config_after.files | map(attribute='path') | list }}"
+          - "'hooks' not in (__node_deploy_test_policy.content | b64decode | from_json)"
+        fail_msg: >-
+          config/: {{ __node_deploy_test_config_after.files | map(attribute='path') | list }};
+          policy: {{ __node_deploy_test_policy.content | b64decode }}
         success_msg: >-
-          PASSED a deploy with claude_code_settings_qa off removed the qa skill, its five experts and their folders from
-          config/, leaving the policy and the instructions.
+          PASSED a deploy with both skills off removed the qa skill, its five experts, loop-to-delivery and their
+          folders from config/, and the hooks from the policy, leaving the policy and the instructions.
 
     - name: Compute what claude_code_settings hands every target, with the same settings
       ansible.builtin.include_role:

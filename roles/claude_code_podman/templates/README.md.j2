@@ -62,10 +62,13 @@ Claude Code: by default bypassPermissions mode, without permission prompts
 effort, the dark theme, agent teams and ultracode off. The policy's deny rules
 apply in every mode. Claude Code starts ready to work, without asking to trust a
 folder, to confirm the mode or for its first-run setup. With
-`claude_code_settings_qa: true`, a request to change a project goes through
+`claude_code_skills_qa: true`, a request to change a project goes through
 aslib.infra's qa skill, which runs five expert subagents one at a time (an
 architect, a tester, a reviewer, a developer, a documenter); the deploy puts
-them in `config/.claude/` on the server. Off by default, as their names win
+them in `config/.claude/` on the server. With
+`claude_code_skills_loop_to_delivery: true`, Claude also keeps long work going
+by itself until it is delivered (its hooks need `/usr/bin/python3`, which the
+base image provides: UBI 9 does). Both are off by default, as their names win
 over skills and agents of your own.
 
 What a server needs: RHEL 9.6 or newer with Podman, and SSH access with sudo
@@ -139,6 +142,10 @@ zone) from the server's repositories when it is missing.
 `claude_code_podman_rpm_repos` is mounted over the base image's `/etc/yum.repos.d` for
 the build only: its repositories replace the image's own rather than adding to
 them, and the image keeps its own.
+
+A base image other than UBI 9 needs dnf and `/usr/bin/python3`: the
+Containerfile installs no `python3` of its own, and the hook of loop-to-delivery
+runs with it.
 
 Claude itself needs `api.anthropic.com` and, to sign in, `claude.ai`, `claude.com`
 and `platform.claude.com`.

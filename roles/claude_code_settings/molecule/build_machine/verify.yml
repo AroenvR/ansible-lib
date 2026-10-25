@@ -21,7 +21,12 @@
           - __claude_code_settings_test_policy.ultracode is false
           # Every directory is a working directory, so a cd sticks for later Bash calls.
           - __claude_code_settings_test_policy.permissions.additionalDirectories == ['/']
-          - "'Edit(//etc/claude-code/**)' in __claude_code_settings_test_policy.permissions.deny"
+          # Claude could edit these with Bash anyway: a deny it can route around is no boundary.
+          - "'Edit(//etc/claude-code/**)' not in __claude_code_settings_test_policy.permissions.deny"
+          - "'Edit(**/.claude/settings.json)' not in __claude_code_settings_test_policy.permissions.deny"
+          # qa-budget is off by default.
+          - __claude_code_settings_test_policy.statusLine is not defined
+          - __claude_code_settings_test_policy.hooks is not defined
           - claude_code_settings_environment == dict(CLAUDE_CODE_SANDBOXED='1')
           - claude_code_settings_global_config == dict(hasCompletedOnboarding=true)
         fail_msg: "Policy: {{ claude_code_settings_policy }}"
@@ -29,6 +34,31 @@
           PASSED claude_code_settings: by default, sessions start in bypassPermissions mode without its
           confirmation, with Opus at xhigh effort and the dark theme, agent teams and ultracode off, every
           directory a working directory, every folder trusted and the first-run setup done.
+
+    # After 0.8.0 the qa skill moved to claude_code_skills, with its files; the
+    # only files claude_code_settings still hands over are qa-budget's.
+    - name: Check it hands over the five facts of its interface, and qa-budget's folder as absent
+      ansible.builtin.assert:
+        that:
+          - claude_code_settings_policy is mapping
+          - claude_code_settings_environment is mapping
+          - claude_code_settings_global_config is mapping
+          - claude_code_settings_files == []
+          - claude_code_settings_absent == ['qa-budget']
+        fail_msg: "Files: {{ claude_code_settings_files }}; absent: {{ claude_code_settings_absent }}"
+        success_msg: >-
+          PASSED claude_code_settings hands over its policy, the claude process's environment and Claude Code's
+          global settings, by default no files for the managed settings directory, and qa-budget's folder as absent.
+
+    - name: Check the policy's base with the defaults is the expected one
+      vars:
+        __claude_code_settings_test_expected: "{{ lookup('ansible.builtin.file', 'expected-policy.json') | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - claude_code_settings_policy == __claude_code_settings_test_expected
+          - claude_code_settings_policy | to_json(sort_keys=true) == __claude_code_settings_test_expected | to_json(sort_keys=true)
+        fail_msg: "Policy: {{ claude_code_settings_policy | to_json(sort_keys=true) }}"
+        success_msg: PASSED claude_code_settings' policy with its defaults is the expected one, without hooks or status line.
 
     - name: Compute the settings with every one changed
       ansible.builtin.include_role:
@@ -73,154 +103,138 @@
             fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
             success_msg: PASSED claude_code_settings stops at a value outside the choices, naming the setting.
 
-- name: Check what claude_code_settings hands its targets for the qa skill and its five experts
+- name: Check qa-budget's status line and token ledger
   hosts: localhost
   gather_facts: false
   vars:
-    __claude_code_settings_test_experts: [architect, tester, reviewer, developer, documenter]
-    __claude_code_settings_test_expert_files: >-
-      {{ __claude_code_settings_test_experts | map('regex_replace', '^', '.claude/agents/') | map('regex_replace', '$', '.md')
-         | list }}
-    __claude_code_settings_test_qa_files: >-
-      {{ ['.claude/skills/qa/SKILL.md', '.claude/skills/qa/protocol.md'] + __claude_code_settings_test_expert_files }}
+    __claude_code_settings_test_ledger: python3 /etc/claude-code/qa-budget/ledger.py
   tasks:
-    - name: Compute the settings with the defaults
-      ansible.builtin.include_role:
-        name: aslib.infra.claude_code_settings
-
-    - name: Check the qa skill is off by default, and its files are to go where an earlier run installed them
-      ansible.builtin.assert:
-        that:
-          - claude_code_settings_files == []
-          - claude_code_settings_absent | sort == (['.claude/skills/qa'] + __claude_code_settings_test_expert_files) | sort
-        fail_msg: "Files: {{ claude_code_settings_files }}; absent: {{ claude_code_settings_absent }}"
-        success_msg: >-
-          PASSED claude_code_settings: by default it hands over no files for Claude Code's managed settings directory,
-          and names the qa skill's folder and its five experts' files as absent.
-
-    - name: Compute the settings with the qa skill on
+    - name: Compute the settings with qa-budget on
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_settings
       vars:
-        claude_code_settings_qa: "true"   # as -e passes it
+        claude_code_settings_qa_budget: true
 
-    - name: Check it hands over the qa skill, its protocol and the five experts, each a file of the collection
+    - name: Check the policy runs the status line and the ledger, and the files come along
       ansible.builtin.assert:
         that:
-          - claude_code_settings_files | map(attribute='name') | sort == __claude_code_settings_test_qa_files | sort
-          - claude_code_settings_files | map(attribute='src') | select('file') | list | length == 7
+          - claude_code_settings_policy.statusLine.command == 'python3 /etc/claude-code/qa-budget/statusline.py'
+          - claude_code_settings_policy.statusLine.refreshInterval == 60
+          - claude_code_settings_policy.hooks.keys() | sort == ['PreToolUse', 'Stop', 'SubagentStart', 'SubagentStop', 'UserPromptSubmit']
+          - __claude_code_settings_test_commands.SubagentStart == __claude_code_settings_test_ledger
+          - __claude_code_settings_test_commands.SubagentStop == __claude_code_settings_test_ledger
+          - __claude_code_settings_test_commands.Stop == __claude_code_settings_test_ledger
+          - __claude_code_settings_test_commands.UserPromptSubmit == 'python3 /etc/claude-code/qa-budget/guard.py'
+          - __claude_code_settings_test_commands.PreToolUse == 'python3 /etc/claude-code/qa-budget/guard.py'
+          - claude_code_settings_files | map(attribute='name') | map('dirname') | unique | list == ['qa-budget']
+          - claude_code_settings_files | map(attribute='name') | map('basename') | sort == ['budget.md', 'guard.py', 'ledger.py', 'statusline.py']
+          - claude_code_settings_files | map(attribute='src') | select('file') | list | length == 4
           - claude_code_settings_absent == []
-        fail_msg: "Files: {{ claude_code_settings_files }}; absent: {{ claude_code_settings_absent }}"
+        fail_msg: "Policy: {{ claude_code_settings_policy }}; files: {{ claude_code_settings_files }}"
         success_msg: >-
-          PASSED claude_code_settings with claude_code_settings_qa hands over .claude/skills/qa/SKILL.md, its
-          protocol.md and the five experts in .claude/agents/, from its own files, and nothing as absent.
-
-    # Claude Code skips an agent file with broken frontmatter without a word.
-    - name: Check each file's frontmatter, which Claude Code reads to load it
+          PASSED with claude_code_settings_qa_budget, the policy runs qa-budget's status line, its guard on UserPromptSubmit and PreToolUse, and its ledger on
+          SubagentStart, SubagentStop and Stop, and its files come along.
       vars:
-        __claude_code_settings_test_text: "{{ lookup('ansible.builtin.file', item.src) }}"
-        __claude_code_settings_test_front: "{{ __claude_code_settings_test_text.split('---')[1] | from_yaml }}"
-        __claude_code_settings_test_name: "{{ item.name | basename | splitext | first }}"
+        __claude_code_settings_test_commands: >-
+          {{ dict(claude_code_settings_policy.hooks.keys()
+                  | zip(claude_code_settings_policy.hooks.values() | map('first') | map(attribute='hooks') | map('first')
+                        | map(attribute='command'))) }}
+
+    - name: Create a configuration directory for the scripts
+      ansible.builtin.tempfile:
+        state: directory
+      register: __claude_code_settings_test_dir
+
+    - name: Write a transcript with one response logged twice while streaming, and one more
+      ansible.builtin.copy:
+        dest: "{{ __claude_code_settings_test_dir.path }}/agent.jsonl"
+        mode: "0600"
+        content: |
+          {% for __claude_code_settings_test_line in __claude_code_settings_test_lines %}
+          {{ __claude_code_settings_test_line | to_json }}
+          {% endfor %}
+      vars:
+        __claude_code_settings_test_lines:
+          - {type: user, message: {content: hello}}
+          - {type: assistant, message: {id: m1, model: claude-sonnet-5-5, usage: "{{ __claude_code_settings_test_m1 | combine({'output_tokens': 1}) }}"}}
+          - {type: assistant, message: {id: m1, model: claude-sonnet-5-5, usage: "{{ __claude_code_settings_test_m1 }}"}}
+          - {type: assistant, message: {id: m2, model: claude-sonnet-5-5, usage: "{{ __claude_code_settings_test_m2 }}"}}
+        __claude_code_settings_test_m1: {input_tokens: 10, cache_creation_input_tokens: 100, cache_read_input_tokens: 1000, output_tokens: 50}
+        __claude_code_settings_test_m2: {input_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 2000, output_tokens: 20}
+
+    - name: Run the status line twice with the same usage, then the ledger as SubagentStop
+      ansible.builtin.shell:
+        cmd: |
+          set -e
+          python3 {{ __claude_code_settings_test_files.statusline }} <<< '{{ __claude_code_settings_test_session | to_json }}'
+          python3 {{ __claude_code_settings_test_files.statusline }} <<< '{{ __claude_code_settings_test_session | to_json }}'
+          python3 {{ __claude_code_settings_test_files.ledger }} <<< '{{ __claude_code_settings_test_event | to_json }}'
+          python3 {{ __claude_code_settings_test_files.ledger }} <<< 'not json'
+          cat "$CLAUDE_CONFIG_DIR/qa-budget/ledger.jsonl"
+          wc -l < "$CLAUDE_CONFIG_DIR/qa-budget/rate-limits.jsonl"
+        executable: /bin/bash
+      environment:
+        CLAUDE_CONFIG_DIR: "{{ __claude_code_settings_test_dir.path }}"
+      vars:
+        __claude_code_settings_test_files: >-
+          {{ dict(claude_code_settings_files | map(attribute='name') | map('basename') | map('splitext') | map('first')
+                  | zip(claude_code_settings_files | map(attribute='src'))) }}
+        __claude_code_settings_test_session:
+          session_id: s1
+          model: {id: claude-opus-5-5, display_name: Opus}
+          rate_limits:
+            five_hour: {used_percentage: 12.4, resets_at: 1761346800}
+            seven_day: {used_percentage: 47.6, resets_at: 1761346800}
+        __claude_code_settings_test_event:
+          hook_event_name: SubagentStop
+          session_id: s1
+          agent_id: a1
+          agent_type: reviewer
+          agent_transcript_path: "{{ __claude_code_settings_test_dir.path }}/agent.jsonl"
+      register: __claude_code_settings_test_run
+      changed_when: false
+
+    - name: Check the status line showed and saved the usage once, and the ledger counted each response once
+      vars:
+        __claude_code_settings_test_line: "{{ __claude_code_settings_test_run.stdout_lines[2] | from_json }}"
       ansible.builtin.assert:
         that:
-          - __claude_code_settings_test_text is match('---\n')
-          - __claude_code_settings_test_front.name == __claude_code_settings_test_name
-          - __claude_code_settings_test_front.model == 'inherit'
-          - __claude_code_settings_test_front.tools == 'Read, Grep, Glob, Bash, Write, Edit'
-          - __claude_code_settings_test_front.description is search('^Serves the qa skill')
-        fail_msg: "{{ item.name }}: {{ __claude_code_settings_test_text.split('---')[1] }}"
-        quiet: true
-      loop: "{{ claude_code_settings_files | selectattr('name', 'in', __claude_code_settings_test_expert_files) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-
-    - name: Check the skill's frontmatter
-      vars:
-        __claude_code_settings_test_text: >-
-          {{ lookup('ansible.builtin.file', (claude_code_settings_files | selectattr('name', 'search', 'SKILL') | first).src) }}
-        __claude_code_settings_test_front: "{{ __claude_code_settings_test_text.split('---')[1] | from_yaml }}"
-      ansible.builtin.assert:
-        that:
-          - __claude_code_settings_test_text is match('---\n')
-          - __claude_code_settings_test_front.keys() | sort == ['description', 'name']
-          - __claude_code_settings_test_front.name == 'qa'
-          - __claude_code_settings_test_front.description is search('^Use this skill before changing anything in a project')
-          - __claude_code_settings_test_front.description is search('[Nn]ot for questions')
-        fail_msg: "{{ __claude_code_settings_test_text.split('---')[1] }}"
+          - __claude_code_settings_test_run.stdout_lines[0] == 'Opus | 5h 12% (resets Fri 23:00 UTC) | 7d 48% (resets Fri 23:00 UTC)'
+          - __claude_code_settings_test_run.stdout_lines | length == 4
+          - __claude_code_settings_test_run.stdout_lines[3] | trim == '1'
+          - __claude_code_settings_test_line.agent_type == 'reviewer'
+          - __claude_code_settings_test_line.tokens.responses == 2
+          - __claude_code_settings_test_line.tokens.output_tokens == 70
+          - __claude_code_settings_test_line.tokens.cache_read_input_tokens == 3000
+          - __claude_code_settings_test_line.tokens.models == ['claude-sonnet-5-5']
+          - __claude_code_settings_test_line.usage_reading.seven_day == 47.6
+        fail_msg: "{{ __claude_code_settings_test_run.stdout_lines }} {{ __claude_code_settings_test_run.stderr }}"
         success_msg: >-
-          PASSED the five experts' frontmatter names each after its file, with the package's tools, the session's
-          model and a description that says it serves the qa skill; the skill's is for change requests, not questions.
+          PASSED qa-budget's status line shows the 5-hour and weekly usage with their resets and saves a changed
+          reading once; the ledger sums an agent's tokens, each response once, with the usage of that moment, and
+          a malformed event breaks nothing.
 
-    # #11's files were written for agent teams; these run synchronously, from a
-    # skill, and serve any project.
-    - name: Check no file names what the synchronous design removed, or aslib
-      vars:
-        __claude_code_settings_test_text: "{{ lookup('ansible.builtin.file', item.src) }}"
-      ansible.builtin.assert:
-        that:
-          - __claude_code_settings_test_text is not search('SendMessage|Task(Create|Get|List|Update|Completed)|Agent[(]')
-          - __claude_code_settings_test_text is not search('teammate|agent team|mailbox|team config', ignorecase=True)
-          - __claude_code_settings_test_text is not search('--agent |gatecheck|settings[.](hooks|json)|README[.]md|aslib')
-          - __claude_code_settings_test_text is not search('CLAUDE[.]md') or item.name is search('documenter')
-          - __claude_code_settings_test_text is search('protocol')
-        fail_msg: "{{ item.name }} names one of them."
-        quiet: true
-      loop: "{{ claude_code_settings_files }}"
-      loop_control:
-        label: "{{ item.name }}"
+    - name: Remove the configuration directory
+      ansible.builtin.file:
+        path: "{{ __claude_code_settings_test_dir.path }}"
+        state: absent
 
-    - name: Check the skill runs the experts one at a time and stops at a gate that blocks three times in a row
-      vars:
-        __claude_code_settings_test_text: >-
-          {{ lookup('ansible.builtin.file', (claude_code_settings_files | selectattr('name', 'search', 'SKILL') | first).src) }}
-      ansible.builtin.assert:
-        that:
-          - __claude_code_settings_test_text is search('one at a time')
-          - __claude_code_settings_test_text is search('three times in a row')
-          - __claude_code_settings_test_text is search('[$][{]CLAUDE_SKILL_DIR[}]/protocol[.]md')
-        success_msg: >-
-          PASSED no file names agent teams, their tools, hooks or settings, the package's README or aslib; each
-          points to the protocol, and the skill runs one expert at a time and stops at a gate that blocks three times.
+    # files/test_qa_budget.py runs the guard as Claude Code does, one case per test.
+    - name: Run the guard's tests
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/files/test_qa_budget.py"
+          - "{{ claude_code_settings_files | selectattr('name', 'eq', 'qa-budget/guard.py') | map(attribute='src') | first | dirname }}"
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      register: __claude_code_settings_test_guard
+      changed_when: false
 
-    - name: Try the qa skill with agent teams on
-      block:
-        - name: Compute the settings with both on
-          ansible.builtin.include_role:
-            name: aslib.infra.claude_code_settings
-          vars:
-            claude_code_settings_qa: true
-            claude_code_settings_agent_teams: true
-
-        - name: Fail, as it was accepted
-          ansible.builtin.fail:
-            msg: claude_code_settings accepted the qa skill with agent teams on.
-      rescue:
-        - name: Check the run stopped, naming both settings
-          ansible.builtin.assert:
-            that:
-              - ansible_failed_task.name != 'Fail, as it was accepted'
-              - ansible_failed_result.msg is search('claude_code_settings_qa')
-              - ansible_failed_result.msg is search('claude_code_settings_agent_teams')
-            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
-            success_msg: >-
-              PASSED claude_code_settings stops when the qa skill and agent teams are both on, naming both settings.
-
-    - name: Try a qa setting that is not a boolean
-      block:
-        - name: Compute the settings with it
-          ansible.builtin.include_role:
-            name: aslib.infra.claude_code_settings
-          vars:
-            claude_code_settings_qa: maybe
-
-        - name: Fail, as it was accepted
-          ansible.builtin.fail:
-            msg: claude_code_settings accepted claude_code_settings_qa=maybe.
-      rescue:
-        - name: Check the run stopped, naming the setting
-          ansible.builtin.assert:
-            that:
-              - ansible_failed_task.name != 'Fail, as it was accepted'
-              - ansible_failed_result.msg is search('claude_code_settings_qa')
-            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
-            success_msg: PASSED claude_code_settings stops at a qa setting that is not a boolean, naming it.
+    - name: Show the guard's tests passed
+      ansible.builtin.debug:
+        msg: >-
+          PASSED qa-budget's guard: {{ __claude_code_settings_test_guard.stderr_lines | select('match', '^Ran ') | first }}:
+          automatic prompts blocked and expert runs denied at a ceiling, the person asked instead, readings from
+          before a reset as 0, the spend-down only while the person is inactive (also when someone else's use shows),
+          every tool paused at the limit in automatic turns only, the run cap per session, the token budget per run.
