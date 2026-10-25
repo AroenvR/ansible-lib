@@ -4,7 +4,7 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
-## 0.8.1
+## 0.8.2
 
 ## 0.8.0
 

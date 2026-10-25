@@ -5,7 +5,7 @@ name: infra
 # Releases are made by CI from main, as this version. Every merge into accept
 # raises it, with its CHANGELOG.md section (see CONTRIBUTING.md, Releases); should
 # it lag behind the latest v* tag, the release gets one patch above that tag.
-version: 0.8.1
+version: 0.8.2
 readme: README.md
 description: Tested building blocks for RHEL 9.6 and Ubuntu 24.04 servers.
 authors:

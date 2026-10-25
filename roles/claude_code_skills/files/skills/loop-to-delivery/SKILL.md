@@ -20,7 +20,7 @@ Set the loop up on your own, without being asked, as soon as you see that the wo
 
 ## On a wake-up
 
-A wake-up is a prompt that starts with `[loop-to-delivery <id>]`, with the hook's context "wake-up k of N of loop <id>". Read your notes, do the next step, and record your progress in the notes. If the work can only wait (CI running, an answer from a person), end your turn without writing anything: turns without progress count toward the idle limit, which ends a loop that is stuck. A wake-up after a rate or credit limit error continues like any other.
+A wake-up is a prompt that starts with `[auto loop-to-delivery <id>]`, with the hook's context "wake-up k of N of loop <id>". Read your notes, do the next step, and record your progress in the notes. If the work can only wait (CI running, an answer from a person), end your turn without writing anything: turns without progress count toward the idle limit, which ends a loop that is stuck. A wake-up after a rate or credit limit error continues like any other.
 
 A wake-up **without** that context means that the loop's hooks are not active (the session started before the skill was turned on, or it was turned off): delete that job (`CronList`, `CronDelete`) and tell the person.
 

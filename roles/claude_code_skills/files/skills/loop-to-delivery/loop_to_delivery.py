@@ -20,7 +20,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 
-MARK = "[loop-to-delivery"
+MARK = "[auto loop-to-delivery"
 DAYS = 7
 IDLE_MAX = 6
 STOP_CAP = 20
@@ -28,7 +28,7 @@ NOT_RUN_ERRORS = {"rate_limit", "overloaded", "server_error", "billing_error"}
 WALK_CAP = 20000
 CRON = "7,37 * * * *"
 
-LOOP_IN_PROMPT = re.compile(r"\[loop-to-delivery ([0-9a-f]{8})\]")
+LOOP_IN_PROMPT = re.compile(r"\[auto loop-to-delivery ([0-9a-f]{8})\]")
 LOOP_ID = re.compile(r"[0-9a-f]{8}")
 SESSION_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
@@ -39,14 +39,14 @@ PROGRAM = os.path.abspath(__file__)
 
 OK, MISSING, UNREADABLE = "ok", "missing", "unreadable"
 
-JOB_PROMPT = ("[loop-to-delivery {loop}] Wake-up: continue the work from your notes, as the loop-to-delivery hook's "
-              "context says. If no such context came with this prompt, the loop's hooks are not active: delete this "
-              "job (CronList, CronDelete) and tell the person.")
+JOB_PROMPT = ("[auto loop-to-delivery {loop}] Wake-up: continue the work from your notes, as the loop-to-delivery "
+              "hook's context says. If no such context came with this prompt, the loop's hooks are not active: "
+              "delete this job (CronList, CronDelete) and tell the person.")
 STARTED = "loop-to-delivery: loop {loop} started for this conversation ({session}); notes: {notes}."
 RUNNING = ("loop-to-delivery: loop {loop} is already running for this conversation; its notes and watched paths are "
            "updated.")
 CREATE_ONCE = ('Create its wake-up job once; skip this if CronList already shows a job whose prompt starts with '
-               '"[loop-to-delivery {loop}]":')
+               '"[auto loop-to-delivery {loop}]":')
 REFUSED = ("this conversation's loop {loop} ended ({why}) and nobody has asked for more since: do not start another "
            "for the same work; tell the person.")
 
@@ -72,8 +72,8 @@ REMOVAL = ("loop-to-delivery: this conversation still has wake-up jobs that must
            "find them with CronList and delete them with CronDelete, then go on with the person's request. Do not "
            "continue or restart those loops' work unless the person asks for it.")
 ITEM_JOB = "job {job} of loop {loop} ({why})"
-ITEM_LOOP = 'the job of loop {loop}, whose prompt starts with "[loop-to-delivery {loop}]" ({why})'
-ITEM_NO_LOOP = 'a job whose prompt starts with "[loop-to-delivery" but names no loop'
+ITEM_LOOP = 'the job of loop {loop}, whose prompt starts with "[auto loop-to-delivery {loop}]" ({why})'
+ITEM_NO_LOOP = 'a job whose prompt starts with "[auto loop-to-delivery" but names no loop'
 
 END_NOTICE = ("loop-to-delivery: loop {loop} has ended: {why}. Before you end this turn: delete its wake-up job {ids} "
               "with CronDelete, write in your notes ({notes}) where the work stands and that the loop ended, and tell "
@@ -150,7 +150,7 @@ def job_ids(loop, jobs):
     """The loop's job ids for Claude, or how to find the job when none is known."""
     if jobs:
         return ", ".join(jobs)
-    return '(its prompt starts with "[loop-to-delivery %s]")' % loop
+    return '(its prompt starts with "[auto loop-to-delivery %s]")' % loop
 
 
 def loop_in_prompt(prompt):
@@ -946,7 +946,7 @@ class Program:
         if not self.own_active(loop, session, max_wakes):
             return self.print_lines(
                 "loop-to-delivery: no active loop in this conversation; its loop %s has ended (%s). If CronList "
-                'still shows a job whose prompt starts with "[loop-to-delivery %s]", delete it with CronDelete.'
+                'still shows a job whose prompt starts with "[auto loop-to-delivery %s]", delete it with CronDelete.'
                 % (loop, self.why(loop, session, max_wakes), loop))
         reason = one_line(options.reason)
         self.store.end(loop, reason, "claude", self.now)
