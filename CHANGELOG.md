@@ -41,13 +41,38 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   unattended-upgrades left between runs. A restart ends the sessions in the
   VM, as a new memory or vCPUs does. The VM needed the internet already; every
   other role, and the host, still install a package only when it is missing.
-- Changed: claude_code_settings hands over fewer facts. The files and absent
-  paths of the qa skill, `claude_code_settings_files` and
-  `claude_code_settings_absent` of 0.8.0, are now `claude_code_skills_files`
+- Changed: the qa skill's files and absent paths, `claude_code_settings_files`
+  and `claude_code_settings_absent` of 0.8.0, are now `claude_code_skills_files`
   and `claude_code_skills_absent`, with the loop's `claude_code_skills_policy`;
-  the targets include claude_code_skills after claude_code_settings and merge
-  its part into the policy. A playbook of your own that includes
-  claude_code_settings and reads the two facts includes claude_code_skills too.
+  claude_code_settings' two facts now hold only qa-budget's files. The targets
+  include claude_code_skills after claude_code_settings and merge its part into
+  the policy. A playbook of your own that includes claude_code_settings and
+  installs its files includes claude_code_skills too.
+- Added: `claude_code_settings_qa_budget` (off by default) installs qa-budget
+  in `/etc/claude-code/qa-budget/`, in the container and the VM, which keeps
+  agent work within a budget of the subscription. A status line shows the
+  subscription's 5-hour and weekly usage and saves each reading (only the
+  status line receives it); a hook on `SubagentStart`, `SubagentStop` and
+  `Stop` keeps a ledger of each agent's and session's tokens with the usage of
+  that moment, both in `~/.claude/qa-budget/`. A guard on `UserPromptSubmit`
+  and `PreToolUse` enforces ceilings (weekly 60%, 5-hour 90%), a spend-down
+  before the weekly reset while the person is inactive, 12 expert runs per
+  session and a token budget per run: a turn no person started (a wake-up, a
+  loop; its prompt begins with an `[auto ...]` tag) is blocked or denied there
+  and never goes into extra usage, while the person is asked. The qa skill's
+  `SKILL.md` points to `budget.md`, which says how to work within it: two
+  review rounds per gate, low findings into a list of improvements, deliver or
+  pause when the guard says so.
+- Changed: the base policy no longer denies edits to `/etc/claude-code/` and to
+  `settings.json`. Claude could make those changes with Bash and sudo anyway,
+  so the rules only hid that they were no boundary; the container and the VM
+  are. The other deny rules stay.
+- Fixed: claude_code_vm refreshes apt's package lists (when older than an
+  hour) before it installs the host's missing packages; with stale lists, apt
+  asked the mirror for files it no longer had (404), as on CI runners.
+- Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
+  files on the machine it runs on, without the rest of the VM's guest setup,
+  for Claude's own VM to apply a branch's settings to itself.
 
 ### Upgrading from 0.8.0
 

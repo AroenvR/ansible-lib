@@ -13,9 +13,7 @@
     ],
     "defaultMode": "bypassPermissions",
     "deny": [
-      "Edit(//etc/claude-code/**)",
       "Read(.env)",
-      "Edit(**/.claude/settings.json)",
       "Edit(**/.claude/settings.local.json)",
       "Edit(**/.claude/hooks/**)",
       "Edit(**/.mcp.json)",

@@ -6,11 +6,14 @@ argument_specs:
       - The settings Claude Code gets wherever aslib.infra installs it, in its container (claude_code_podman) and in
         its VM (claude_code_vm), which include this role and install what it hands over, each where its Claude Code
         reads it. Changes nothing itself.
-      - Hands over three facts. C(claude_code_settings_policy), the base of the policy managed-settings.json, from
+      - Hands over five facts. C(claude_code_settings_policy), the base of the policy managed-settings.json, from
         templates/managed-settings.json.j2 with the values below; a target may add its own part.
         C(claude_code_settings_environment), the environment variables every claude process needs.
-        C(claude_code_settings_global_config), Claude Code's .claude.json for an account that has none yet. The
-        skills, the qa skill among them, are aslib.infra.claude_code_skills'.
+        C(claude_code_settings_global_config), Claude Code's .claude.json for an account that has none yet.
+        C(claude_code_settings_files), qa-budget's files when it is on, for Claude Code's managed settings directory
+        (/etc/claude-code), each with its path there (C(name)) and its file on the Ansible machine (C(src)).
+        C(claude_code_settings_absent), qa-budget's folder there when it is off, for a target to remove. The skills,
+        the qa skill among them, are aslib.infra.claude_code_skills'.
       - Whatever these settings say, a new session starts ready to work - signed in where the target has a token,
         without the first-run setup, without asking to trust a folder (any folder, git repositories cloned later
         included), without the confirmation of bypassPermissions mode; and a cd in Bash sticks for later commands,
@@ -52,3 +55,18 @@ argument_specs:
         default: false
         description: Start sessions with ultracode on, so that Claude plans a workflow of agents for each substantive
           task without being asked (C(ultracode)). /effort ultracode off still turns it off for a session.
+      claude_code_settings_qa_budget:
+        type: bool
+        default: false
+        description:
+          - qa-budget, in Claude Code's managed settings directory, measures what agents spend of a subscription and
+            keeps agent work within a budget. A status line (qa-budget/statusline.py) shows and saves the subscription's usage, the
+            5-hour and the 7-day window, each with its percentage used and its reset; only the status line receives
+            these. A hook (qa-budget/ledger.py) on SubagentStart, SubagentStop and Stop adds a line per agent and
+            session to a ledger, with its tokens so far and the usage then. Both write in C(~/.claude/qa-budget/)
+            (C($CLAUDE_CONFIG_DIR/qa-budget/)). A hook (qa-budget/guard.py) on UserPromptSubmit and PreToolUse
+            enforces the budget - ceilings on the weekly and the 5-hour usage, a spend-down before the weekly reset
+            while the person is inactive, expert runs per session and tokens per run - and never lets a turn that no
+            person started go into extra usage; qa-budget/budget.md tells the qa skill how to work within it. Its
+            README lists the limits and the environment variables that change them.
+          - Off by default, as the managed status line replaces a person's own. Needs C(python3) on the target.

@@ -65,6 +65,8 @@ __claude_code_vm_settings:
     comment: true turns agent teams on.
   - name: claude_code_settings_ultracode
     comment: true starts sessions with ultracode on.
+  - name: claude_code_settings_qa_budget
+    comment: true installs qa-budget, which measures and limits what agents spend of the subscription; its status line replaces any other.
   - name: claude_code_skills_qa
     comment: true installs the qa skill and its five expert subagents, for change requests; needs agent teams off.
   - name: claude_code_skills_loop_to_delivery

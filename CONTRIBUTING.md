@@ -470,7 +470,7 @@ requests. main and accept get pipelines of their own later.
 | build-machine roles · ansible-core 2.14 / 2.16 | `make test-build-machine-<ansible-core>`, `make test-dist-<ansible-core>` | Same, plus access to Red Hat's registry, Anthropic's repository, npm and GitHub |
 | Ubuntu 24.04's own ansible-core and Podman | `make test-native` | Same |
 | GitLab · ansible-core 2.14 / 2.16 | `make image-rhel9 test-gitlab-<ansible-core>` | As server roles, plus Docker Hub, about 4 GB of memory and 15 GB of disk |
-| claude_code_vm · ansible-core 2.16 (GitHub only) | `make test-vm-2.16` | KVM (`/dev/kvm`), which GitHub's Linux runners have; Ubuntu's archive (CI refreshes the runner's package lists first, as they are as old as the runner image), its cloud image, the deadsnakes and Anthropic's repositories |
+| claude_code_vm · ansible-core 2.16 (GitHub only) | `make test-vm-2.16` | KVM (`/dev/kvm`), which GitHub's Linux runners have; Ubuntu's archive (the role refreshes apt's package lists before it installs what the host lacks), its cloud image, the deadsnakes and Anthropic's repositories |
 | branch build (every branch but main) | `make dist BRANCH=<branch>` | All jobs above green |
 | release (main) | `make dist-release` | All jobs above green |
 
