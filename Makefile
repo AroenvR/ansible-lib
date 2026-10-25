@@ -62,9 +62,13 @@ $(addprefix $(VENV)/ansible-,$(ANSIBLE_VERSIONS)): $(VENV)/ansible-%: dev/requir
 	$@/bin/pip install -r $<
 	touch $@
 
-# Installed with the oldest ansible-core's ansible-galaxy, proven against today's Galaxy server.
+# Installed with the oldest ansible-core's ansible-galaxy, proven against today's Galaxy server,
+# which fails now and then for minutes (HTTP 500 and 403): three tries, a minute apart.
 $(VENV)/collections: dev/collections.yml | $(VENV)/ansible-2.14
-	$(VENV)/ansible-2.14/bin/ansible-galaxy collection install -r $< -p $@
+	for try in 1 2 3; do \
+	  $(VENV)/ansible-2.14/bin/ansible-galaxy collection install -r $< -p $@ && break; \
+	  [ $$try = 3 ] && exit 1; sleep 60; \
+	done
 	touch $@
 
 images: $(addprefix image-,$(SERVERS)) ## Build the test server containers
@@ -79,6 +83,7 @@ lint: $(VENV)/lint $(SELF) ## Lint all content and check every role's documented
 	ANSIBLE_COLLECTIONS_PATH="$(CURDIR)/$(VENV)/self" $(VENV)/lint/bin/ansible-lint
 	$(VENV)/lint/bin/python dev/check_role_docs.py
 	$(VENV)/lint/bin/python dev/check_conditions.py
+	$(VENV)/lint/bin/python dev/check_folded.py
 	$(VENV)/lint/bin/python dev/check_shell.py
 	@for plugin in plugins/*/*.py; do \
 	  type=$$(basename $$(dirname $$plugin)); name=$$(basename $$plugin .py); \

@@ -320,6 +320,11 @@ the entry says it is likely or not verified yet.
   `- lookup(...) is search('key: value')` was such a mapping, and assert passed it
   without checking anything. Quote such conditions (`- "..."`);
   `dev/check_conditions.py` (part of `make lint`) finds them.
+- A folded block (`>`, `>-`) joins its lines with spaces but keeps the line
+  break before a line indented further: a shell command written so with a
+  more-indented `|| ...` line reached bash as two lines, a syntax error that
+  only the VM test, in CI, ran into (2026-10-25). Indent every line of such a
+  block the same; `dev/check_folded.py` (part of `make lint`) finds them.
 - YAML flow lists split on commas: an argument like `setfacl --modify=a,b`
   belongs in a block list.
 - A sticky bit on a group-writable directory (tried on the shared zone) also

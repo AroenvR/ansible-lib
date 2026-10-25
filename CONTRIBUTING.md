@@ -86,7 +86,7 @@ so a local run does exactly what a pipeline does. `make help` lists them:
 | `make setup` | The venvs `.venv/ansible-2.14` and `.venv/ansible-2.16` (ansible-core and Molecule, pinned in `dev/requirements-ansible-<ansible-core>.txt`) and `.venv/lint` (current ansible-lint and ShellCheck, `dev/requirements-lint.txt`), each rebuilt when its pins change; the test-only collections of `dev/collections.yml` in `.venv/collections`; the link `.venv/self/ansible_collections/aslib/infra` |
 | `make images` | Builds the test server containers `localhost/aslib-test/ubuntu2404` and `localhost/aslib-test/rhel9` from `dev/images/` |
 | `make image-<name>` | Builds one test container, e.g. `make image-rhel9`; `ubuntu2404-native` is the native test's |
-| `make lint` | ansible-lint (production profile), `dev/check_role_docs.py`, `dev/check_conditions.py`, `dev/check_shell.py`, and ansible-doc on every plugin ([what each checks](#how-the-tests-are-organized)) |
+| `make lint` | ansible-lint (production profile), `dev/check_role_docs.py`, `dev/check_conditions.py`, `dev/check_folded.py`, `dev/check_shell.py`, and ansible-doc on every plugin ([what each checks](#how-the-tests-are-organized)) |
 | `make test-servers-<ansible-core>` | Molecule scenario `server` of every role that has one, e.g. `make test-servers-2.14 ROLES=sudoers` |
 | `make test-build-machine-<ansible-core>` | Molecule scenario `build_machine`, on this machine |
 | `make test-dist-<ansible-core>` | `dev/test-build.yml`: build.yml in a git checkout and without git |
@@ -147,7 +147,10 @@ Three more checks complete the picture:
 - `make lint`: current ansible-lint (production profile), a check that every
   role documents its interface, a check that every condition is text (YAML turns
   an unquoted `- x is search('a: b')` into a mapping, which an assert accepts
-  without checking anything), ShellCheck on every shell script
+  without checking anything), a check that no folded block (`>`) keeps a line
+  break before `&&`, `||`, `|` or `;` (a line indented further keeps its break,
+  which a shell command then fails on, seen only when it runs), ShellCheck on
+  every shell script
   (`dev/check_shell.py`, which renders `*.sh.j2` templates first; the
   maintainer's `.tools/` and `libs/` are left to them), and ansible-doc loading
   every plugin and its documentation. Lint runs on a modern ansible-core, so it
