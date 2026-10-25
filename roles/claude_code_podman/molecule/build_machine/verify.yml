@@ -364,8 +364,7 @@
         that:
           - __claude_code_podman_test_old_update.rc == 0
           - __claude_code_podman_test_defaults is not search('^claude_code_settings_qa:', multiline=True)
-          - >-
-            __claude_code_podman_test_defaults is search('^claude_code_skills_qa: false$', multiline=True)
+          - (__claude_code_podman_test_defaults | from_yaml).claude_code_skills_qa is false
           - >-
             lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/project.yml')
             is search('^claude_code_settings_qa: false$', multiline=True)

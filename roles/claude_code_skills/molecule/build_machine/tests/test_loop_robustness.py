@@ -168,7 +168,7 @@ class FailOpenTest(LoopTestCase):
     def test_input_that_is_not_a_json_object_passes(self):
         """TEST-065: stdin that is not a JSON object: exit 1, no stdout, a trace each; an object of another or no
         event passes with exit 0 and writes nothing."""
-        for text in ("this is not JSON", "", "[]", "42", "null", '"[loop-to-delivery 0123abcd] Wake-up"'):
+        for text in ("this is not JSON", "", "[]", "42", "null", '"[auto loop-to-delivery 0123abcd] Wake-up"'):
             with self.subTest(text):
                 before = self.traces()
                 result = self.hook(text)

@@ -30,7 +30,7 @@ class StartTest(LoopTestCase):
         self.assertEqual(lines, [
             "loop-to-delivery: loop %s started for this conversation (%s); notes: %s." % (loop, A, self.notes),
             'Create its wake-up job once; skip this if CronList already shows a job whose prompt starts with '
-            '"[loop-to-delivery %s]":' % loop,
+            '"[auto loop-to-delivery %s]":' % loop,
             create_line(loop),
         ])
 
@@ -55,6 +55,18 @@ class StartTest(LoopTestCase):
             self.assertEqual(stat.S_IMODE(os.stat(folder).st_mode), 0o700, folder)
             for name in names:
                 self.assertEqual(stat.S_IMODE(os.stat(os.path.join(folder, name)).st_mode), 0o600, name)
+
+    def test_the_job_prompt_start_prints_is_an_automatic_prompt_to_a_budget_guard(self):
+        """TEST-086: QD18: the printed job prompt starts with [auto loop-to-delivery <id>], so it matches the
+        qa-budget guard's default pattern for automatic prompts (the regex below)."""
+        result = self.main(["start", "--session", A, "--notes", self.notes, "--watch", self.repo], now=T0)
+        self.assertEqual(result.rc, 0, result)
+        last = result.out.rstrip("\n").split("\n")[-1]
+        self.assertTrue(last.startswith("CronCreate "), last)
+        prompt = json.loads(last[len("CronCreate "):])["prompt"]
+        loop = self.record_of(A)["loop"]
+        self.assertTrue(prompt.startswith("[auto loop-to-delivery %s]" % loop), prompt)
+        self.assertIsNotNone(re.match(r"^\s*\[auto\b[^\]\n]*\]", prompt), prompt)
 
     def test_start_refuses_relative_paths_and_a_missing_or_invalid_session(self):
         """TEST-002: start exits 2 with a reason for a relative path or no/invalid session, and writes no loop."""
@@ -102,7 +114,7 @@ class StartTest(LoopTestCase):
                                    "and watched paths are updated." % loop)
         self.assertEqual(lines[1:], [
             'Create its wake-up job once; skip this if CronList already shows a job whose prompt starts with '
-            '"[loop-to-delivery %s]":' % loop,
+            '"[auto loop-to-delivery %s]":' % loop,
             create_line(loop),
         ])
         after = self.state(loop)

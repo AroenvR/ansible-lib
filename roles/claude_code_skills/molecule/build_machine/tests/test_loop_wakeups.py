@@ -55,7 +55,7 @@ class PassTest(LoopTestCase):
         before = self.snapshot()
         events = {
             "a person's prompt": self.prompt(C, "Fix the parser, please."),
-            "the marker inside a prompt": self.prompt(C, "Look at [loop-to-delivery %s] in the notes." % loop),
+            "the marker inside a prompt": self.prompt(C, "Look at [auto loop-to-delivery %s] in the notes." % loop),
             "a prompt that is not a string": self.prompt(C, None),
             "a Stop with another job": self.stop(C, self.pid(), crons=[cron("aa11bb22", prompt="Nightly report")]),
             "a Stop without session_crons": self.stop(C, self.pid(), crons=DROP),
@@ -70,6 +70,21 @@ class PassTest(LoopTestCase):
         self.assertIsNone(self.record(C))
         # The owner's ordinary prompt while its loop is active: no context.
         self.assertPass(self.hook(self.prompt(A, "What is the status?")))
+
+    def test_a_prompt_with_the_old_marker_is_not_a_wake_up(self):
+        """TEST-087: QD18: [loop-to-delivery <id>] (without auto) is unmarked: any session's prompt passes untouched,
+        is not blocked and counts no wake-up."""
+        loop = self.started_with_job(A, J1)
+        old = job_prompt(loop).replace("[auto loop-to-delivery", "[loop-to-delivery", 1)
+        self.assertTrue(old.startswith("[loop-to-delivery %s]" % loop), old)
+        before = self.snapshot()
+        for case, session in (("the loop's own conversation", A), ("another conversation", C)):
+            with self.subTest(case):
+                self.assertPass(self.hook(self.prompt(session, old)))
+                self.assertEqual(self.snapshot(), before, "a file was written or changed")
+        self.assertEqual(self.state(loop)["wakes"], 0)
+        self.assertIsNone(self.ended(loop))
+        self.assertIsNone(self.record(C))
 
     def test_subagents_are_untouched(self):
         """TEST-024: any input with agent_id passes, writes nothing and ends nothing (FR-044, FR-047)."""
@@ -96,10 +111,10 @@ class BlockedTest(LoopTestCase):
 
     def test_a_wake_up_that_names_no_loop_is_blocked(self):
         """TEST-025: a marked prompt without a well-formed loop id: B-NONE, recorded once, then the removal notice."""
-        prompts = ["[loop-to-delivery] Wake-up: continue.",
-                   "[loop-to-delivery 0123ABCD] Wake-up: continue.",
-                   "[loop-to-delivery 0123abcd1] Wake-up: continue.",
-                   "[loop-to-delivery"]
+        prompts = ["[auto loop-to-delivery] Wake-up: continue.",
+                   "[auto loop-to-delivery 0123ABCD] Wake-up: continue.",
+                   "[auto loop-to-delivery 0123abcd1] Wake-up: continue.",
+                   "[auto loop-to-delivery"]
         for text in prompts:
             with self.subTest(text):
                 reason = self.assertWakeBlocked(self.hook(self.prompt(C, text)))

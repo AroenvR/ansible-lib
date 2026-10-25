@@ -172,7 +172,7 @@ class JobRequestTest(LoopTestCase):
             "no jobs": [],
             "only unmarked jobs": [cron("aa11bb22", prompt="Nightly report")],
             "another loop's job": [cron(J3, NO_STATE_LOOP)],
-            "a marked job that names no loop": [cron(J2, prompt="[loop-to-delivery] Wake-up")],
+            "a marked job that names no loop": [cron(J2, prompt="[auto loop-to-delivery] Wake-up")],
         }
         for case, crons in cases.items():
             with self.subTest(case):

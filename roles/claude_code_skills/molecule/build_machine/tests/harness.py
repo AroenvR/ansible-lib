@@ -63,10 +63,11 @@ COUNTED_ERRORS = (
     ("Rate_Limit", "other"),                                  # a case variant of a transient one
     ("rate-limit", "other"),                                  # a hyphen
     ("", "other"),                                            # empty
+    ("max_output_tokens\n", "other"),                        # a trailing newline: full match, not "$" (GA-8)
 )
 
 JOB_PROMPT = (
-    "[loop-to-delivery {loop}] Wake-up: continue the work from your notes, as the loop-to-delivery hook's "
+    "[auto loop-to-delivery {loop}] Wake-up: continue the work from your notes, as the loop-to-delivery hook's "
     "context says. If no such context came with this prompt, the loop's hooks are not active: delete this "
     "job (CronList, CronDelete) and tell the person.")
 
@@ -181,10 +182,10 @@ def item_job(job, loop, why):
 
 
 def item_loop(loop, why):
-    return 'the job of loop %s, whose prompt starts with "[loop-to-delivery %s]" (%s)' % (loop, loop, why)
+    return 'the job of loop %s, whose prompt starts with "[auto loop-to-delivery %s]" (%s)' % (loop, loop, why)
 
 
-ITEM_NO_LOOP = 'a job whose prompt starts with "[loop-to-delivery" but names no loop'
+ITEM_NO_LOOP = 'a job whose prompt starts with "[auto loop-to-delivery" but names no loop'
 
 
 def j_create(loop):
@@ -287,7 +288,7 @@ class LoopTestCase(unittest.TestCase):
         last = lines[-1]
         self.assertTrue(last.startswith("CronCreate "), "start's last line is not the CronCreate line: %r" % last)
         prompt = json.loads(last[len("CronCreate "):])["prompt"]
-        match = re.match(r"^\[loop-to-delivery ([0-9a-f]{8})\]", prompt)
+        match = re.match(r"^\[auto loop-to-delivery ([0-9a-f]{8})\]", prompt)
         self.assertIsNotNone(match, "start's job prompt names no loop: %r" % prompt)
         return match.group(1)
 

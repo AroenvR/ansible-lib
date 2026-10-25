@@ -71,7 +71,7 @@
       ansible.builtin.assert:
         that:
           - item.src is search('/claude_code_skills/files/' ~ (item.name | regex_replace('^[.]claude/', '')) ~ '$')
-        fail_msg: "{{ item }}"
+        fail_msg: "{{ item.name }}: {{ item.src }}"
         quiet: true
       loop: "{{ claude_code_skills_files }}"
       loop_control:
@@ -153,7 +153,7 @@
     - name: Check it hands over loop-to-delivery's skill and program, and the hooks that run the program
       ansible.builtin.assert:
         that:
-          - claude_code_skills_files | map(attribute='name') | sort == __claude_code_skills_test_loop_files
+          - claude_code_skills_files | map(attribute='name') | sort == __claude_code_skills_test_loop_files | sort
           - claude_code_skills_files | map(attribute='src') | select('file') | list | length == 2
           - claude_code_skills_files | rejectattr('src', 'search', '/claude_code_skills/files/skills/loop-to-delivery/')
             | list == []
@@ -297,7 +297,7 @@
         that:
           - claude_code_skills_files | length == 9
           - claude_code_skills_files[:7] | map(attribute='name') | sort == __claude_code_skills_test_qa_files | sort
-          - claude_code_skills_files[7:] | map(attribute='name') | sort == __claude_code_skills_test_loop_files
+          - claude_code_skills_files[7:] | map(attribute='name') | sort == __claude_code_skills_test_loop_files | sort
           - claude_code_skills_absent == []
           - claude_code_skills_policy == __claude_code_skills_test_policy
         fail_msg: "Files: {{ claude_code_skills_files | map(attribute='name') | list }}; absent: {{ claude_code_skills_absent }}"
