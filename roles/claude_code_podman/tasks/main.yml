@@ -65,7 +65,7 @@
     __claude_code_podman_config_files: >-
       {{ query('fileglob', __claude_code_podman_root ~ '/config/*') | reject('search', '/managed-settings[.]json$') | list
          + [{'name': 'managed-settings.json', 'content': __claude_code_podman_policy | to_nice_json(indent=2, sort_keys=False)}]
-         + claude_code_skills_files }}
+         + claude_code_settings_files + claude_code_skills_files }}
     __claude_code_podman_mode: "{{ __claude_code_podman_policy.permissions.defaultMode | default('default') }}"
 
 # The Quadlet template is the project's (ansible/templates/service.container.j2,

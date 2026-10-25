@@ -159,7 +159,7 @@ removal (`aslib.infra.claude_code_vm_remove`) keeps the file, so a reset keeps
 your settings; to start from the defaults again, delete it first:
 `sudo rm /etc/claude-vm/settings.yml`. The disk size and the network are for a
 new VM, as the file's comments say; the memory and the vCPUs apply to the VM
-you have, below. A setting of before 0.9.0 named `claude_code_settings_qa` in
+you have, below. 0.8.0's setting `claude_code_settings_qa` in
 the file, the inventory or `-e` stops the run, naming `claude_code_skills_qa`:
 rename it (a run never changes a line of the file).
 

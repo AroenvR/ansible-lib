@@ -1,0 +1,9 @@
+---
+# qa-budget's status line, token ledger, guard and its rules for agents, as
+# paths in Claude Code's managed settings directory (/etc/claude-code on Linux),
+# each from files/.
+__claude_code_settings_qa_budget_files:
+  - qa-budget/statusline.py
+  - qa-budget/ledger.py
+  - qa-budget/guard.py
+  - qa-budget/budget.md

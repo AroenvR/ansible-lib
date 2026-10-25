@@ -26,14 +26,14 @@
       {{ __claude_code_vm_old | join(', ') }}. Rename them where they are set (the inventory or -e).
     quiet: true
 
-# 0.9.0 moved the qa skill to claude_code_skills; settings.yml checks the
+# After 0.8.0 the qa skill moved to claude_code_skills; settings.yml checks the
 # settings file for the old name.
 - name: Stop at claude_code_settings_qa, which is now claude_code_skills_qa
   ansible.builtin.assert:
     that: query('ansible.builtin.varnames', '^claude_code_settings_qa$') | length == 0
     fail_msg: >-
-      claude_code_settings_qa is now claude_code_skills_qa (the qa skill moved to aslib.infra.claude_code_skills in
-      0.9.0): rename it where it is set (the inventory or -e).
+      claude_code_settings_qa is now claude_code_skills_qa (the qa skill moved to aslib.infra.claude_code_skills
+      after 0.8.0): rename it where it is set (the inventory or -e).
     quiet: true
 
 # First: every value below may come from it.
@@ -85,6 +85,17 @@
 
 - name: Look up the installed packages
   ansible.builtin.package_facts:
+
+# With package lists older than the mirror, apt asks for files the mirror no
+# longer has (404), as on CI runners whose image is a few weeks old.
+- name: Refresh apt's package lists, when older than an hour and something is missing
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  vars:
+    __claude_code_vm_missing: >-
+      {{ __claude_code_vm_host_packages[ansible_facts.architecture] | difference(ansible_facts.packages.keys()) }}
+  when: __claude_code_vm_missing | length > 0
 
 - name: Install QEMU/KVM, libvirt, virt-install, xorriso and nftables where missing
   ansible.builtin.package:
@@ -446,6 +457,7 @@
     claude_code_settings_theme: "{{ claude_code_settings_theme }}"
     claude_code_settings_agent_teams: "{{ claude_code_settings_agent_teams }}"
     claude_code_settings_ultracode: "{{ claude_code_settings_ultracode }}"
+    claude_code_settings_qa_budget: "{{ claude_code_settings_qa_budget }}"
     claude_code_skills_qa: "{{ claude_code_skills_qa }}"
     claude_code_skills_loop_to_delivery: "{{ claude_code_skills_loop_to_delivery }}"
     claude_code_skills_loop_to_delivery_max_wakes: "{{ claude_code_skills_loop_to_delivery_max_wakes }}"

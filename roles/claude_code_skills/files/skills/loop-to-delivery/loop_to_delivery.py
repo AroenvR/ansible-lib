@@ -96,7 +96,7 @@ USAGE = {
 
 
 def state_defaults(**fields):
-    """A loop's state.json fields that have a default (IF-009), with the given ones."""
+    """A loop's state.json fields that have a default, with the given ones."""
     state = {"version": 1, "watch": [], "wakes": 0, "max": None, "idle": 0, "check_fp": "", "stop_fp": "",
              "wake_prompt_id": None, "idle_counted": False, "failed": False, "job_asked": False, "stop_blocks": 0,
              "jobs": [], "ended": None, "end_notice": False}
@@ -488,7 +488,7 @@ class Program:
         self.pending = []
 
     def trace(self, failure):
-        """FR-046's trace: one line, never input other than the event's name."""
+        """The hook's trace: one line, never input other than the event's name."""
         self.store.append("%s %s error %s line %d" % (stamp(self.now), self.event, failure.text, failure.line),
                           self.known_loop, fallback=True)
 
@@ -500,7 +500,7 @@ class Program:
         return self.loaded[loop]
 
     def end_reason(self, loop, state, max_wakes):
-        """QD16: the only place that decides whether a loop has ended (recorded or not)."""
+        """The only place that decides whether a loop has ended (recorded or not)."""
         ended = self.store.ended(loop)
         if ended is not None:
             return ended
@@ -531,7 +531,7 @@ class Program:
         return "it has no state" if status == MISSING else "its state cannot be read"
 
     def end_elsewhere(self, loop, session, cause, max_wakes):
-        """hook end (QD5, QD12): ends another conversation's loop through its ended.json, never its state.json."""
+        """hook end: ends another conversation's loop through its ended.json, never its state.json."""
         status, state, _error = self.load(loop)
         if status == UNREADABLE:
             with contextlib.suppress(Failure):
@@ -561,7 +561,7 @@ class Program:
             self.err.write("loop-to-delivery: %s\n" % failure.text)
         return 1
 
-    # Hook mode (IF-008, IF-010)
+    # Hook mode
 
     def hook(self, args, stdin):
         try:
@@ -628,7 +628,7 @@ class Program:
             self.trace(failure)
 
     def wake_up(self, data, loop, max_wakes):
-        """UserPromptSubmit, a wake-up (QD5, QD6): exactly one outcome, let through or blocked."""
+        """UserPromptSubmit, a wake-up: exactly one outcome, let through or blocked."""
         with step("input"):
             session = self.session_of(data)
             if session is None:
@@ -683,7 +683,7 @@ class Program:
         return self.context(text)
 
     def prompt(self, data, max_wakes):
-        """UserPromptSubmit, not a wake-up (QD7, QD10, QD16): never blocked; context only for the removal notice."""
+        """UserPromptSubmit, not a wake-up: never blocked; context only for the removal notice."""
         session = self.session_of(data)
         if session is None:
             return 0
@@ -735,7 +735,7 @@ class Program:
         return self.context(REMOVAL.format(items="; ".join(items)))
 
     def stop_event(self, data, max_wakes):
-        """Stop (QD12, QD13, QD17): jobs, other conversations' loops, idle, end notice, job request, continuation."""
+        """Stop: jobs, other conversations' loops, idle, end notice, job request, continuation."""
         session = self.session_of(data)
         if session is None:
             return 0
@@ -817,7 +817,7 @@ class Program:
         return self.block(output) if output is not None else 0
 
     def stop_failure(self, data, max_wakes):
-        """StopFailure (QD11, QD14, QD15): only a transient failure before the turn's first Stop is un-counted."""
+        """StopFailure: only a transient failure before the turn's first Stop is un-counted."""
         session = self.session_of(data)
         if session is None:
             return 0
@@ -855,7 +855,7 @@ class Program:
             if line not in self.store.log_text(loop):
                 self.log(loop, line)
 
-    # Commands (IF-008)
+    # Commands
 
     def command(self, argv):
         name = argv[0] if argv and argv[0] in USAGE else None

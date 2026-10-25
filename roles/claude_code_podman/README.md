@@ -114,6 +114,7 @@ or with `-e`; each deploy installs them:
 | `claude_code_settings_theme` | `dark` |
 | `claude_code_settings_agent_teams` | `false` |
 | `claude_code_settings_ultracode` | `false` |
+| `claude_code_settings_qa_budget` | `false`: [qa-budget](../claude_code_settings/README.md#qa-budget-a-budget-for-agent-work), which measures and limits what agents spend of the subscription |
 
 **Skills:** the same names and defaults as in the VM
 ([claude_code_skills](../claude_code_skills/README.md)), set the same way, each

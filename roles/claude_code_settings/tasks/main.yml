@@ -2,6 +2,9 @@
 # Entry point "main": computes what every target installs, as facts for the role
 # that includes this one. Changes nothing.
 - name: Note Claude Code's settings for the target
+  vars:
+    __claude_code_settings_names: "{{ __claude_code_settings_qa_budget_files if claude_code_settings_qa_budget | bool else [] }}"
+    __claude_code_settings_sources: "{{ [role_path ~ '/files/'] | product(__claude_code_settings_names) | map('join') | list }}"
   ansible.builtin.set_fact:
     # The base of the policy, with the settings' values (reading it also checks it is JSON).
     claude_code_settings_policy: "{{ lookup('ansible.builtin.template', 'managed-settings.json.j2', convert_data=false) | from_json }}"
@@ -16,3 +19,11 @@
     # sign-in), as the policy and the token already answer it.
     claude_code_settings_global_config:
       hasCompletedOnboarding: true
+    # qa-budget's files when it is on, for the managed settings directory: the
+    # path there (name) and the file on the Ansible machine (src).
+    claude_code_settings_files: >-
+      {{ dict(__claude_code_settings_names | zip(__claude_code_settings_sources))
+         | dict2items(key_name='name', value_name='src') }}
+    # qa-budget's folder when it is off, for a target to remove where an earlier
+    # run installed it.
+    claude_code_settings_absent: "{{ [] if claude_code_settings_qa_budget | bool else ['qa-budget'] }}"

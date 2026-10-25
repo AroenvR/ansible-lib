@@ -234,7 +234,7 @@
     # A program python3 cannot open makes it exit 2, which blocks the person's
     # prompt; the command's test makes that a non-blocking 1. The policy's own
     # command runs with its program path pointed into the temporary home, where
-    # nothing is, so the check also runs where 0.9.0 is installed.
+    # nothing is, so the check also runs where loop-to-delivery is installed.
     - name: Run the hook command as Claude Code runs it (sh -c), where the program is absent
       ansible.builtin.command:
         argv:

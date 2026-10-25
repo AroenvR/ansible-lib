@@ -23,7 +23,7 @@ Both skills are off by default: managed skills and subagents win over a
 person's and a project's with the same name, so turning them on hides those.
 Turning one off again removes its files at the next run or deploy.
 
-Before 0.9.0 the qa skill was `claude_code_settings_qa`. A run, build or deploy
+Up to 0.8.0 the qa skill was `claude_code_settings_qa`. A run, build or deploy
 that still sets it stops, naming `claude_code_skills_qa`
 ([Upgrading](../../CHANGELOG.md#upgrading-from-080)).
 
@@ -47,11 +47,28 @@ project, without being told; a question is answered without it, and `/qa`
 starts it by hand. QA writes the spec and the acceptance, and runs the experts
 one at a time, passing each one's report on to the next, in the protocol's
 order: spec, architect, reviewer G0, tester RED, reviewer GA, developer GREEN,
-reviewer GB, documenter, reviewer GC, acceptance. A small change takes the
-protocol's short route. A BLOCK goes back to the expert who owns the work and
-the gate runs again; after three BLOCKs in a row at the same gate, QA stops and
-asks. QA writes no production code, tests or docs itself, and each expert
-writes only the paths QA gives it. The artifacts go in
+reviewer GB, documenter, reviewer GC, acceptance. A small change takes only
+the experts it needs (documentation only: the documenter and the final review;
+a test only: the tester and its review). Each gate takes one review round:
+only a serious finding sends work back to the expert who owns it, and the rest
+goes to the list of improvements that comes with the delivery; after three
+BLOCKs in a row at the same gate, QA stops and asks. QA writes no production
+code, tests or docs itself, apart from corrections that change no behavior and
+that it proves mechanically (a version number replaced everywhere, whitespace,
+a label removed from a comment, a merge of reviewed work); the next review
+checks them. Each expert writes only the paths QA gives it, reading only the
+files and sections its brief names, so that each run fits its token budget.
+
+QA works so that the person can leave the work with it. It decides what the
+project's own rules decide (the version number, who fixes a finding, re-running
+an expert within the budget) and lists those decisions in its report; it asks
+only what is the person's to decide, in one batch while it writes the spec,
+each question with its recommendation. Its messages and pull requests use
+plain words, not the team's labels; nothing the project keeps (code, comments,
+tests, docs, changelogs, commits) carries a label from the spec or the number
+of the upcoming release, which only the version file and the changelog's
+heading hold. It runs the tests that only CI can run as soon as they exist, so
+their defects surface before the reviews. The artifacts go in
 `.claude/specs/<change-id>/` in the project; whether it commits them is the
 project's choice. Git, branches and releases stay under the project's own
 rules. With loop-to-delivery on as well, QA starts a loop for the change
