@@ -156,13 +156,29 @@ Facts, for the role that includes it:
 | `claude_code_settings_absent` | The paths there of the features that are off (a skill's folder, an agent's file) | Removed where an earlier run installed them (the container's `config/` holds only what the deploy lists anyway) |
 
 The base policy also turns off Claude Code's auto-updater (each target updates
-it its own way) and its telemetry, turns on workflows, keeps plans in
-`./plans`, and denies edits to `settings.local.json`, hooks, `.mcp.json` and
-git's hooks and config, which would run code, and reads of `.env` files. It
-does not deny edits to the policy (`/etc/claude-code/`) or to `settings.json`:
-a deny rule guards Claude's Edit tool only, and Claude could change either
-with Bash and sudo anyway. A rule that Claude can route around without noticing
-is no boundary; the target (the container, the VM) is.
+it its own way) and its telemetry, turns on workflows and keeps plans in
+`./plans`.
+
+Its deny rules follow one rule: a deny marks a change the person makes or
+approves, not one Claude makes in its work. Those are Claude Code's own
+controls (`settings.json` and `settings.local.json`, which hold its permissions
+and hooks, the scripts in `.claude/hooks/`, and `.mcp.json`, which declares MCP
+servers), the code git runs by itself (its hooks and config), and reads of
+`.env` secrets. With `settings.json` editable, a hook added there would get
+round the deny on hooks. A deny is not a boundary: Bash can write the same
+files, and the container and the VM are the boundary. It holds for every tool,
+Bash and sudo included, because the targets' instructions have Claude ask about
+a denial instead of reaching the same result another way. A program keeping its
+own files in its ordinary work (git recording a branch or a remote in
+`.git/config`) is not such a change; changing what they run or allow is.
+
+The policy in `/etc/claude-code/` is the one exception, with no deny. It
+changes only through the playbooks that install it: claude_code_vm's runs, and,
+where the person approves it, Claude applying a branch of the playbooks under
+review to its own VM (aslib.infra's development VM does). A deny there would
+make that approved path "another way" around the denial. In
+the container, `/etc/claude-code/` is the project's `config/`, mounted
+read-only, so the rule changes nothing there.
 
 ```yaml
 - name: Compute Claude Code's settings

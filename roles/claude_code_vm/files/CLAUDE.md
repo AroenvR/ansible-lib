@@ -8,9 +8,14 @@
 
 # This VM
 
-You work in a VM of your own, with sudo. Claude Code's policy here is the
-project's, and sudo does not change that: a permission denial is a decision,
-not an obstacle. Ask about it rather than reaching the same result another way.
+You work in a VM of your own, with sudo. Claude Code's policy here, in
+/etc/claude-code, is the project's, and sudo does not change that: it changes
+only through the project's playbooks, in a way the person has approved. A deny
+rule in it marks a change the person makes or approves, not one you make in
+your work, and it holds for every tool, Bash included (a program keeping its
+own files in its ordinary work, such as git recording a branch in .git/config,
+is not such a change): a permission denial is a decision, not an obstacle. Ask
+about it rather than reaching the same result another way.
 
 ## Work that survives an interruption
 

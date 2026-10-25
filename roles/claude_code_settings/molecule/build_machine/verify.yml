@@ -21,9 +21,10 @@
           - __claude_code_settings_test_policy.ultracode is false
           # Every directory is a working directory, so a cd sticks for later Bash calls.
           - __claude_code_settings_test_policy.permissions.additionalDirectories == ['/']
-          # Claude could edit these with Bash anyway: a deny it can route around is no boundary.
+          # The policy in /etc/claude-code changes through the project's playbooks: a deny there blocks that path.
           - "'Edit(//etc/claude-code/**)' not in __claude_code_settings_test_policy.permissions.deny"
-          - "'Edit(**/.claude/settings.json)' not in __claude_code_settings_test_policy.permissions.deny"
+          # Claude Code's own settings hold its permissions and hooks: changing them is the person's decision.
+          - "'Edit(**/.claude/settings.json)' in __claude_code_settings_test_policy.permissions.deny"
           # qa-budget is off by default.
           - __claude_code_settings_test_policy.statusLine is not defined
           - __claude_code_settings_test_policy.hooks is not defined
