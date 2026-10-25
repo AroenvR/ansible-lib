@@ -605,7 +605,7 @@ Each with its reason, newest first. A decision is changed by a new one here.
   one model call, as the job's own prompt has Claude delete the job. Its state
   is in Claude's home, and its limits stop a runaway loop, not a hostile model.
   Off by default.
-- 2026-10-25, the skills as a role of their own, claude_code_skills (0.8.2): a
+- 2026-10-25, the skills as a role of their own, claude_code_skills (0.9.0): a
   utility both targets include after claude_code_settings. It owns the qa skill
   with its five experts, moved from claude_code_settings (its setting is now
   `claude_code_skills_qa`, and a run that still sets the name it had there
@@ -875,7 +875,7 @@ Each with its reason, newest first. A decision is changed by a new one here.
 ## Status
 
 Last updated 2026-10-25. v0.6.0 is the latest release; accept holds 0.7.0 (the
-Claude Code family, issue #25) and 0.8.0 (the qa skill, issue #26); 0.8.2 (the
+Claude Code family, issue #25) and 0.8.0 (the qa skill, issue #26); 0.9.0 (the
 role claude_code_skills with loop-to-delivery, memory and vCPUs applied to an
 existing VM, a VM brought up to date by every run) is next.
 
