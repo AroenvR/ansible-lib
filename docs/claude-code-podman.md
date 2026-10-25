@@ -79,19 +79,25 @@ to keep a terminal around, use tmux or screen on your side.
   `claude_code_settings_permission_mode: default`. The policy's deny rules
   apply in every mode ([How a session
   starts](../roles/claude_code_podman/README.md#how-a-session-starts)).
-- **Changes through QA and five experts**: `claude_code_settings_qa: true` in
+- **Changes through QA and five experts**: `claude_code_skills_qa: true` in
   `project.yml`, then `ansible-playbook deploy.yml`: a request to change a
   project then goes through the [qa
-  skill](../roles/claude_code_settings/README.md#the-qa-skill-and-its-five-experts),
+  skill](../roles/claude_code_skills/README.md#the-qa-skill-and-its-five-experts),
   which runs an architect, a tester, a reviewer, a developer and a documenter
   one at a time. Off by default, as its names win over skills and agents of
   your own.
+- **Long work that keeps going**: `claude_code_skills_loop_to_delivery: true`
+  in `project.yml`, then `ansible-playbook deploy.yml`: Claude then sets up a
+  [loop](../roles/claude_code_skills/README.md#the-loop-to-delivery-skill) by
+  itself for work that outlasts a turn, which wakes it about every 30 minutes
+  until the work is delivered, a limit is reached or you stop it. Off by
+  default.
 - **A newer Claude Code**: every build is also the update to its newest
   version, so run `ansible-playbook build-and-deploy.yml` again.
 - **The policy or the instructions**: edit `config/`, then
   `ansible-playbook deploy.yml`.
-- A new image, policy or `CLAUDE.md` restarts the service, which ends what
-  runs in it; conversations stay (`claude-code --continue`).
+- A new image, policy, skill or `CLAUDE.md` restarts the service, which ends
+  what runs in it; conversations stay (`claude-code --continue`).
 - `ansible-playbook aslib.infra.overview` shows it with every other service.
   `restart.yml`, `update-playbooks.yml` and `remove.yml` work as for a Node.js
   project ([Day to day](nodejs-backend.md#day-to-day)); `remove.yml` keeps

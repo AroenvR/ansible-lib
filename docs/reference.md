@@ -16,8 +16,9 @@ job from start to end.
 | [podman_overview](../roles/podman_overview/README.md) | Shows root the rootless Podman services on a server, with how to read their logs | Servers (RHEL 9.6+) | No |
 | [claude_code](../roles/claude_code/README.md) | The index of the Claude Code roles below; runs nothing | - | No |
 | [claude_code_podman](../roles/claude_code_podman/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.6+) | To build: Red Hat's registry and UBI repositories, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
-| [claude_code_vm](../roles/claude_code_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (Ubuntu 24.04+), with ansible-core 2.16+ | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
-| [claude_code_settings](../roles/claude_code_settings/README.md) | How a Claude Code session starts (permission mode, model, effort, theme, agent teams, ultracode) and the qa skill with its five experts (off by default), the same in the container and the VM, which both include it | Wherever the role that includes it runs | No |
+| [claude_code_vm](../roles/claude_code_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network, brought up to date by every run (proof of concept) | Hosts with KVM (Ubuntu 24.04+), with ansible-core 2.16+ | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
+| [claude_code_settings](../roles/claude_code_settings/README.md) | How a Claude Code session starts (permission mode, model, effort, theme, agent teams, ultracode), the same in the container and the VM, which both include it | Wherever the role that includes it runs | No |
+| [claude_code_skills](../roles/claude_code_skills/README.md) | The skills Claude Code gets, both off by default: the qa skill with its five experts, and loop-to-delivery, which keeps long work going until it is delivered; the same in the container and the VM, which both include it | Wherever the role that includes it runs | No |
 | [gitlab](../roles/gitlab/README.md) | GitLab Community Edition as a rootless Podman service, with podman_service, set up for a private instance without email (proof of concept) | Servers (RHEL 9.6+) | The Ansible machine: Docker Hub or a mirror (`gitlab_image`), for the image. The server: no |
 
 Each role's options: [Role options](#role-options).
@@ -39,7 +40,7 @@ needed. The playbooks node_setup writes import them.
 | `ansible-playbook aslib.infra.overview` | A server itself, or any directory with an inventory, such as `ansible/` | Shows what aslib.infra runs on that server, or on the inventory's servers, each with the command that shows its log |
 | `ansible-playbook aslib.infra.podman_overview` | The same | Shows only the rootless Podman services, see [podman_overview](../roles/podman_overview/README.md) |
 | `ansible-playbook aslib.infra.claude_code_podman_setup` | An empty directory, or the root of an earlier setup | Writes a Claude Code project; its `ansible/` holds every other playbook it needs, see [claude_code_podman](../roles/claude_code_podman/README.md) |
-| `ansible-playbook aslib.infra.claude_code_vm` | A host with KVM, or a directory with it in an inventory | Creates `claude-dev`, a VM where Claude Code has sudo, away from the local network, see [claude_code_vm](../roles/claude_code_vm/README.md) |
+| `ansible-playbook aslib.infra.claude_code_vm` | A host with KVM, or a directory with it in an inventory | Creates `claude-dev`, a VM where Claude Code has sudo, away from the local network; run again, it applies a new memory or vCPU count and brings the VM up to date, see [claude_code_vm](../roles/claude_code_vm/README.md) |
 | `ansible-playbook aslib.infra.claude_code_vm_remove` | The same | Removes that VM, for a fresh one |
 | `ansible-playbook aslib.infra.claude_code_vm_overview` | The same | Shows the host and the VM, for finding out why the VM does not come up; changes nothing |
 | `ansible-playbook aslib.infra.claude_code_vm_boot_trial` | The same | Boots the VM once in a changed form (other firmware, no TPM, no CD drive) and shows how far it got, see [claude_code_vm](../roles/claude_code_vm/README.md#when-the-vm-does-not-come-up) |
@@ -73,4 +74,5 @@ each README covers its options:
 | claude_code_podman | [Options](../roles/claude_code_podman/README.md#options); the service's settings are podman_service's |
 | claude_code_vm | [Settings](../roles/claude_code_vm/README.md#settings), [Options](../roles/claude_code_vm/README.md#options) |
 | claude_code_settings | [Settings](../roles/claude_code_settings/README.md#settings), for both claude_code_podman and claude_code_vm |
+| claude_code_skills | [Settings](../roles/claude_code_skills/README.md#settings), for both claude_code_podman and claude_code_vm |
 | gitlab | [Its settings](../roles/gitlab/README.md#its-settings), [Options](../roles/gitlab/README.md#options) |
