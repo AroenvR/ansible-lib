@@ -2,7 +2,9 @@
 # Entry point "guest": runs in the VM, as claude, who may use sudo. Sets up what
 # Claude Code and aslib.infra's tests need: Podman, git, make, Python 3.11 next to
 # Ubuntu's 3.12, and Claude Code from Anthropic's signed repository with the
-# settings of aslib.infra.claude_code_settings and Claude's token. Running it
+# settings of aslib.infra.claude_code_settings, the skills of
+# aslib.infra.claude_code_skills and Claude's token. Every run brings the VM's
+# packages up to date and restarts it when they need that; otherwise, running it
 # again changes nothing.
 - name: Wait until the VM lets Ansible in
   ansible.builtin.wait_for_connection:
@@ -97,6 +99,17 @@
     loop_var: __claude_code_vm_repository
     label: "{{ __claude_code_vm_repository.name }}"
 
+# Every run, from the repositories above too: what sudo apt upgrade does. It
+# brings in new dependencies (a new kernel), removes nothing, and holds phased
+# updates back itself. A held lock or a failed upgrade stops the run with apt's
+# message.
+- name: Bring every package up to date, Claude Code's included
+  ansible.builtin.apt:
+    upgrade: "yes"
+    force_apt_get: true
+    update_cache: true
+    lock_timeout: 300
+
 - name: Look up the installed packages
   ansible.builtin.package_facts:
 
@@ -109,6 +122,29 @@
     __claude_code_vm_missing: "{{ __claude_code_vm_guest_packages | difference(ansible_facts.packages.keys()) }}"
   when: __claude_code_vm_missing | length > 0
 
+# Ubuntu's own marker, whoever left it (also unattended-upgrades between runs).
+- name: Look up whether the VM needs a restart
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: __claude_code_vm_reboot_required
+
+# A clean restart of the guest, never a power-off; the play goes on afterwards.
+# It ends the sessions in the VM.
+- name: Restart the VM, as its upgrade needs
+  when: __claude_code_vm_reboot_required.stat.exists
+  block:
+    - name: Restart the VM and wait until it is back
+      ansible.builtin.reboot:
+        reboot_timeout: "{{ __claude_code_vm_reboot_timeout | int }}"
+        msg: Restarting for the packages that aslib.infra.claude_code_vm upgraded
+  rescue:
+    - name: Stop, as the VM did not come back
+      ansible.builtin.fail:
+        msg: >-
+          {{ inventory_hostname }} did not come back within {{ __claude_code_vm_reboot_timeout | int }} seconds of
+          its restart, which its upgraded packages needed. Look at it with ansible-playbook
+          aslib.infra.claude_code_vm_overview.
+
 # How a session starts, the same as in Claude Code's container: the settings come
 # from the host's play (the inventory, the settings file, -e). With sudo, Claude
 # could change what follows: in the VM it sets defaults, and the VM itself is
@@ -116,6 +152,10 @@
 - name: Compute Claude Code's settings
   ansible.builtin.include_role:
     name: aslib.infra.claude_code_settings
+
+- name: Compute Claude Code's skills
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_skills
 
 - name: Create /etc/claude-code, where Claude Code reads its policy
   ansible.builtin.file:
@@ -125,45 +165,50 @@
     group: root
     mode: "0755"
 
-- name: Install Claude Code's policy
-  ansible.builtin.copy:
-    content: "{{ claude_code_settings_policy | to_nice_json(indent=2, sort_keys=False) }}\n"
-    dest: /etc/claude-code/managed-settings.json
-    owner: root
-    group: root
-    mode: "0644"
-
-# claude_code_settings' files in /etc/claude-code/.claude/ (the qa skill and its
-# experts, when on), like the policy. Those of features that are off go; any
-# other file there stays.
-- name: Create the folders of claude_code_settings' files
+# claude_code_skills' files in /etc/claude-code/.claude/ (the skills that are
+# on and their experts), like the policy. They come before the policy, whose
+# hooks may run loop-to-delivery's program, and those of skills that are off go
+# after it; any other file there stays.
+- name: Create the folders of claude_code_skills' files
   ansible.builtin.file:
     path: /etc/claude-code/{{ __claude_code_vm_folder }}
     state: directory
     owner: root
     group: root
     mode: "0755"
-  loop: "{{ claude_code_settings_files | map(attribute='name') | map('dirname') | unique | list }}"
+  loop: "{{ claude_code_skills_files | map(attribute='name') | map('dirname') | unique | list }}"
   loop_control:
     loop_var: __claude_code_vm_folder
 
-- name: Install claude_code_settings' files
+- name: Install claude_code_skills' files
   ansible.builtin.copy:
     src: "{{ __claude_code_vm_file.src }}"
     dest: /etc/claude-code/{{ __claude_code_vm_file.name }}
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ claude_code_settings_files }}"
+  loop: "{{ claude_code_skills_files }}"
   loop_control:
     loop_var: __claude_code_vm_file
     label: "{{ __claude_code_vm_file.name }}"
 
-- name: Remove claude_code_settings' files of the features that are off
+# claude_code_settings' base with claude_code_skills' part (loop-to-delivery's
+# hooks, when on).
+- name: Install Claude Code's policy
+  ansible.builtin.copy:
+    content: >-
+      {{ claude_code_settings_policy | combine(claude_code_skills_policy, recursive=True, list_merge='append_rp')
+         | to_nice_json(indent=2, sort_keys=False) }}{{ __claude_code_vm_newline }}
+    dest: /etc/claude-code/managed-settings.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Remove claude_code_skills' files of the skills that are off
   ansible.builtin.file:
     path: /etc/claude-code/{{ __claude_code_vm_absent }}
     state: absent
-  loop: "{{ claude_code_settings_absent }}"
+  loop: "{{ claude_code_skills_absent }}"
   loop_control:
     loop_var: __claude_code_vm_absent
 

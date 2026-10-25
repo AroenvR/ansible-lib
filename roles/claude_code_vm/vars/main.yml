@@ -19,15 +19,26 @@ __claude_code_vm_image_url: >-
      ~ __claude_code_vm_arch ~ '.img' }}
 __claude_code_vm_config_dir: /etc/claude-vm
 
+# The VM's memory (KiB) and vCPUs in its definition (virsh dumpxml --inactive).
+__claude_code_vm_xml_patterns:
+  memory: "<memory unit=.KiB.>([0-9]+)</memory>"
+  current_memory: "<currentMemory unit=.KiB.>([0-9]+)</currentMemory>"
+  vcpus: "<vcpu[^>]*>([0-9]+)</vcpu>"
+  current_vcpus: "<vcpu[^>]* current=.([0-9]+)."
+# How long a run waits for the VM to shut down (for new memory or vCPUs) and to
+# come back after a restart (for upgraded packages), in seconds.
+__claude_code_vm_shutdown_timeout: 300
+__claude_code_vm_reboot_timeout: 900
+
 # The host's settings file: what a person chooses, each setting with a comment of
 # one line, in this order. Not the download sources nor the debugging options,
 # which stay aslib.infra's, so that an update can change them.
 __claude_code_vm_settings_file: "{{ __claude_code_vm_config_dir }}/settings.yml"
 __claude_code_vm_settings:
   - name: claude_code_vm_memory
-    comment: The VM's memory in MiB, all taken from the host when the VM starts.
+    comment: The VM's memory in MiB, all taken from the host when the VM starts; a change restarts the VM.
   - name: claude_code_vm_vcpus
-    comment: The VM's virtual CPUs.
+    comment: The VM's virtual CPUs; a change restarts the VM.
   - name: claude_code_vm_disk_size
     comment: The size of the VM's disk, as qemu-img takes it; for a new VM.
   - name: claude_code_vm_network_prefix
@@ -54,8 +65,12 @@ __claude_code_vm_settings:
     comment: true turns agent teams on.
   - name: claude_code_settings_ultracode
     comment: true starts sessions with ultracode on.
-  - name: claude_code_settings_qa
+  - name: claude_code_skills_qa
     comment: true installs the qa skill and its five expert subagents, for change requests; needs agent teams off.
+  - name: claude_code_skills_loop_to_delivery
+    comment: true lets Claude keep long work going by itself, with a wake-up every 30 minutes until it is delivered.
+  - name: claude_code_skills_loop_to_delivery_max_wakes
+    comment: The most wake-ups such a loop gets.
 
 __claude_code_vm_settings_header:
   - "# claude_code_vm's settings on this host (aslib.infra.claude_code_vm): what you"

@@ -1,9 +1,9 @@
 ---
-# Checks what claude_code_settings hands its targets, with its defaults and with
-# every setting changed, the qa skill's files off and on (their frontmatter and
-# what the synchronous design removed), and that a value outside the choices,
-# or the qa skill with agent teams, stops the run, naming the setting. Nothing
-# to set up: the role only computes, where Ansible runs.
+# Checks what claude_code_settings hands its targets: its three facts, with its
+# defaults (the policy's base unchanged, no files: the skills are
+# claude_code_skills') and with every setting changed, and that a value outside
+# the choices stops the run, naming the setting. Nothing to set up: the role
+# only computes, where Ansible runs.
 scenario:
   name: build_machine
 driver:

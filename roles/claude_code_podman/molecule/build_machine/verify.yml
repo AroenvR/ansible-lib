@@ -11,6 +11,9 @@
     __claude_code_podman_test_tools: [git, ssh, jq, less, which, find, diff, patch, file, ps, ip, vi, tar, gzip, unzip, xz,
                                       zstd, rsync, python3.12, pip3.12, gcc, g++, make, node, npm, sqlite3, mysql, psql]
     __claude_code_podman_test_commands: "{{ ['claude'] + (__claude_code_podman_test_tools if claude_code_podman_test_real | bool else []) }}"
+    # claude_code_skills' unit tests and its hook program (test data here; no role reads them at run time).
+    __claude_code_podman_test_suite_dir: "{{ (__claude_code_podman_test_roles ~ '/claude_code_skills/molecule/build_machine/tests') | realpath }}"
+    __claude_code_podman_test_program_dir: "{{ (__claude_code_podman_test_roles ~ '/claude_code_skills/files/skills/loop-to-delivery') | realpath }}"
   tasks:
     - name: Inspect the environment file
       ansible.builtin.stat:
@@ -52,6 +55,27 @@
             == lookup('file', __claude_code_podman_test_roles ~ '/podman_service/templates/service.container.j2')
         success_msg: PASSED claude_code_podman wrote ansible/ with its playbooks, guide, Quadlet template and git rules.
 
+    # The options of claude_code_skills (0.8.1), which took claude_code_settings_qa's place.
+    - name: Check both settings files list claude_code_skills' settings at their defaults, and not the old qa name
+      vars:
+        __claude_code_podman_test_text: "{{ lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/' ~ item) }}"
+        __claude_code_podman_test_settings: "{{ __claude_code_podman_test_text | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_podman_test_settings.claude_code_skills_qa is defined
+          - __claude_code_podman_test_settings.claude_code_skills_qa is false
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery is defined
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery is false
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery_max_wakes is defined
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery_max_wakes == 100
+          - "'claude_code_settings_qa' not in __claude_code_podman_test_settings"
+          - __claude_code_podman_test_text is search('aslib[.]infra[.]claude_code_skills')
+        fail_msg: "{{ item }}: {{ __claude_code_podman_test_text }}"
+        success_msg: >-
+          PASSED claude_code_podman: {{ item }} lists claude_code_skills_qa, claude_code_skills_loop_to_delivery and
+          its maximum at their defaults, names aslib.infra.claude_code_skills, and has no claude_code_settings_qa.
+      loop: [defaults.yml, project.yml]
+
     # Both settings files must hold exactly the roles' defaults, or they would mislead.
     - name: Check both settings files hold every setting at the roles' default
       vars:
@@ -59,9 +83,11 @@
           {{ lookup('file', __claude_code_podman_test_roles ~ '/claude_code_podman/defaults/main.yml') | from_yaml
              | combine(lookup('file', __claude_code_podman_test_roles ~ '/podman_service/defaults/main.yml') | from_yaml,
                        __claude_code_podman_test_settings_defaults) }}
-        # Every setting of how a session starts, which claude_code_settings owns.
+        # Every setting of how a session starts, which claude_code_settings owns,
+        # and of the skills, which claude_code_skills owns.
         __claude_code_podman_test_settings_defaults: >-
-          {{ lookup('file', __claude_code_podman_test_roles ~ '/claude_code_settings/defaults/main.yml') | from_yaml }}
+          {{ lookup('file', __claude_code_podman_test_roles ~ '/claude_code_settings/defaults/main.yml') | from_yaml
+             | combine(lookup('file', __claude_code_podman_test_roles ~ '/claude_code_skills/defaults/main.yml') | from_yaml) }}
         __claude_code_podman_test_settings: "{{ lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/' ~ item) | from_yaml }}"
       ansible.builtin.assert:
         that:
@@ -103,7 +129,8 @@
     # What the deploy relies on: user 1001 with its home in /opt/claude-code, and
     # the policy read from /etc/claude-code, which is that home's config/. The
     # command module expands $HOME itself, hence printenv. A real image also has
-    # its tools, Node.js 24, and nvm in login shells.
+    # its tools, Node.js 24, nvm in login shells, and the base image's
+    # /usr/bin/python3, which loop-to-delivery's hook runs with.
     - name: Look up the image's user, home, policy directory and commands
       ansible.builtin.command:
         argv:
@@ -117,7 +144,8 @@
             id -u; printenv HOME; readlink /etc/claude-code;
             for c in {{ __claude_code_podman_test_commands | join(' ') }}; do command -v "$c" >/dev/null || echo "missing $c"; done;
             {{ "node --version | grep -q '^v24[.]' || echo 'node is not 24';
-                bash -lc 'nvm --version' >/dev/null 2>&1 || echo 'no nvm in a login shell'"
+                bash -lc 'nvm --version' >/dev/null 2>&1 || echo 'no nvm in a login shell';
+                test -x /usr/bin/python3 || echo 'no /usr/bin/python3, which runs loop-to-delivery'"
                if claude_code_podman_test_real | bool else ':' }}
       register: __claude_code_podman_test_image
       changed_when: false
@@ -152,6 +180,58 @@
           PASSED images/ holds claude-code-{{ __claude_code_podman_test_version }}.tar; its Claude Code says
           "{{ __claude_code_podman_test_claude.stdout }}" and runs as 1001 in /opt/claude-code with
           {{ __claude_code_podman_test_commands | join(', ') }}{{ ', every package up to date' if claude_code_podman_test_real | bool else '' }}.
+
+    # loop-to-delivery's hook runs with the image's /usr/bin/python3 -I (3.9 on
+    # UBI 9), so claude_code_skills' whole unit suite runs there too, from
+    # read-only mounts (-B: no __pycache__), finding the program through
+    # LOOP_TO_DELIVERY_PROGRAM.
+    - name: Look up loop-to-delivery's program in claude_code_skills
+      ansible.builtin.stat:
+        path: "{{ __claude_code_podman_test_program_dir }}/loop_to_delivery.py"
+      register: __claude_code_podman_test_program
+      when: claude_code_podman_test_real | bool
+
+    - name: Run claude_code_skills' unit tests in the image, with its Python
+      ansible.builtin.command:
+        argv:
+          - podman
+          - run
+          - --rm
+          - -v
+          - "{{ __claude_code_podman_test_suite_dir }}:/suite:ro"
+          - -v
+          - "{{ __claude_code_podman_test_program_dir }}:/program:ro"
+          - -e
+          - LOOP_TO_DELIVERY_PROGRAM=/program/loop_to_delivery.py
+          - localhost/claude-code:{{ __claude_code_podman_test_version | default('none') }}
+          - /usr/bin/python3
+          - -I
+          - -B
+          - -m
+          - unittest
+          - discover
+          - -s
+          - /suite
+          - -t
+          - /suite
+      register: __claude_code_podman_test_unit
+      changed_when: false
+      failed_when: false
+      when: claude_code_podman_test_real | bool and __claude_code_podman_test_program.stat.exists
+
+    - name: Check the unit tests passed with the image's Python
+      ansible.builtin.assert:
+        that:
+          - __claude_code_podman_test_program.stat.exists
+          - __claude_code_podman_test_unit.rc == 0
+        fail_msg: >-
+          {{ 'There is no ' ~ __claude_code_podman_test_program_dir ~ '/loop_to_delivery.py.'
+             if not __claude_code_podman_test_program.stat.exists
+             else (__claude_code_podman_test_unit.stderr_lines | default(['skipped']))[-60:] | join('\n') }}
+        success_msg: >-
+          PASSED claude_code_skills' unit tests pass in the image with /usr/bin/python3 -I:
+          {{ (__claude_code_podman_test_unit.stderr_lines | default(['skipped']))[-3:] | join(' ') }}
+      when: claude_code_podman_test_real | bool
 
     # The update, as a developer would run it: from the project's ansible/ directory,
     # with its ansible.cfg and, since playbooks find the project through it, PWD.
@@ -256,6 +336,89 @@
         success_msg: >-
           PASSED image.yml, run from the project, rebuilt the changed Containerfile into
           claude-code-{{ __claude_code_podman_test_new_version }}.tar and left no older image of the project behind.
+
+    # 0.8.1 renamed claude_code_settings_qa, which a 0.8.0 setup wrote into both
+    # settings files: the update passes and rewrites defaults.yml; a build stops
+    # while project.yml still has the old name, naming both steps in order.
+    - name: Put the old name into both settings files, as a 0.8.0 project has it
+      ansible.builtin.lineinfile:
+        path: "{{ __claude_code_podman_test_dir }}/group_vars/all/{{ item }}"
+        line: "claude_code_settings_qa: false"
+      loop: [defaults.yml, project.yml]
+
+    - name: Run update-playbooks.yml with the old name in both settings files
+      ansible.builtin.command:
+        argv: [ansible-playbook, update-playbooks.yml]
+        chdir: "{{ __claude_code_podman_test_dir }}"
+      environment:
+        ANSIBLE_CONFIG: "{{ __claude_code_podman_test_dir }}/ansible.cfg"
+        PWD: "{{ __claude_code_podman_test_dir }}"
+      register: __claude_code_podman_test_old_update
+      changed_when: false
+      failed_when: false
+
+    - name: Check the update passed and rewrote defaults.yml without the old name
+      vars:
+        __claude_code_podman_test_defaults: "{{ lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/defaults.yml') }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_podman_test_old_update.rc == 0
+          - __claude_code_podman_test_defaults is not search('^claude_code_settings_qa:', multiline=True)
+          - (__claude_code_podman_test_defaults | from_yaml).claude_code_skills_qa is false
+          - >-
+            lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/project.yml')
+            is search('^claude_code_settings_qa: false$', multiline=True)
+        fail_msg: >-
+          rc {{ __claude_code_podman_test_old_update.rc }}: {{ __claude_code_podman_test_old_update.stdout_lines[-15:] }};
+          defaults.yml: {{ __claude_code_podman_test_defaults }}
+        success_msg: >-
+          PASSED update-playbooks.yml runs despite claude_code_settings_qa and rewrites defaults.yml without it,
+          leaving project.yml, the project's own, as it was.
+
+    - name: Run image.yml with the old name still in project.yml
+      ansible.builtin.command:
+        argv: [ansible-playbook, image.yml]
+        chdir: "{{ __claude_code_podman_test_dir }}"
+      environment:
+        ANSIBLE_CONFIG: "{{ __claude_code_podman_test_dir }}/ansible.cfg"
+        PWD: "{{ __claude_code_podman_test_dir }}"
+      register: __claude_code_podman_test_old_build
+      changed_when: false
+      failed_when: false
+
+    - name: Find the image archive after the stopped build
+      ansible.builtin.find:
+        paths: "{{ __claude_code_podman_test_dir }}/images"
+        patterns: claude-code-*.tar
+      register: __claude_code_podman_test_after_stop
+
+    - name: Check the build stopped before building, with the message that names both steps in order
+      vars:
+        __claude_code_podman_test_rename_message: >-
+          claude_code_settings_qa is set, which is now claude_code_skills_qa (the qa skill moved to
+          aslib.infra.claude_code_skills in 0.8.1). First run update-playbooks.yml, which rewrites
+          ansible/group_vars/all/defaults.yml without it; then rename the line in ansible/group_vars/all/project.yml to
+          claude_code_skills_qa, or delete it, and likewise wherever else you set it (the inventory or -e). The
+          CHANGELOG's upgrade notes for 0.8.1 say more.
+      ansible.builtin.assert:
+        that:
+          - __claude_code_podman_test_old_build.rc != 0
+          - __claude_code_podman_test_rename_message in __claude_code_podman_test_old_build.stdout
+          - __claude_code_podman_test_after_stop.files | map(attribute='path') | sort
+            == __claude_code_podman_test_rebuilt.files | map(attribute='path') | sort
+          - __claude_code_podman_test_after_stop.files | map(attribute='mtime') | sort
+            == __claude_code_podman_test_rebuilt.files | map(attribute='mtime') | sort
+        fail_msg: >-
+          rc {{ __claude_code_podman_test_old_build.rc }}: {{ __claude_code_podman_test_old_build.stdout_lines[-15:] }}
+        success_msg: >-
+          PASSED image.yml stops before building while project.yml has claude_code_settings_qa, naming
+          claude_code_skills_qa, update-playbooks.yml first and then the line in project.yml.
+
+    - name: Rename the line in project.yml, as the message says
+      ansible.builtin.lineinfile:
+        path: "{{ __claude_code_podman_test_dir }}/group_vars/all/project.yml"
+        regexp: "^claude_code_settings_qa:"
+        line: "claude_code_skills_qa: false"
 
 - name: Check the family's index names the role to run, instead of running nothing
   hosts: localhost

@@ -1,0 +1,8 @@
+{
+  "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+  "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+  "cwd": "/home/claude/work",
+  "prompt_id": "e6fd42d5-58fc-41db-ac43-2e8332e7d18b",
+  "hook_event_name": "SessionEnd",
+  "reason": "clear"
+}

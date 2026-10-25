@@ -37,27 +37,35 @@
   ansible.builtin.include_role:
     name: aslib.infra.claude_code_settings
 
+# The skills, the same as in claude_code_vm's VM, as facts: their files and
+# their part of the policy.
+- name: Compute Claude Code's skills
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_skills
+
 # config/ becomes /etc/claude-code/ in the container: the policy, Claude's
 # instructions (CLAUDE.md) and any other file of the project's config/ that
-# Claude Code reads there, and claude_code_settings' files in .claude/ (the qa
-# skill and its experts, when on). The policy
-# Claude Code reads is, in this order: claude_code_settings' base, the
-# container's own part (files/managed-settings.container.json) and the project's
-# config/managed-settings.json. A later value replaces an earlier one, blocks
-# such as env merge key by key and lists combine without duplicates, as Claude
-# Code combines its own drop-in files. Reading them also checks they are JSON.
+# Claude Code reads there, and claude_code_skills' files in .claude/ (the skills
+# that are on and their experts). The policy Claude Code reads is, in this
+# order: claude_code_settings' base, claude_code_skills' part (loop-to-delivery's
+# hooks, when on), the container's own part (files/managed-settings.container.json)
+# and the project's config/managed-settings.json. A later value replaces an
+# earlier one, blocks such as env merge key by key and lists combine without
+# duplicates, as Claude Code combines its own drop-in files. Reading them also
+# checks they are JSON.
 - name: Note the files of /etc/claude-code
   vars:
     __claude_code_podman_policy: >-
       {{ claude_code_settings_policy
-         | combine(lookup('ansible.builtin.file', 'managed-settings.container.json') | from_json,
+         | combine(claude_code_skills_policy,
+                   lookup('ansible.builtin.file', 'managed-settings.container.json') | from_json,
                    lookup('ansible.builtin.file', __claude_code_podman_root ~ '/config/managed-settings.json') | from_json,
                    recursive=True, list_merge='append_rp') }}
   ansible.builtin.set_fact:
     __claude_code_podman_config_files: >-
       {{ query('fileglob', __claude_code_podman_root ~ '/config/*') | reject('search', '/managed-settings[.]json$') | list
          + [{'name': 'managed-settings.json', 'content': __claude_code_podman_policy | to_nice_json(indent=2, sort_keys=False)}]
-         + claude_code_settings_files }}
+         + claude_code_skills_files }}
     __claude_code_podman_mode: "{{ __claude_code_podman_policy.permissions.defaultMode | default('default') }}"
 
 # The Quadlet template is the project's (ansible/templates/service.container.j2,

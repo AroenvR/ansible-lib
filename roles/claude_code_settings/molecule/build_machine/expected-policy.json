@@ -1,0 +1,30 @@
+{
+  "effortLevel": "xhigh",
+  "enableWorkflows": true,
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0",
+    "DISABLE_AUTOUPDATER": "1",
+    "DISABLE_TELEMETRY": "1"
+  },
+  "model": "opus",
+  "permissions": {
+    "additionalDirectories": [
+      "/"
+    ],
+    "defaultMode": "bypassPermissions",
+    "deny": [
+      "Edit(//etc/claude-code/**)",
+      "Read(.env)",
+      "Edit(**/.claude/settings.json)",
+      "Edit(**/.claude/settings.local.json)",
+      "Edit(**/.claude/hooks/**)",
+      "Edit(**/.mcp.json)",
+      "Edit(**/.git/hooks/**)",
+      "Edit(**/.git/config)"
+    ]
+  },
+  "plansDirectory": "./plans",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
+  "ultracode": false
+}

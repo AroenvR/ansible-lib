@@ -15,7 +15,7 @@ PYTHON_LINT   ?= python3.12
 SERVERS       := ubuntu2404 rhel9
 ROLES         ?= $(notdir $(wildcard roles/*))
 # Roles that support Ubuntu. Only these run in the native test.
-UBUNTU_ROLES  := sudoers node_image node_setup claude_code_podman claude_code_settings
+UBUNTU_ROLES  := sudoers node_image node_setup claude_code_podman claude_code_settings claude_code_skills
 VENV          := .venv
 VERSION       := $(shell sed -n 's/^version: *//p' galaxy.yml)
 # Python leaves no __pycache__ in the checkout when Ansible loads its plugins.

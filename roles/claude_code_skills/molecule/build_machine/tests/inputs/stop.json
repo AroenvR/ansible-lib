@@ -1,0 +1,22 @@
+{
+  "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+  "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+  "cwd": "/home/claude/work",
+  "prompt_id": "8d197087-1621-45f0-b011-5241e4098704",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "scheduled",
+  "background_tasks": [],
+  "session_crons": [
+    {
+      "id": "f95aac81",
+      "schedule": "* * * * *",
+      "recurring": true,
+      "prompt": "[loop-test] wake up"
+    }
+  ]
+}

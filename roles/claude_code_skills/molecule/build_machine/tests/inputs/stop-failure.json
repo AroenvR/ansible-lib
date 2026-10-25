@@ -1,0 +1,12 @@
+{
+  "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+  "transcript_path": "/home/claude/.claude/projects/-home-claude-work/aaaaaaaa-1111-4111-8111-111111111111.jsonl",
+  "cwd": "/home/claude/work",
+  "prompt_id": "eb1470dc-0000-4000-8000-000000000000",
+  "hook_event_name": "StopFailure",
+  "effort": {
+    "level": "xhigh"
+  },
+  "error": "rate_limit",
+  "last_assistant_message": "API Error: Request rejected (429) · fake rate limit"
+}

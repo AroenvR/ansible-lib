@@ -7,10 +7,15 @@
 # inventory's and the defaults (as facts), -e over them. It may hold Claude's
 # token, so every task that reads or writes it hides its result (no_log).
 
-# Its defaults are the settings' defaults here.
+# Their defaults are the settings' defaults here.
 - name: Look up how Claude Code's sessions start, the same settings as in its container
   ansible.builtin.include_role:
     name: aslib.infra.claude_code_settings
+    public: true
+
+- name: Look up Claude Code's skills, the same settings as in its container
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_skills
     public: true
 
 - name: Create the VM's configuration directory, {{ __claude_code_vm_config_dir }}
@@ -42,6 +47,15 @@
     __claude_code_vm_settings_read_text: >-
       {{ __claude_code_vm_settings_read.content | b64decode if __claude_code_vm_settings_stat.stat.exists else '' }}
   no_log: true
+
+# 0.8.1 renamed it. The file stays as the person wrote it: no task above writes it.
+- name: Stop at claude_code_settings_qa in the settings file, which is now claude_code_skills_qa
+  ansible.builtin.assert:
+    that: not (__claude_code_vm_settings_values is mapping and 'claude_code_settings_qa' in __claude_code_vm_settings_values)
+    fail_msg: >-
+      {{ __claude_code_vm_settings_file }} has claude_code_settings_qa, which is now claude_code_skills_qa: rename
+      that line in the file (a run never changes its lines) and run again.
+    quiet: true
 
 - name: Check the settings file holds settings and nothing else
   vars:
@@ -99,7 +113,7 @@
          | dict2items | selectattr('key', 'in', __claude_code_vm_settings_values) | rejectattr('key', 'eq', 'claude_code_vm_oauth_token')
          | items2dict }}
     provided_arguments: >-
-      {{ __claude_code_vm_settings_values | dict2items | rejectattr('key', 'search', '^claude_code_settings_|_oauth_token$')
+      {{ __claude_code_vm_settings_values | dict2items | rejectattr('key', 'search', '^claude_code_settings_|^claude_code_skills_|_oauth_token$')
          | items2dict }}
 
 # Not with the others: an argument check would name the value.
@@ -112,3 +126,7 @@
 - name: Check the file's settings of Claude Code's sessions, as claude_code_settings does
   ansible.builtin.include_role:
     name: aslib.infra.claude_code_settings
+
+- name: Check the file's settings of Claude Code's skills, as claude_code_skills does
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_skills
