@@ -24,17 +24,6 @@
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_skills
 
-    - name: Install Claude Code's policy
-      ansible.builtin.copy:
-        content: >-
-          {{ claude_code_settings_policy | combine(claude_code_skills_policy, recursive=True, list_merge='append_rp')
-             | to_nice_json(indent=2, sort_keys=False) }}{{ '\n' }}
-        dest: /etc/claude-code/managed-settings.json
-        owner: root
-        group: root
-        mode: "0644"
-        backup: true
-
     - name: Create the folders of qa-budget's and the skills' files
       ansible.builtin.file:
         path: /etc/claude-code/{{ __claude_dev_folder }}
@@ -57,6 +46,17 @@
       loop_control:
         loop_var: __claude_dev_file
         label: "{{ __claude_dev_file.name }}"
+
+    - name: Install Claude Code's policy
+      ansible.builtin.copy:
+        content: >-
+          {{ claude_code_settings_policy | combine(claude_code_skills_policy, recursive=True, list_merge='append_rp')
+             | to_nice_json(indent=2, sort_keys=False) }}{{ '\n' }}
+        dest: /etc/claude-code/managed-settings.json
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
 
     - name: Remove the files of what is off
       ansible.builtin.file:

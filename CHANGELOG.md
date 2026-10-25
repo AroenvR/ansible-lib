@@ -60,8 +60,8 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   session and a token budget per run: a turn no person started (a wake-up, a
   loop; its prompt begins with an `[auto ...]` tag) is blocked or denied there
   and never goes into extra usage, while the person is asked. The qa skill's
-  `SKILL.md` points to `budget.md`, which says how to work within it: two
-  review rounds per gate, low findings into a list of improvements, deliver or
+  `SKILL.md` points to `budget.md`, which says how to work within it: one
+  review round per gate, low findings into a list of improvements, deliver or
   pause when the guard says so.
 - Changed: the base policy no longer denies edits to `/etc/claude-code/` and to
   `settings.json`. Claude could make those changes with Bash and sudo anyway,
@@ -70,9 +70,10 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Fixed: claude_code_vm refreshes apt's package lists (when older than an
   hour) before it installs the host's missing packages; with stale lists, apt
   asked the mirror for files it no longer had (404), as on CI runners.
-- Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
-  files on the machine it runs on, without the rest of the VM's guest setup,
-  for Claude's own VM to apply a branch's settings to itself.
+- Added: `dev/claude-dev-settings.yml` installs Claude Code's policy,
+  qa-budget's files and the skills on the machine it runs on, without the rest
+  of the VM's guest setup, for Claude's own VM to apply a branch's settings to
+  itself.
 - Changed: the qa skill and its experts ask less of the person and waste less.
   QA decides what the project's rules decide (the version number, who fixes a
   finding, re-running an expert within the budget) and lists those decisions in
