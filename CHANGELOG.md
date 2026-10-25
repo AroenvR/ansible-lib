@@ -77,9 +77,10 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 ### Upgrading from 0.8.0
 
 1. A VM host: the settings file, `/etc/claude-vm/settings.yml`, that 0.8.0
-   wrote has a `claude_code_settings_qa: <value>` line. The first run of 0.9.0
-   stops until you rename it to `claude_code_skills_qa`, keeping the value; the
-   run then adds the two loop settings, off and 100. An inventory or a `-e`
+   wrote has a `claude_code_settings_qa: <value>` line. The first run of this
+   version stops until you rename it to `claude_code_skills_qa`, keeping the
+   value; the run then adds the two loop settings, off and 100, and
+   `claude_code_settings_qa_budget`, off. An inventory or a `-e`
    that sets the old name stops likewise.
 2. The first run restarts the VM if its memory or vCPUs in the file differ from
    what the VM has, and if Ubuntu's `/var/run/reboot-required` is there (an
@@ -89,7 +90,7 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 3. A Claude Code project (container) set up with 0.8.0 has
    `claude_code_settings_qa` in `ansible/group_vars/all/project.yml`: the setup
    wrote every setting at its default, `false` included. After installing
-   0.9.0, in the project's `ansible/` directory, run
+   this version, in the project's `ansible/` directory, run
    `ansible-playbook update-playbooks.yml` (it still runs, and rewrites
    `defaults.yml`), rename the line in `project.yml` to `claude_code_skills_qa`
    or delete it, and then run `build-and-deploy.yml` or `deploy.yml`; they stop
@@ -107,7 +108,7 @@ Rolling back to 0.8.0:
   file. Remove them and put `claude_code_settings_qa` back. The VM keeps its
   size and its upgraded packages. 0.8.0 removes only what it ships, so
   `/etc/claude-code/.claude/skills/loop-to-delivery/` stays while 0.8.0's
-  policy drops the hooks: turn loop-to-delivery off with 0.9.0 before rolling
+  policy drops the hooks: turn loop-to-delivery off before rolling
   back, or remove that folder by hand; otherwise the skill is offered without
   its guard, and a job it creates costs one model call before Claude deletes
   it.

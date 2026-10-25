@@ -23,7 +23,7 @@ Both skills are off by default: managed skills and subagents win over a
 person's and a project's with the same name, so turning them on hides those.
 Turning one off again removes its files at the next run or deploy.
 
-Before 0.9.0 the qa skill was `claude_code_settings_qa`. A run, build or deploy
+Up to 0.8.0 the qa skill was `claude_code_settings_qa`. A run, build or deploy
 that still sets it stops, naming `claude_code_skills_qa`
 ([Upgrading](../../CHANGELOG.md#upgrading-from-080)).
 

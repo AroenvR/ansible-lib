@@ -22,7 +22,7 @@ argument_specs:
             C(architect), C(tester), C(reviewer), C(developer) and C(documenter) one at a time, through review gates,
             as its protocol says. Questions are answered without it.
           - Off by default, as managed skills and subagents win over a person's or a project's of the same names.
-            Needs C(claude_code_settings_agent_teams) off; the run stops when both are on. Before 0.9.0 this was
+            Needs C(claude_code_settings_agent_teams) off; the run stops when both are on. Up to 0.8.0 this was
             C(claude_code_settings_qa), at which a run now stops.
       claude_code_skills_loop_to_delivery:
         type: bool

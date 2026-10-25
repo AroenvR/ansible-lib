@@ -605,7 +605,7 @@ Each with its reason, newest first. A decision is changed by a new one here.
   one model call, as the job's own prompt has Claude delete the job. Its state
   is in Claude's home, and its limits stop a runaway loop, not a hostile model.
   Off by default.
-- 2026-10-25, the skills as a role of their own, claude_code_skills (0.9.0): a
+- 2026-10-25, the skills as a role of their own, claude_code_skills: a
   utility both targets include after claude_code_settings. It owns the qa skill
   with its five experts, moved from claude_code_settings (its setting is now
   `claude_code_skills_qa`, and a run that still sets the name it had there

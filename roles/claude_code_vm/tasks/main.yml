@@ -26,14 +26,14 @@
       {{ __claude_code_vm_old | join(', ') }}. Rename them where they are set (the inventory or -e).
     quiet: true
 
-# 0.9.0 moved the qa skill to claude_code_skills; settings.yml checks the
+# After 0.8.0 the qa skill moved to claude_code_skills; settings.yml checks the
 # settings file for the old name.
 - name: Stop at claude_code_settings_qa, which is now claude_code_skills_qa
   ansible.builtin.assert:
     that: query('ansible.builtin.varnames', '^claude_code_settings_qa$') | length == 0
     fail_msg: >-
-      claude_code_settings_qa is now claude_code_skills_qa (the qa skill moved to aslib.infra.claude_code_skills in
-      0.9.0): rename it where it is set (the inventory or -e).
+      claude_code_settings_qa is now claude_code_skills_qa (the qa skill moved to aslib.infra.claude_code_skills
+      after 0.8.0): rename it where it is set (the inventory or -e).
     quiet: true
 
 # First: every value below may come from it.
