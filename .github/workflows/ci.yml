@@ -136,6 +136,10 @@ jobs:
             3.11
             3.12
       - run: ls -l /dev/kvm
+      # The runner image's package lists are as old as the image: refresh them, as a
+      # host's apt-daily does, or the role asks for versions the archive has dropped
+      # (systemd-container gave 404 Not Found with 12-day-old lists).
+      - run: sudo apt-get update
       - run: >-
           sudo make test-vm-2.16
           PYTHON_2.14="$(command -v python3.11)" PYTHON_2.16="$(command -v python3.12)"
