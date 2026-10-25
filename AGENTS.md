@@ -622,19 +622,19 @@ Each with its reason, newest first. A decision is changed by a new one here.
 - 2026-10-19, the qa skill (issue #26, for #11): the skill `qa` (with its
   protocol next to it) and five subagents (architect, tester, reviewer,
   developer, documenter), which both targets install in
-  `/etc/claude-code/.claude/`. Synchronous: the session you talk to
-  becomes QA through the skill and runs the experts as subagents one at a
-  time, passing each report on; QA gives each the protocol's path
+  `/etc/claude-code/.claude/`. Synchronous: the session you talk to becomes QA
+  through the skill and runs the experts as subagents one at a time, passing
+  each report on; QA gives each the protocol's path
   (`${CLAUDE_SKILL_DIR}/protocol.md`), as a subagent starts without the
   conversation. The texts are #11's package (written for agent teams), changed
   only where the synchronous design needs it; its settings, hook script,
   README and examples are not shipped: Markdown and Ansible only. Off by
   default (the maintainer's call), as managed names win over a person's and a
   project's. It needs agent teams off, so a run with both on stops (the issue
-  asked only for the README to say so). The targets get the files as facts, and
-  the container's config/ (podman_service) now mirrors names with folders; the
-  VM removes only what the role ships, so other files there stay. Since
-  2026-10-25 claude_code_skills ships it (below).
+  asked only for the README to say so). The targets get the files as facts,
+  and the container's config/ (podman_service) now mirrors names with folders;
+  the VM removes only what the role ships, so other files there stay. Since
+  2026-10-25 claude_code_skills ships it (above).
 - 2026-10-18, Claude Code roles as one family (issue #25, the maintainer's
   design): `claude_code` is the index (README and an entry point that stops
   with the map), `claude_code_podman` (was claude_code) and `claude_code_vm`
