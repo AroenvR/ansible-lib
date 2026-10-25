@@ -55,7 +55,7 @@
             == lookup('file', __claude_code_podman_test_roles ~ '/podman_service/templates/service.container.j2')
         success_msg: PASSED claude_code_podman wrote ansible/ with its playbooks, guide, Quadlet template and git rules.
 
-    # The options of claude_code_skills (0.8.1), which took claude_code_settings_qa's place.
+    # The options of claude_code_skills (0.8.2), which took claude_code_settings_qa's place.
     - name: Check both settings files list claude_code_skills' settings at their defaults, and not the old qa name
       vars:
         __claude_code_podman_test_text: "{{ lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/' ~ item) }}"
@@ -337,7 +337,7 @@
           PASSED image.yml, run from the project, rebuilt the changed Containerfile into
           claude-code-{{ __claude_code_podman_test_new_version }}.tar and left no older image of the project behind.
 
-    # 0.8.1 renamed claude_code_settings_qa, which a 0.8.0 setup wrote into both
+    # 0.8.2 renamed claude_code_settings_qa, which a 0.8.0 setup wrote into both
     # settings files: the update passes and rewrites defaults.yml; a build stops
     # while project.yml still has the old name, naming both steps in order.
     - name: Put the old name into both settings files, as a 0.8.0 project has it
@@ -396,10 +396,10 @@
       vars:
         __claude_code_podman_test_rename_message: >-
           claude_code_settings_qa is set, which is now claude_code_skills_qa (the qa skill moved to
-          aslib.infra.claude_code_skills in 0.8.1). First run update-playbooks.yml, which rewrites
+          aslib.infra.claude_code_skills in 0.8.2). First run update-playbooks.yml, which rewrites
           ansible/group_vars/all/defaults.yml without it; then rename the line in ansible/group_vars/all/project.yml to
           claude_code_skills_qa, or delete it, and likewise wherever else you set it (the inventory or -e). The
-          CHANGELOG's upgrade notes for 0.8.1 say more.
+          CHANGELOG's upgrade notes for 0.8.2 say more.
       ansible.builtin.assert:
         that:
           - __claude_code_podman_test_old_build.rc != 0

@@ -648,7 +648,7 @@
               PASSED claude_code_podman stops a deploy that sets claude_code_bypass_permissions, naming
               claude_code_settings_permission_mode.
 
-    # claude_code_skills_qa replaced it in 0.8.1; a 0.8.0 project's settings
+    # claude_code_skills_qa replaced it in 0.8.2; a 0.8.0 project's settings
     # have it, false by default, which stops a deploy too.
     - name: Look up the installed policy before a deploy that sets claude_code_settings_qa
       ansible.builtin.stat:

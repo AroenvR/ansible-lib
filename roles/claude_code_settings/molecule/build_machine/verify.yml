@@ -30,7 +30,7 @@
           confirmation, with Opus at xhigh effort and the dark theme, agent teams and ultracode off, every
           directory a working directory, every folder trusted and the first-run setup done.
 
-    # The qa skill moved to claude_code_skills in 0.8.1, with the files it
+    # The qa skill moved to claude_code_skills in 0.8.2, with the files it
     # handed over; the policy's base stays as it was.
     - name: Check it hands over the three facts of its interface, and no files
       ansible.builtin.assert:
