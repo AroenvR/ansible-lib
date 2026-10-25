@@ -73,6 +73,22 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
   files on the machine it runs on, without the rest of the VM's guest setup,
   for Claude's own VM to apply a branch's settings to itself.
+- Changed: the qa skill and its experts ask less of the person and waste less.
+  QA decides what the project's rules decide (the version number, who fixes a
+  finding, re-running an expert within the budget) and lists those decisions in
+  its report; it asks only what is the person's to decide, in one batch while
+  it writes the spec, each question with its recommendation. It makes
+  corrections that change no behavior itself, with a mechanical proof, for the
+  next review to check; it sizes each expert's task to one run and runs the
+  tests that only CI can run as soon as they exist; each gate takes one review
+  round, and lower findings go to a list of improvements. Messages, pull
+  requests and everything that ships use plain words: no labels from the spec,
+  and only the version file and the changelog's heading carry the upcoming
+  version. qa-budget's `budget.md` makes the budget a share of the week, agreed
+  once, within which QA decides.
+- Added: `make lint` checks that no folded YAML block (`>`) keeps a line break
+  before `&&`, `||`, `|` or `;`, which a shell command fails on only when it
+  runs (`dev/check_folded.py`); the test setup tries Ansible Galaxy three times.
 
 ### Upgrading from 0.8.0
 

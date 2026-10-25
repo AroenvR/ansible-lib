@@ -32,8 +32,14 @@ the limit 98%, 12 expert runs per session, a token budget per run).
 
 ## How to work within it
 
-- Before the first expert run, write the budget into the spec: how many expert
-  runs, and at most two review rounds per gate.
+- Before the first expert run, write the budget into the spec, agreed with the
+  person once: the share of the weekly usage the change may take, the expert
+  runs you plan, and one review round per gate (a second only for a high
+  finding). Within that share you decide yourself: re-running an expert its
+  run's token budget cut off, splitting a task, a small extra run. Ask the
+  person only before you would go over the share.
+- Size each expert's task to one run: name the files and line ranges it reads,
+  and split a large task into parts from the start.
 - Never start another round for low-severity findings: they go into the list of
   improvements that comes with the delivery.
 - When the guard denies an expert run: deliver what passed, with the open
