@@ -4,7 +4,7 @@
 - name: Check no setting has a name of before 0.7.0
   ansible.builtin.import_tasks: renamed.yml
 
-# 0.8.1 moved the qa skill to claude_code_skills. Not in the setup (a project's
+# 0.9.0 moved the qa skill to claude_code_skills. Not in the setup (a project's
 # update-playbooks.yml), which must still rewrite defaults.yml, aslib.infra's
 # file: a 0.8.0 setup wrote the old name there and into project.yml.
 - name: Stop at claude_code_settings_qa, which is now claude_code_skills_qa
@@ -12,10 +12,10 @@
     that: query('ansible.builtin.varnames', '^claude_code_settings_qa$') | length == 0
     fail_msg: >-
       claude_code_settings_qa is set, which is now claude_code_skills_qa (the qa skill moved to
-      aslib.infra.claude_code_skills in 0.8.1). First run update-playbooks.yml, which rewrites
+      aslib.infra.claude_code_skills in 0.9.0). First run update-playbooks.yml, which rewrites
       ansible/group_vars/all/defaults.yml without it; then rename the line in ansible/group_vars/all/project.yml to
       claude_code_skills_qa, or delete it, and likewise wherever else you set it (the inventory or -e). The
-      CHANGELOG's upgrade notes for 0.8.1 say more.
+      CHANGELOG's upgrade notes for 0.9.0 say more.
     quiet: true
 
 - name: Check this is the ansible/ directory of a Claude Code project

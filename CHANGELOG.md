@@ -4,7 +4,92 @@ All notable changes to this collection. Versions follow [Semantic Versioning](ht
 a breaking change to any role's interface (meta/argument_specs.yml) means a new major version
 (before 1.0.0, a new minor version).
 
-## 0.8.2
+## 0.9.0
+
+- Added: role `claude_code_skills`, the skills Claude Code gets, with the same
+  names and defaults in the container and the VM. Both skills are off by
+  default, and turning one off removes its files at the next run or deploy.
+- Changed, **breaking**: the qa skill moved from claude_code_settings to
+  claude_code_skills, and its setting is now `claude_code_skills_qa` (was
+  `claude_code_settings_qa`; the skill, its default and its behavior are the
+  same). A run, build or deploy that still sets the old name stops, naming the
+  new one.
+- Added: the skill loop-to-delivery, turned on with
+  `claude_code_skills_loop_to_delivery: true`. For work that outlasts a turn,
+  such as a change request or waiting on CI, a review or an answer, Claude
+  keeps notes and a wake-up job every half hour while the conversation is idle,
+  so that the work goes on after an interruption (a rate or credit limit, a
+  closed laptop) until it is delivered. Hooks in the policy run a small Python
+  program that lets a wake-up through only for the conversation that started
+  the loop and within its limits, and blocks it otherwise before it costs a
+  model call: at most `claude_code_skills_loop_to_delivery_max_wakes` wake-ups
+  (100 by default), 6 in a row without progress, and 7 days. A person's own
+  prompts are never blocked. It needs `/usr/bin/python3`: the VM's Ubuntu has
+  it, the container's base image must provide it (UBI 9 does). Claude's loops
+  are listed and stopped with the program's `status` and `stop`; its README
+  says how.
+- Added: claude_code_vm applies `claude_code_vm_memory` and
+  `claude_code_vm_vcpus` of the settings file to a VM that exists. A run where
+  they differ shuts the VM down cleanly, gives it the new values and starts it;
+  it never forces a VM off that has not shut down within 5 minutes, but stops,
+  saying how to go on. The disk size and the network still apply to a new VM
+  only.
+- Changed: claude_code_vm brings all of the VM's packages up to date on every
+  run, as `apt upgrade` does (Ubuntu's, and Anthropic's for Claude Code; new
+  dependencies such as a new kernel come in, nothing is removed), and restarts
+  the VM cleanly when Ubuntu says it needs a restart, also one that
+  unattended-upgrades left between runs. A restart ends the sessions in the
+  VM, as a new memory or vCPUs does. The VM needed the internet already; every
+  other role, and the host, still install a package only when it is missing.
+- Changed: claude_code_settings hands over fewer facts. The files and absent
+  paths of the qa skill, `claude_code_settings_files` and
+  `claude_code_settings_absent` of 0.8.0, are now `claude_code_skills_files`
+  and `claude_code_skills_absent`, with the loop's `claude_code_skills_policy`;
+  the targets include claude_code_skills after claude_code_settings and merge
+  its part into the policy. A playbook of your own that includes
+  claude_code_settings and reads the two facts includes claude_code_skills too.
+
+### Upgrading from 0.8.0
+
+1. A VM host: the settings file, `/etc/claude-vm/settings.yml`, that 0.8.0
+   wrote has a `claude_code_settings_qa: <value>` line. The first run of 0.9.0
+   stops until you rename it to `claude_code_skills_qa`, keeping the value; the
+   run then adds the two loop settings, off and 100. An inventory or a `-e`
+   that sets the old name stops likewise.
+2. The first run restarts the VM if its memory or vCPUs in the file differ from
+   what the VM has, and if Ubuntu's `/var/run/reboot-required` is there (an
+   Ubuntu VM that has not restarted since a kernel update has it). The
+   sessions in the VM end. The run also upgrades the VM's packages, which takes
+   as long as apt needs.
+3. A Claude Code project (container) set up with 0.8.0 has
+   `claude_code_settings_qa` in `ansible/group_vars/all/project.yml`: the setup
+   wrote every setting at its default, `false` included. After installing
+   0.9.0, in the project's `ansible/` directory, run
+   `ansible-playbook update-playbooks.yml` (it still runs, and rewrites
+   `defaults.yml`), rename the line in `project.yml` to `claude_code_skills_qa`
+   or delete it, and then run `build-and-deploy.yml` or `deploy.yml`; they stop
+   at the old name. A project set up before 0.8.0 has no such line.
+4. Turn loop-to-delivery on with `claude_code_skills_loop_to_delivery: true`
+   (in the VM's settings file, or the project's `project.yml`), and set the
+   maximum of wake-ups if 100 does not suit. Sessions that were open before may
+   not have its hooks: start new ones. Turn it off only with no loop running,
+   or after ending the sessions that hold one (`status` shows the loops);
+   otherwise each such job costs one model call before Claude deletes it.
+
+Rolling back to 0.8.0:
+
+- A VM host: 0.8.0 stops on the `claude_code_skills_*` lines in the settings
+  file. Remove them and put `claude_code_settings_qa` back. The VM keeps its
+  size and its upgraded packages. 0.8.0 removes only what it ships, so
+  `/etc/claude-code/.claude/skills/loop-to-delivery/` stays while 0.8.0's
+  policy drops the hooks: turn loop-to-delivery off with 0.9.0 before rolling
+  back, or remove that folder by hand; otherwise the skill is offered without
+  its guard, and a job it creates costs one model call before Claude deletes
+  it.
+- A Claude Code project: rename the line in `project.yml` back to
+  `claude_code_settings_qa` and deploy. 0.8.0 mirrors `config/` without the
+  loop's files and writes the policy without its hooks.
+- What a loop left in Claude's home is inert without the hooks.
 
 ## 0.8.0
 

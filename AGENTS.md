@@ -17,7 +17,8 @@ roles (node_setup, node_image, node_deploy) take a Node.js backend from project
 to running service, and the `claude_code_` roles, indexed by `claude_code`,
 run Claude Code: claude_code_podman as an always-on agent for root,
 claude_code_vm in a VM where it may have root, for development, both starting
-sessions as claude_code_settings says. gitlab runs GitLab CE as a rootless
+sessions as claude_code_settings says and offering the skills that
+claude_code_skills names (qa and loop-to-delivery). gitlab runs GitLab CE as a rootless
 Podman service. node_deploy, claude_code_podman and gitlab
 are thin layers over podman_service. Consumers install a release tarball that
 holds only runtime files; tests and tooling never ship (`build_ignore` in
@@ -36,7 +37,7 @@ the guides and the reference in [docs/](docs/README.md).
 - **Offline servers.** Never assume internet access: everything a build or a
   deploy downloads can come from a mirror, through each tool's own
   configuration (see Decisions), and packages are installed only when
-  missing ([Offline servers and
+  missing, claude_code_vm's VM excepted (see Decisions) ([Offline servers and
   repositories](CONTRIBUTING.md#offline-servers-and-repositories)).
 - **Podman, never Docker.**
 - **Server conventions for containers.** Root manages the
@@ -523,6 +524,33 @@ the entry says it is likely or not verified yet.
   `default` and `acceptEdits` (so refused in a `-p` run), refused in
   `dontAsk`; allow rules don't change that (documented; seen in a `-p` run
   with acceptEdits).
+- Claude Code (2.1.292, verified 2026-10-20) runs the hooks of the managed policy
+  for UserPromptSubmit, Stop, StopFailure and the session events. A hook that
+  exits 1 lets the event pass and the transcript records it as
+  `hook_non_blocking_error`; exit 2 blocks. `python3 <missing file>` exits 2,
+  so as a hook it would block the person's prompt: loop-to-delivery's command
+  tests the file first (`[ -r P ] && ...`), which makes a missing program exit
+  1. The hooks of a skill's own frontmatter are not restored by `claude
+  --resume` (they fired before the resume only), so the loop's hooks are in the
+  policy.
+- A turn that ends in an API error such as a rate limit runs StopFailure, with
+  the turn's `prompt_id` and the error, and no Stop. A job that `CronCreate`
+  made during a turn is in the `session_crons` of that turn's first Stop. A
+  session-only job fires in an idle session as a prompt with the job's text,
+  and a UserPromptSubmit hook that blocks it stops that fire before any API
+  request; the job keeps firing. Durable jobs (`durable: true`) go to the
+  project's `.claude/scheduled_tasks.json` and resume in a new session;
+  `claude --resume` brings back a session-only job. Recurring jobs expire after
+  7 days.
+- `/clear` gives a new session id in the same process, with no link to the old
+  one, and a session-only job made before it keeps firing there: each fire is a
+  prompt with the new session id and the job's text. Compaction keeps the
+  session id. Whether a job follows a `/resume` switch or a fork is not
+  verified.
+- A libvirt guest's own reboot does not apply a new definition: `virsh
+  setmaxmem`, `setmem` and `setvcpus` with `--config` take effect at the next
+  start, so changing a VM's memory or vCPUs takes a shutdown and a start
+  (virsh's man page).
 
 ## Looking inside a running service (field notes)
 
@@ -549,23 +577,64 @@ podman_service service, a smoke test after a deploy).
 
 Each with its reason, newest first. A decision is changed by a new one here.
 
-- 2026-10-19, the qa skill (issue #26, for #11): claude_code_settings ships
-  the skill `qa` (with its protocol next to it) and five subagents
-  (architect, tester, reviewer, developer, documenter), which both targets
-  install in `/etc/claude-code/.claude/`. Synchronous: the session you talk to
-  becomes QA through the skill and runs the experts as subagents one at a
-  time, passing each report on; QA gives each the protocol's path
+- 2026-10-25, claude_code_vm's guest upgrades its packages on every run, the
+  maintainer's explicit exception to "packages are installed only when
+  missing" (offline servers): the VM needs the internet anyway, and the
+  playbook that creates the VM should also be how it is updated. A run does
+  what `apt upgrade` does,
+  Claude Code's repository included, with new dependencies such as a new kernel
+  and nothing removed, and restarts the VM cleanly when Ubuntu's marker
+  `/var/run/reboot-required` is there, whoever left it, with a bounded wait.
+  Every other role, and the host's own packages, still install only when
+  missing. Memory and vCPUs of the settings now apply to a VM that exists: a
+  run where they differ shuts it down cleanly (never forced; a VM that does
+  not shut down within 5 minutes stops the run), sets them for the next start
+  and starts it. The disk size and the network stay for a new VM. Both ways
+  end the sessions in the VM, so the docs say so.
+- 2026-10-25, loop-to-delivery's hook program, the exception to "Markdown and
+  Ansible only" of the qa decision (which stands for qa): the maintainer asked
+  for work that keeps going across interruptions, and only a hook can block a
+  wake-up before it costs a model call and enforce limits (a maximum of
+  wake-ups, idle wake-ups in a row, 7 days, one conversation). The skill ships
+  one Python program, `loop_to_delivery.py`, which the managed policy's hooks
+  (UserPromptSubmit, Stop, StopFailure) and Claude run. It uses only what both
+  targets already have: `/usr/bin/python3` (the VM's Ubuntu; the container's
+  base image, not the Containerfile), run with `-I`, the standard library, no
+  subprocess, no network, no new package or download. A hook that fails never
+  blocks the person's prompts; a wake-up without a working hook costs at most
+  one model call, as the job's own prompt has Claude delete the job. Its state
+  is in Claude's home, and its limits stop a runaway loop, not a hostile model.
+  Off by default.
+- 2026-10-25, the skills as a role of their own, claude_code_skills (0.9.0): a
+  utility both targets include after claude_code_settings. It owns the qa skill
+  with its five experts, moved from claude_code_settings (its setting is now
+  `claude_code_skills_qa`, and a run that still sets the name it had there
+  stops, naming the new one), and loop-to-delivery. It hands over the files of
+  the skills that are on, the paths of those that are off, and a part of the
+  policy (the loop's hooks, `{}` while it is off); the targets install the
+  files before the policy, whose hooks run the program, and merge the part in
+  between claude_code_settings' base and their own. One job per role: how a
+  session starts and which skills it has change for different reasons, and the
+  maintainer found a Claude skill poorly named as a `claude_code_settings`
+  setting. In a container project the rename stop is in the build and deploy
+  tasks, not in the setup, so `update-playbooks.yml` still runs and rewrites
+  `defaults.yml`, which a 0.8.0 setup wrote with the old name.
+- 2026-10-19, the qa skill (issue #26, for #11): the skill `qa` (with its
+  protocol next to it) and five subagents (architect, tester, reviewer,
+  developer, documenter), which both targets install in
+  `/etc/claude-code/.claude/`. Synchronous: the session you talk to becomes QA
+  through the skill and runs the experts as subagents one at a time, passing
+  each report on; QA gives each the protocol's path
   (`${CLAUDE_SKILL_DIR}/protocol.md`), as a subagent starts without the
   conversation. The texts are #11's package (written for agent teams), changed
   only where the synchronous design needs it; its settings, hook script,
   README and examples are not shipped: Markdown and Ansible only. Off by
-  default (`claude_code_settings_qa`, the maintainer's call), as managed names
-  win over a person's and a project's. It needs agent teams off, so a run with
-  both on stops (the issue asked only for the README to say so). The targets
-  get the files as facts (`claude_code_settings_files`, and
-  `claude_code_settings_absent` for those of features turned off): the
-  container's config/ (podman_service) now mirrors names with folders; the VM
-  removes only what claude_code_settings ships, so other files there stay.
+  default (the maintainer's call), as managed names win over a person's and a
+  project's. It needs agent teams off, so a run with both on stops (the issue
+  asked only for the README to say so). The targets get the files as facts,
+  and the container's config/ (podman_service) now mirrors names with folders;
+  the VM removes only what the role ships, so other files there stay. Since
+  2026-10-25 claude_code_skills ships it (above).
 - 2026-10-18, Claude Code roles as one family (issue #25, the maintainer's
   design): `claude_code` is the index (README and an entry point that stops
   with the map), `claude_code_podman` (was claude_code) and `claude_code_vm`
@@ -805,9 +874,10 @@ Each with its reason, newest first. A decision is changed by a new one here.
 
 ## Status
 
-Last updated 2026-10-19. v0.6.0 is the latest release; 0.7.0 (the Claude Code
-family, issue #25) is in accept, and 0.8.0 (the qa skill, issue #26) on its
-way from develop.
+Last updated 2026-10-25. v0.6.0 is the latest release; accept holds 0.7.0 (the
+Claude Code family, issue #25) and 0.8.0 (the qa skill, issue #26); 0.9.0 (the
+role claude_code_skills with loop-to-delivery, memory and vCPUs applied to an
+existing VM, a VM brought up to date by every run) is next.
 
 - CI passes every job before a release is tagged. Memory limits are checked
   only where cgroup v2 delegates the memory controller (CI's runners).
