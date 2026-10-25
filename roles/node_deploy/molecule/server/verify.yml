@@ -444,11 +444,13 @@
           - >-
             __node_deploy_test_installed_on.hooks.values() | map('first') | map(attribute='hooks') | map('first')
             | map(attribute='command') | select('search', ' hook --max-wakes 7$') | list | length == 3
-          - "'Edit(//etc/claude-code/**)' in __node_deploy_test_installed_on.permissions.deny"
+          # Claude could edit it with Bash anyway: a deny it can route around is no boundary.
+          - "'Edit(//etc/claude-code/**)' not in __node_deploy_test_installed_on.permissions.deny"
         fail_msg: "The installed policy: {{ __node_deploy_test_installed_on | to_json }}"
         success_msg: >-
           PASSED the installed policy merges claude_code_skills' hooks: UserPromptSubmit, Stop and StopFailure run
-          loop_to_delivery.py with the deploy's maximum of 7, which Claude cannot edit (/etc/claude-code is denied).
+          loop_to_delivery.py with the deploy's maximum of 7, and no deny rule for /etc/claude-code, which Claude could
+          route around.
 
     # The installed program and hook command, outside the container: the policy's
     # /etc/claude-code is /opt/claude-code/config on the server, whose python3

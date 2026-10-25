@@ -583,27 +583,27 @@ podman_service service, a smoke test after a deploy).
 Each with its reason, newest first. A decision is changed by a new one here.
 
 - 2026-10-25, the qa skill's working rules, from what went wrong while it
-  built 0.9.0 (the maintainer: too many questions, too long, numbers and
-  labels changed and fixed again and again): QA decides what the project's
-  rules decide and lists those decisions in its report; it asks only the
-  person's decisions, in one batch at spec time, each with a recommendation;
-  it makes behavior-neutral corrections itself with a mechanical proof (a word
-  diff, `git diff -w`, unchanged syntax trees), which the next review checks;
-  it sizes each expert's task to one run (the per-run token budget cut one
-  documentation run short) and pushes tests that only CI can run as soon as
-  they exist (a VM test's whitespace defect surfaced only after the code
-  review). Product text names the last release, not the upcoming one, so a
-  late change of the number touches only galaxy.yml and the changelog's
-  heading; spec labels stay in `.claude/specs/` (a hook program shipped with
-  them). Each gate takes one review round; lower findings go to the list of
-  improvements. Reports to the person use plain words.
-- 2026-10-25, qa-budget (PR #35, live on Claude's VM) is part of 0.9.0, so that
-  the qa skill's budget ships with the skill and the VM runs a released
-  version: it stays a setting of claude_code_settings,
+  built the skills role and loop-to-delivery (the maintainer: too many
+  questions, too long, numbers and labels changed and fixed again and again):
+  QA decides what the project's rules decide and lists those decisions in its
+  report; it asks only the person's decisions, in one batch at spec time, each
+  with a recommendation; it makes behavior-neutral corrections itself with a
+  mechanical proof (a word diff, `git diff -w`, unchanged syntax trees), which
+  the next review checks; it sizes each expert's task to one run (the per-run
+  token budget cut one documentation run short) and pushes tests that only CI
+  can run as soon as they exist (a VM test's whitespace defect surfaced only
+  after the code review). Product text names the last release, not the
+  upcoming one, so a late change of the number touches only galaxy.yml and the
+  changelog's heading; spec labels stay in `.claude/specs/` (a hook program
+  shipped with them). Each gate takes one review round; lower findings go to
+  the list of improvements. Reports to the person use plain words.
+- 2026-10-25, qa-budget (PR #35, live on Claude's VM) ships with the skills
+  role, so that the qa skill's budget ships with the skill and the VM runs a
+  released version: it stays a setting of claude_code_settings,
   `claude_code_settings_qa_budget`, as it needs configuration, and
-  claude_code_settings hands over its files again (`claude_code_settings_files`,
-  `claude_code_settings_absent`, qa-budget's only), which both targets install
-  next to claude_code_skills'.
+  claude_code_settings hands over its files again
+  (`claude_code_settings_files`, `claude_code_settings_absent`, qa-budget's
+  only), which both targets install next to claude_code_skills'.
 
 - 2026-10-25, claude_code_vm's guest upgrades its packages on every run, the
   maintainer's explicit exception to "packages are installed only when
