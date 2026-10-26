@@ -1,0 +1,37 @@
+---
+# One stop of claude_code_skills. The role computes with the variables of the
+# include_tasks that brought this file in (so a value keeps the form -e would
+# pass), and has to stop at a task of its own, not at the last task here, with a
+# message that names each of __claude_code_skills_test_names and none of
+# __claude_code_skills_test_not_names (a regular expression each).
+- name: Try the stop
+  block:
+    - name: Compute the skills with it
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+
+    - name: Fail, as it was accepted
+      ansible.builtin.fail:
+        msg: claude_code_skills accepted it.
+  rescue:
+    - name: Check the run stopped at the role's own task
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_task.name != 'Fail, as it was accepted'
+          - ansible_failed_result.msg is defined
+        fail_msg: "{{ ansible_failed_result | default('no result') | to_json }}"
+        quiet: true
+
+    - name: Check the message names what it must
+      ansible.builtin.assert:
+        that: ansible_failed_result.msg is search(item)
+        fail_msg: "The message does not name {{ item }}: {{ ansible_failed_result.msg | default(ansible_failed_result) | to_json }}"
+        quiet: true
+      loop: "{{ __claude_code_skills_test_names }}"
+
+    - name: Check the message names nothing it must not
+      ansible.builtin.assert:
+        that: ansible_failed_result.msg is not search(item)
+        fail_msg: "The message names {{ item }}: {{ ansible_failed_result.msg }}"
+        quiet: true
+      loop: "{{ __claude_code_skills_test_not_names | default([]) }}"

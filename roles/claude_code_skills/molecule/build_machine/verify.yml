@@ -1,0 +1,462 @@
+---
+- name: Check what claude_code_skills hands its targets
+  hosts: localhost
+  gather_facts: false
+  vars:
+    __claude_code_skills_test_loop_files:
+      - .claude/skills/loop-to-delivery/SKILL.md
+      - .claude/skills/loop-to-delivery/loop_to_delivery.py
+    # The hook registration loop-to-delivery needs (the policy fragment), exactly;
+    # only the two limits vary.
+    __claude_code_skills_test_program: /etc/claude-code/.claude/skills/loop-to-delivery/loop_to_delivery.py
+    __claude_code_skills_test_wakes: 5
+    __claude_code_skills_test_hours: 24
+    __claude_code_skills_test_command: >-
+      [ -r {{ __claude_code_skills_test_program }} ] && /usr/bin/python3 -I {{ __claude_code_skills_test_program }}
+      hook --max-wakes {{ __claude_code_skills_test_wakes }} --max-hours {{ __claude_code_skills_test_hours }}
+      --budget-guard /etc/claude-code/qa-budget/guard.py
+    __claude_code_skills_test_event: [{hooks: [{type: command, timeout: 30, command: "{{ __claude_code_skills_test_command }}"}]}]
+    __claude_code_skills_test_policy:
+      hooks:
+        UserPromptSubmit: "{{ __claude_code_skills_test_event }}"
+        Stop: "{{ __claude_code_skills_test_event }}"
+        StopFailure: "{{ __claude_code_skills_test_event }}"
+  tasks:
+    - name: Compute the skills with the defaults
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+
+    - name: Check loop-to-delivery is off by default, with qa-budget unset, and its files are to go where an earlier run installed them
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files is defined
+          - claude_code_skills_absent is defined
+          - claude_code_skills_policy is defined
+          - claude_code_skills_files == []
+          - claude_code_skills_absent == ['.claude/skills/loop-to-delivery']
+          - claude_code_skills_policy == {}
+        fail_msg: >-
+          Files: {{ claude_code_skills_files | default('undefined') }}; absent: {{ claude_code_skills_absent
+          | default('undefined') }}; policy: {{ claude_code_skills_policy | default('undefined') }}
+        success_msg: >-
+          PASSED claude_code_skills: by default it hands over no files and no policy, needs no qa-budget, and names
+          loop-to-delivery's folder as absent.
+
+    # FR-1, the three cases of AC-1; the case that stops is in the next play.
+    - name: Compute the skills with loop-to-delivery off and qa-budget off, as -e passes them
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_loop_to_delivery: "false"
+        claude_code_settings_qa_budget: "false"
+
+    - name: Check loop-to-delivery off with qa-budget off passes, handing over nothing
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files == []
+          - claude_code_skills_absent == ['.claude/skills/loop-to-delivery']
+          - claude_code_skills_policy == {}
+        fail_msg: >-
+          Files: {{ claude_code_skills_files }}; absent: {{ claude_code_skills_absent }}; policy: {{ claude_code_skills_policy }}
+        success_msg: PASSED claude_code_skills accepts loop-to-delivery off with qa-budget off ("false" as -e passes it).
+
+    - name: Compute the skills with qa-budget on and loop-to-delivery off
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_settings_qa_budget: true
+
+    - name: Check qa-budget alone needs nothing of the loop
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files == []
+          - claude_code_skills_absent == ['.claude/skills/loop-to-delivery']
+          - claude_code_skills_policy == {}
+        success_msg: PASSED claude_code_skills hands over nothing when only qa-budget is on.
+
+    - name: Compute the skills with loop-to-delivery on and qa-budget on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_loop_to_delivery: "true"   # as -e passes it
+        claude_code_settings_qa_budget: "true"
+
+    - name: Check it hands over loop-to-delivery's skill and program, and the hooks that run the program
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_files | map(attribute='name') | sort == __claude_code_skills_test_loop_files | sort
+          - claude_code_skills_files | map(attribute='src') | select('file') | list | length == 2
+          - claude_code_skills_files | rejectattr('src', 'search', '/claude_code_skills/files/skills/loop-to-delivery/')
+            | list == []
+          - claude_code_skills_absent == []
+          - claude_code_skills_policy == __claude_code_skills_test_policy
+          - claude_code_skills_policy | to_json(sort_keys=true) == __claude_code_skills_test_policy | to_json(sort_keys=true)
+          # The defaults of the policy fragment, spelled out.
+          - claude_code_skills_policy.hooks.keys() | sort == ['Stop', 'StopFailure', 'UserPromptSubmit']
+          - claude_code_skills_policy.hooks.values() | map('first') | map(attribute='hooks') | map('first')
+            | map(attribute='command') | unique | list
+            == ['[ -r /etc/claude-code/.claude/skills/loop-to-delivery/loop_to_delivery.py ] && /usr/bin/python3 -I
+            /etc/claude-code/.claude/skills/loop-to-delivery/loop_to_delivery.py hook --max-wakes 5 --max-hours 24
+            --budget-guard /etc/claude-code/qa-budget/guard.py']
+        fail_msg: >-
+          Files: {{ claude_code_skills_files }}; absent: {{ claude_code_skills_absent }};
+          policy: {{ claude_code_skills_policy | to_json }}; expected: {{ __claude_code_skills_test_policy | to_json }}
+        success_msg: >-
+          PASSED claude_code_skills with claude_code_skills_loop_to_delivery and qa-budget hands over
+          loop-to-delivery's SKILL.md and loop_to_delivery.py, nothing as absent, and a policy whose UserPromptSubmit,
+          Stop and StopFailure hooks run the program with /usr/bin/python3 -I, if it is readable, with 5 wake-ups,
+          24 hours and qa-budget's guard.
+
+    - name: Check each file's source is the role's file of the same name, without .claude/
+      ansible.builtin.assert:
+        that:
+          - item.src is search('/claude_code_skills/files/' ~ (item.name | regex_replace('^[.]claude/', '')) ~ '$')
+        fail_msg: "{{ item.name }}: {{ item.src }}"
+        quiet: true
+      loop: "{{ claude_code_skills_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check loop-to-delivery's skill can be loaded, uses the program as the contract says, and is generic
+      vars:
+        __claude_code_skills_test_text: >-
+          {{ lookup('ansible.builtin.file', (claude_code_skills_files | selectattr('name', 'search', '/SKILL[.]md$') | first).src) }}
+        __claude_code_skills_test_front: "{{ __claude_code_skills_test_text.split('---')[1] | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_skills_test_text is match('---\n')
+          - __claude_code_skills_test_front.name == 'loop-to-delivery'
+          - __claude_code_skills_test_front.description is string
+          - __claude_code_skills_test_front.description | length > 0
+          - >-
+            __claude_code_skills_test_text is search('[$][{]CLAUDE_SKILL_DIR[}]/loop_to_delivery[.]py start
+            --session [$][{]CLAUDE_SESSION_ID[}] --notes ')
+          - __claude_code_skills_test_text is search('CronList')
+          - __claude_code_skills_test_text is search('CronCreate')
+          - __claude_code_skills_test_text is search('CronDelete')
+          - __claude_code_skills_test_text is search('end --reason delivered')
+          - __claude_code_skills_test_text is search('/etc/claude-code/[.]claude/skills/loop-to-delivery/loop_to_delivery[.]py stop')
+          - __claude_code_skills_test_text is search('status')
+          # The ends the skill tells Claude about: hours replace the 7 days, and the budget's guard can end the loop.
+          - __claude_code_skills_test_text is search('after its maximum of wake-ups or hours')
+          - __claude_code_skills_test_text is search("qa-budget.s guard blocks a wake-up")
+          - __claude_code_skills_test_text is not search('after 7 days')
+          - __claude_code_skills_test_text is not search('aslib|github|gitlab|molecule', ignorecase=True)
+        fail_msg: "{{ __claude_code_skills_test_text }}"
+        success_msg: >-
+          PASSED loop-to-delivery's SKILL.md is named loop-to-delivery, has a description, starts a loop with the
+          session's id and its notes, creates, lists and deletes its job, ends and stops it, says the loop also ends
+          at its hours and when qa-budget's guard blocks a wake-up, and names no tool of aslib or a forge.
+
+    - name: Check the hook program parses as Python 3.9 and runs no other program and reaches no network
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -I
+          - -c
+          - >-
+            import ast, re, sys;
+            tree = ast.parse(open(sys.argv[1], encoding='utf-8').read(), feature_version=(3, 9));
+            names = {a.name.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names};
+            names |= {n.module.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module};
+            bad = names & {'subprocess', 'pty', 'multiprocessing', 'socket', 'socketserver', 'urllib', 'http',
+            'ftplib', 'smtplib', 'imaplib', 'poplib', 'xmlrpc', 'ssl', 'asyncio'};
+            calls = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)};
+            calls |= {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names};
+            runs = sorted(c for c in calls if re.fullmatch('system|popen|fork|forkpty|posix_spawnp?|(exec|spawn)[lv]p?e?', c));
+            sys.exit('imports ' + ', '.join(sorted(bad)) if bad else 'uses ' + ', '.join(runs) if runs else 0)
+          - "{{ (claude_code_skills_files | selectattr('name', 'search', '[.]py$') | first).src }}"
+      register: __claude_code_skills_test_parse
+      changed_when: false
+      failed_when: false
+
+    # It loads qa-budget's guard with importlib.util (IF-101), which is no other program and no network.
+    - name: Check the program passed
+      ansible.builtin.assert:
+        that: __claude_code_skills_test_parse.rc == 0
+        fail_msg: "{{ __claude_code_skills_test_parse.stderr }}"
+        success_msg: >-
+          PASSED loop_to_delivery.py parses with Python 3.9's grammar and neither imports nor calls anything to
+          run programs or reach a network.
+
+    - name: Make a home for the hook command
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: claude_code_skills_test_
+      register: __claude_code_skills_test_home
+
+    # A program python3 cannot open makes it exit 2, which blocks the person's
+    # prompt; the command's test makes that a non-blocking 1. The policy's own
+    # command runs with its program path pointed into the temporary home, where
+    # nothing is, so the check also runs where loop-to-delivery is installed.
+    - name: Run the hook command as Claude Code runs it (sh -c), where the program is absent
+      ansible.builtin.command:
+        argv:
+          - sh
+          - -c
+          - >-
+            {{ claude_code_skills_policy.hooks.UserPromptSubmit[0].hooks[0].command
+               | replace(__claude_code_skills_test_program, __claude_code_skills_test_home.path ~ '/absent/loop_to_delivery.py') }}
+      environment:
+        HOME: "{{ __claude_code_skills_test_home.path }}"
+      register: __claude_code_skills_test_hook_run
+      changed_when: false
+      failed_when: false
+
+    - name: Remove the hook command's home
+      ansible.builtin.file:
+        path: "{{ __claude_code_skills_test_home.path }}"
+        state: absent
+
+    - name: Check the hook command exited 1, with nothing on stdout
+      ansible.builtin.assert:
+        that:
+          - __claude_code_skills_test_program in claude_code_skills_policy.hooks.UserPromptSubmit[0].hooks[0].command
+          - __claude_code_skills_test_program not in __claude_code_skills_test_hook_run.cmd[-1]
+          - __claude_code_skills_test_hook_run.rc == 1
+          - __claude_code_skills_test_hook_run.stdout == ''
+        fail_msg: >-
+          {{ __claude_code_skills_test_hook_run.cmd[-1] }}: rc {{ __claude_code_skills_test_hook_run.rc }},
+          stdout {{ __claude_code_skills_test_hook_run.stdout }}, stderr {{ __claude_code_skills_test_hook_run.stderr }}
+        success_msg: >-
+          PASSED the hook command exits 1, a non-blocking error, with no output where its program is absent.
+
+    # AC-2: other values reach the hooks as the limits the program enforces.
+    - name: Compute the skills with loop-to-delivery on and other limits
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery: true
+        claude_code_skills_loop_to_delivery_max_wakes: "7"    # as -e passes it
+        claude_code_skills_loop_to_delivery_max_hours: "48"
+
+    - name: Check each of the three hooks passes those limits to the program
+      vars:
+        __claude_code_skills_test_wakes: 7
+        __claude_code_skills_test_hours: 48
+      ansible.builtin.assert:
+        that:
+          - claude_code_skills_policy == __claude_code_skills_test_policy
+          - claude_code_skills_policy | to_json(sort_keys=true) == __claude_code_skills_test_policy | to_json(sort_keys=true)
+          - claude_code_skills_policy.hooks.values() | map('first') | map(attribute='hooks') | map('first')
+            | map(attribute='command')
+            | select('search', ' hook --max-wakes 7 --max-hours 48 --budget-guard /etc/claude-code/qa-budget/guard[.]py$')
+            | list | length == 3
+        fail_msg: "Policy: {{ claude_code_skills_policy | to_json }}"
+        success_msg: PASSED claude_code_skills puts changed limits of 7 wake-ups and 48 hours into all three hook commands.
+
+    # The bounds of the limits: 1 is the least, and 168 hours the most.
+    - name: Compute the skills with the least wake-ups and hours
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery: true
+        claude_code_skills_loop_to_delivery_max_wakes: 1
+        claude_code_skills_loop_to_delivery_max_hours: 1
+
+    - name: Check 1 wake-up and 1 hour are accepted
+      vars:
+        __claude_code_skills_test_wakes: 1
+        __claude_code_skills_test_hours: 1
+      ansible.builtin.assert:
+        that: claude_code_skills_policy == __claude_code_skills_test_policy
+        fail_msg: "Policy: {{ claude_code_skills_policy | to_json }}"
+        success_msg: PASSED claude_code_skills accepts 1 wake-up and 1 hour.
+
+    - name: Compute the skills with the most hours
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery: true
+        claude_code_skills_loop_to_delivery_max_hours: "168"
+
+    - name: Check 168 hours (7 days) are accepted
+      vars:
+        __claude_code_skills_test_hours: 168
+      ansible.builtin.assert:
+        that: claude_code_skills_policy == __claude_code_skills_test_policy
+        fail_msg: "Policy: {{ claude_code_skills_policy | to_json }}"
+        success_msg: PASSED claude_code_skills accepts 168 hours, the most a recurring job lasts.
+
+    - name: Compute the skills with loop-to-delivery on and agent teams on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_agent_teams: true
+
+    - name: Check loop-to-delivery does not need agent teams off
+      ansible.builtin.assert:
+        that: claude_code_skills_policy == __claude_code_skills_test_policy
+        success_msg: PASSED loop-to-delivery works with agent teams on.
+
+- name: Check claude_code_skills stops at values it cannot use, naming them
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    # FR-1: the loop is not run without qa-budget's guard, which keeps its
+    # wake-ups inside the subscription's budget. The message names both settings
+    # and says why.
+    - name: Try loop-to-delivery on and qa-budget off
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: false
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery
+          - claude_code_settings_qa_budget
+          - guard
+
+    - name: Try loop-to-delivery on and qa-budget not set at all
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery
+          - claude_code_settings_qa_budget
+
+    - name: Try loop-to-delivery on and qa-budget off, as -e passes them
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: "true"
+        claude_code_settings_qa_budget: "false"
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery
+          - claude_code_settings_qa_budget
+
+    # FR-1 comes first: with qa-budget off, a bad limit does not hide it.
+    - name: Try qa-budget off and a maximum of 0 wake-ups
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: false
+        claude_code_skills_loop_to_delivery_max_wakes: 0
+        __claude_code_skills_test_names:
+          - claude_code_settings_qa_budget
+        __claude_code_skills_test_not_names:
+          - max_wakes
+
+    - name: Try qa-budget off and a maximum of 169 hours
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: false
+        claude_code_skills_loop_to_delivery_max_hours: 169
+        __claude_code_skills_test_names:
+          - claude_code_settings_qa_budget
+        __claude_code_skills_test_not_names:
+          - max_hours
+
+    # The limits, with qa-budget on: a whole number of wake-ups above 0, of hours from 1 to 168.
+    - name: Try a maximum of 0 wake-ups
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery_max_wakes: 0
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery_max_wakes
+
+    - name: Try a negative maximum of wake-ups
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery_max_wakes: "-1"   # as -e passes it
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery_max_wakes
+
+    - name: Try a maximum of wake-ups that is not a number
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery_max_wakes: x
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery_max_wakes
+
+    - name: Try a maximum of 0 hours
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery_max_hours: 0
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery_max_hours
+
+    - name: Try a negative maximum of hours
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery_max_hours: "-1"   # as -e passes it
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery_max_hours
+
+    - name: Try a maximum of hours above a week, 169
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery_max_hours: 169
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery_max_hours
+          - "168"
+
+    - name: Try a maximum of hours that is not a number
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery_max_hours: x
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery_max_hours
+
+    - name: Try a loop-to-delivery setting that is not a boolean
+      ansible.builtin.include_tasks: tasks/stop.yml
+      vars:
+        claude_code_skills_loop_to_delivery: maybe
+        claude_code_settings_qa_budget: true
+        __claude_code_skills_test_names:
+          - claude_code_skills_loop_to_delivery
+
+    - name: Say what the stops proved
+      ansible.builtin.debug:
+        msg: >-
+          PASSED claude_code_skills stops at loop-to-delivery without qa-budget (off, unset, and as -e passes them),
+          naming both settings and the guard, and before any limit is looked at; and at 0, -1 and x wake-ups, 0, -1,
+          169 and x hours, and a loop setting that is not a boolean, naming the setting.
+
+- name: Run the hook program's unit tests with this ansible-core's Python
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    # The same suite runs in Claude Code's image with its Python 3.9
+    # (claude_code_podman's build_machine scenario).
+    - name: Run the unit tests of loop_to_delivery.py
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -I
+          - -B
+          - -m
+          - unittest
+          - discover
+          - -s
+          - "{{ playbook_dir }}/tests"
+          - -t
+          - "{{ playbook_dir }}/tests"
+      register: __claude_code_skills_test_unit
+      changed_when: false
+      failed_when: false
+
+    - name: Check the unit tests passed
+      ansible.builtin.assert:
+        that: __claude_code_skills_test_unit.rc == 0
+        fail_msg: "{{ __claude_code_skills_test_unit.stderr_lines[-60:] | join('\n') }}"
+        success_msg: >-
+          PASSED loop_to_delivery.py's unit tests: {{ __claude_code_skills_test_unit.stderr_lines[-3:] | join(' ') }}

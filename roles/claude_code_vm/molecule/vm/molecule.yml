@@ -5,7 +5,8 @@
 # stand-in in a network namespace) nor the host's own services, except the one
 # port and name it is given (as for GitLab on the host). Also checks the host's
 # settings file, Claude's token in the VM, that Claude Code starts there ready
-# to work, and that it finds the qa skill and its experts. Not part of `make test`:
+# to work, and that it finds the qa skill and its experts, and loop-to-delivery
+# (whose hook runs, and asks qa-budget's guard). Not part of `make test`:
 # run it with `sudo make test-vm-2.16` on a machine with KVM (claude_code_vm needs
 # ansible-core 2.16); CI runs it on GitHub's runners, which have KVM.
 scenario:
@@ -28,5 +29,11 @@ provisioner:
         claude_code_vm_host_names: [host-service.home.arpa]
         # A stand-in for the token of claude setup-token, which no output may show.
         claude_code_vm_oauth_token: sk-ant-oat01-aslib-test-stand-in-0123456789abcdef
-        # On, so that the idempotence step covers its files too.
+        # On, so that the idempotence step covers its files too. The loop needs
+        # qa-budget (its guard keeps the loop's wake-ups inside the budget), and
+        # its maximums differ from the defaults (5 and 24), which the hook must enforce.
         claude_code_settings_qa: true
+        claude_code_settings_qa_budget: true
+        claude_code_skills_loop_to_delivery: true
+        claude_code_skills_loop_to_delivery_max_wakes: 7
+        claude_code_skills_loop_to_delivery_max_hours: 48

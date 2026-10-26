@@ -9,13 +9,17 @@ argument_specs:
       - The container holds Claude Code and its tools, without a port. The project's config/ directory, with
         Claude's instructions CLAUDE.md, is mounted read-only as /etc/claude-code, where Claude Code reads them. Its
         policy managed-settings.json there is the base of aslib.infra.claude_code_settings (which claude_code_vm
-        installs too), the container's own part (files/managed-settings.container.json) and the project's
+        installs too), the part of aslib.infra.claude_code_skills (loop-to-delivery's hooks, when on, after
+        qa-budget's), the container's own part (files/managed-settings.container.json) and the project's
         config/managed-settings.json, merged in that order - later values win, lists combine. How a session starts
         (permission mode, model, effort, theme, agent teams, ultracode) is claude_code_settings' settings, the same
         names in every target, and so is the qa skill with its five experts (claude_code_settings_qa), which the
-        deploy adds to config/.claude/. The container's environment variables come from ansible/container.env, Claude's
-        sign-in too (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY). With podman_service_shared, Claude also works in
-        the shared zone, /opt/containers/shared/.
+        deploy adds to config/.claude/. The skills of aslib.infra.claude_code_skills (loop-to-delivery,
+        claude_code_skills_loop_to_delivery) are the same in every target too, and their files are added there. The
+        deploy stops when loop-to-delivery is on and qa-budget (claude_code_settings_qa_budget) is off. The
+        container's environment variables come from ansible/container.env, Claude's sign-in too
+        (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY). With podman_service_shared, Claude also works in the shared
+        zone, /opt/containers/shared/.
       - A deploy that still sets a setting of before 0.7.0 (claude_code_bypass_permissions, claude_code_memory, ...)
         stops, naming what replaced it.
       - Installs /usr/local/sbin/claude-code, for root, which runs Claude in the container, with or without a
@@ -74,7 +78,8 @@ argument_specs:
       claude_code_podman_base_image:
         type: str
         default: registry.access.redhat.com/ubi9/ubi
-        description: The image the Containerfile builds on (its BASE_IMAGE), which must have dnf. A mirror for one
+        description: The image the Containerfile builds on (its BASE_IMAGE), which must have dnf and /usr/bin/python3
+          (the Containerfile installs no python3 of its own, and loop-to-delivery's hook runs with it). A mirror for one
           environment belongs in the build machine's registries.conf instead.
       claude_code_podman_repository:
         type: str

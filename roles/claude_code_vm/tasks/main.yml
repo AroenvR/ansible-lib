@@ -328,4 +328,7 @@
     claude_code_settings_ultracode: "{{ claude_code_settings_ultracode }}"
     claude_code_settings_qa: "{{ claude_code_settings_qa }}"
     claude_code_settings_qa_budget: "{{ claude_code_settings_qa_budget }}"
+    claude_code_skills_loop_to_delivery: "{{ claude_code_skills_loop_to_delivery }}"
+    claude_code_skills_loop_to_delivery_max_wakes: "{{ claude_code_skills_loop_to_delivery_max_wakes }}"
+    claude_code_skills_loop_to_delivery_max_hours: "{{ claude_code_skills_loop_to_delivery_max_hours }}"
   changed_when: false

@@ -59,10 +59,13 @@ order, from:
    directory a session starts in, and Claude kept away from `.env` files and
    from the files that would run code at its next start (hooks, `.mcp.json`,
    `.git/config`);
-2. aslib.infra's settings for the container: its memory in
+2. aslib.infra's skills, when you turn them on: the hooks of loop-to-delivery
+   (`claude_code_skills_loop_to_delivery` in `ansible/group_vars/all/project.yml`),
+   after those of qa-budget;
+3. aslib.infra's settings for the container: its memory in
    `/opt/claude-code/memory`, and its own login and config (`.claude/`) and the
    instruction files in its home out of its reach;
-3. `config/managed-settings.json`, this project's: `{}` to start, for what the
+4. `config/managed-settings.json`, this project's: `{}` to start, for what the
    project adds or changes.
 
 A later value replaces an earlier one, blocks such as `env` merge key by key,

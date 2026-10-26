@@ -12,7 +12,8 @@ argument_specs:
         playbook aslib.infra.claude_code_vm runs both; one host per run.
       - The settings a person chooses live on the host in /etc/claude-vm/settings.yml (root's, 0600, as it may hold
         the token) - the VM's size, network, keys, host ports and names, the token, and how Claude Code's sessions
-        start (claude_code_settings_*, see aslib.infra.claude_code_settings). A run without the file writes it, every
+        start and its skills (claude_code_settings_*, see aslib.infra.claude_code_settings, and claude_code_skills_*, see
+        aslib.infra.claude_code_skills). A run without the file writes it, every
         setting at the value the run uses, each with a comment; a later run adds the settings it lacks the same way and
         never changes a line that is there. Every run then takes its values from the file, over the inventory's, and
         checks them as options; -e still wins for that run. The download sources and the debugging options stay
@@ -114,10 +115,11 @@ argument_specs:
         apt repositories below (each key checked against its known fingerprint) and installs Podman, git, make,
         Python 3.11 next to Ubuntu's 3.12 (aslib.infra's test venvs run ansible-core 2.14 on it, as RHEL 9.6 does) and
         Claude Code, with the policy of aslib.infra.claude_code_settings (what Claude Code's container starts from
-        too) as /etc/claude-code/managed-settings.json and its files in /etc/claude-code/.claude/ (the qa skill and its
-        experts, with claude_code_settings_qa), Claude's token and the claude command
-        (/usr/local/bin/claude), which starts Claude Code with it, and a .claude.json for claude, where missing, so
-        that its first start asks nothing.
+        too, with the hooks of loop-to-delivery where it is on) as /etc/claude-code/managed-settings.json and its files
+        in /etc/claude-code/.claude/ (the qa skill and its experts, with claude_code_settings_qa), the files of
+        aslib.infra.claude_code_skills there too (loop-to-delivery, with claude_code_skills_loop_to_delivery), Claude's
+        token and the claude command (/usr/local/bin/claude), which starts Claude Code with it, and a .claude.json for
+        claude, where missing, so that its first start asks nothing.
       - Needs the internet, or mirrors of the repositories below and Ubuntu's.
     options:
       claude_code_vm_authorized_keys:

@@ -130,7 +130,7 @@ without taking another's account, UID or files.
 | Scenario | For roles that run on | Runs in | Make target |
 |---|---|---|---|
 | `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
-| `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code_podman`'s setup and image, `claude_code_settings`) | The machine running the tests | `make test-build-machine-<ansible-core>` |
+| `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code_podman`'s setup and image, `claude_code_settings`, `claude_code_skills`, which also runs the unit tests of its hook program) | The machine running the tests | `make test-build-machine-<ansible-core>` |
 | `roles/claude_code_vm/molecule/vm/` | A host with KVM (`claude_code_vm`, its settings file and the real Claude Code in the VM) | The machine running the tests, which needs KVM; not part of `make test`; with 2.16 only. It deletes `/etc/claude-vm/settings.yml` first and removes the VM at the end | `sudo make test-vm-2.16` |
 | `roles/gitlab/molecule/gitlab/` | A server running GitLab (`gitlab`) | The RHEL 9 test server; needs Docker Hub, about 4 GB of memory, 15 GB of disk and half an hour, so not part of `make test` (with `gitlab_test_real: false` in its `vars/test.yml`, a stand-in takes minutes, offline) | `make test-gitlab-<ansible-core>` |
 
@@ -329,7 +329,7 @@ roles meet through their documented interfaces, and the checks come first.
 | Index | The family's bare name, where it is a role (`claude_code`): its README maps the family, and it runs nothing itself |
 | Class | A role, doing one job |
 | Interface | A role's `meta/argument_specs.yml`, and the facts its README says it hands over (`claude_code_settings_policy`) |
-| Utility | A role that others include for what they share, and that changes nothing itself (claude_code_settings) |
+| Utility | A role that others include for what they share, and that changes nothing itself (claude_code_settings, claude_code_skills) |
 | Constructor parameters | Variables in `defaults/main.yml`, documented and validated in `meta/argument_specs.yml` |
 | Public methods | Extra entry points: `tasks/<name>.yml` plus an `argument_specs` entry, called with `include_role` and `tasks_from` |
 | Private members (by convention) | Task files without an `argument_specs` entry, and variables prefixed `__<role>_` |
@@ -351,7 +351,8 @@ roles meet through their documented interfaces, and the checks come first.
   carries both names, its domain first: claude_code_podman is a Claude Code
   role built on podman_service.
 - What two roles share lives in a role of its own that both include
-  (claude_code_settings for claude_code_podman and claude_code_vm). A role
+  (claude_code_settings and claude_code_skills for claude_code_podman and
+  claude_code_vm). A role
   does not take what another role owns from that role's folder: it includes
   that role and uses what its interface hands over. For now, the setups of
   node_setup and claude_code_podman still share their templates of a project's

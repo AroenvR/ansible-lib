@@ -17,7 +17,8 @@ job from start to end.
 | [claude_code](../roles/claude_code/README.md) | The index of the Claude Code roles below; runs nothing | - | No |
 | [claude_code_podman](../roles/claude_code_podman/README.md) | Writes a Claude Code project, builds its image, deploys it as an always-on service with podman_service, and the `claude-code` command for root | The project's machine, the build machine, servers (RHEL 9.6+) | To build: Red Hat's registry and UBI repositories, Anthropic's repository and GitHub (nvm). To deploy: only if acl is missing |
 | [claude_code_vm](../roles/claude_code_vm/README.md) | A VM for Claude Code with sudo, on a host with KVM, kept away from the local network (proof of concept) | Hosts with KVM (Ubuntu 24.04+), with ansible-core 2.16+ | Yes: packages, Ubuntu's cloud image, Anthropic's and the deadsnakes repositories |
-| [claude_code_settings](../roles/claude_code_settings/README.md) | How a Claude Code session starts (permission mode, model, effort, theme, agent teams, ultracode) and the qa skill with its five experts (off by default), the same in the container and the VM, which both include it | Wherever the role that includes it runs | No |
+| [claude_code_settings](../roles/claude_code_settings/README.md) | How a Claude Code session starts (permission mode, model, effort, theme, agent teams, ultracode), the qa skill with its five experts and qa-budget, which keeps agent work within a budget of the subscription (both off by default), the same in the container and the VM, which both include it | Wherever the role that includes it runs | No |
+| [claude_code_skills](../roles/claude_code_skills/README.md) | The skills Claude Code gets, off by default: for now loop-to-delivery, which keeps long work going until it is delivered and needs qa-budget; the same in the container and the VM, which both include it | Wherever the role that includes it runs | No |
 | [gitlab](../roles/gitlab/README.md) | GitLab Community Edition as a rootless Podman service, with podman_service, set up for a private instance without email (proof of concept) | Servers (RHEL 9.6+) | The Ansible machine: Docker Hub or a mirror (`gitlab_image`), for the image. The server: no |
 
 Each role's options: [Role options](#role-options).
@@ -73,4 +74,5 @@ each README covers its options:
 | claude_code_podman | [Options](../roles/claude_code_podman/README.md#options); the service's settings are podman_service's |
 | claude_code_vm | [Settings](../roles/claude_code_vm/README.md#settings), [Options](../roles/claude_code_vm/README.md#options) |
 | claude_code_settings | [Settings](../roles/claude_code_settings/README.md#settings), for both claude_code_podman and claude_code_vm |
+| claude_code_skills | [Settings](../roles/claude_code_skills/README.md#settings), for both claude_code_podman and claude_code_vm |
 | gitlab | [Its settings](../roles/gitlab/README.md#its-settings), [Options](../roles/gitlab/README.md#options) |

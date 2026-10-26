@@ -11,6 +11,11 @@
     __claude_code_podman_test_tools: [git, ssh, jq, less, which, find, diff, patch, file, ps, ip, vi, tar, gzip, unzip, xz,
                                       zstd, rsync, python3.12, pip3.12, gcc, g++, make, node, npm, sqlite3, mysql, psql]
     __claude_code_podman_test_commands: "{{ ['claude'] + (__claude_code_podman_test_tools if claude_code_podman_test_real | bool else []) }}"
+    # claude_code_skills' unit tests and its hook program (test data here; no role reads them at run time),
+    # and qa-budget's guard, which the program asks when a wake-up arrives (claude_code_settings' file).
+    __claude_code_podman_test_suite_dir: "{{ (__claude_code_podman_test_roles ~ '/claude_code_skills/molecule/build_machine/tests') | realpath }}"
+    __claude_code_podman_test_program_dir: "{{ (__claude_code_podman_test_roles ~ '/claude_code_skills/files/skills/loop-to-delivery') | realpath }}"
+    __claude_code_podman_test_guard_dir: "{{ (__claude_code_podman_test_roles ~ '/claude_code_settings/files/qa-budget') | realpath }}"
   tasks:
     - name: Inspect the environment file
       ansible.builtin.stat:
@@ -52,6 +57,29 @@
             == lookup('file', __claude_code_podman_test_roles ~ '/podman_service/templates/service.container.j2')
         success_msg: PASSED claude_code_podman wrote ansible/ with its playbooks, guide, Quadlet template and git rules.
 
+    # loop-to-delivery's settings, which claude_code_skills owns, and qa-budget, which the deploy checks it with.
+    - name: Check both settings files list loop-to-delivery's settings at their defaults, and name the role
+      vars:
+        __claude_code_podman_test_text: "{{ lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/' ~ item) }}"
+        __claude_code_podman_test_settings: "{{ __claude_code_podman_test_text | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery is defined
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery is false
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery_max_wakes is defined
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery_max_wakes == 5
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery_max_hours is defined
+          - __claude_code_podman_test_settings.claude_code_skills_loop_to_delivery_max_hours == 24
+          # The loop needs it (FR-1), and the deploy reads it as a group variable.
+          - __claude_code_podman_test_settings.claude_code_settings_qa_budget is defined
+          - __claude_code_podman_test_settings.claude_code_settings_qa_budget is false
+          - __claude_code_podman_test_text is search('aslib[.]infra[.]claude_code_skills')
+        fail_msg: "{{ item }}: {{ __claude_code_podman_test_text }}"
+        success_msg: >-
+          PASSED claude_code_podman: {{ item }} lists claude_code_skills_loop_to_delivery (off), its 5 wake-ups and 24 hours
+          and claude_code_settings_qa_budget (off), and names aslib.infra.claude_code_skills.
+      loop: [defaults.yml, project.yml]
+
     # Both settings files must hold exactly the roles' defaults, or they would mislead.
     - name: Check both settings files hold every setting at the roles' default
       vars:
@@ -59,9 +87,11 @@
           {{ lookup('file', __claude_code_podman_test_roles ~ '/claude_code_podman/defaults/main.yml') | from_yaml
              | combine(lookup('file', __claude_code_podman_test_roles ~ '/podman_service/defaults/main.yml') | from_yaml,
                        __claude_code_podman_test_settings_defaults) }}
-        # Every setting of how a session starts, which claude_code_settings owns.
+        # Every setting of how a session starts, which claude_code_settings owns,
+        # and of the skills, which claude_code_skills owns.
         __claude_code_podman_test_settings_defaults: >-
-          {{ lookup('file', __claude_code_podman_test_roles ~ '/claude_code_settings/defaults/main.yml') | from_yaml }}
+          {{ lookup('file', __claude_code_podman_test_roles ~ '/claude_code_settings/defaults/main.yml') | from_yaml
+             | combine(lookup('file', __claude_code_podman_test_roles ~ '/claude_code_skills/defaults/main.yml') | from_yaml) }}
         __claude_code_podman_test_settings: "{{ lookup('file', __claude_code_podman_test_dir ~ '/group_vars/all/' ~ item) | from_yaml }}"
       ansible.builtin.assert:
         that:
@@ -103,7 +133,8 @@
     # What the deploy relies on: user 1001 with its home in /opt/claude-code, and
     # the policy read from /etc/claude-code, which is that home's config/. The
     # command module expands $HOME itself, hence printenv. A real image also has
-    # its tools, Node.js 24, and nvm in login shells.
+    # its tools, Node.js 24, nvm in login shells, and the base image's
+    # /usr/bin/python3, which loop-to-delivery's hook runs with.
     - name: Look up the image's user, home, policy directory and commands
       ansible.builtin.command:
         argv:
@@ -117,7 +148,8 @@
             id -u; printenv HOME; readlink /etc/claude-code;
             for c in {{ __claude_code_podman_test_commands | join(' ') }}; do command -v "$c" >/dev/null || echo "missing $c"; done;
             {{ "node --version | grep -q '^v24[.]' || echo 'node is not 24';
-                bash -lc 'nvm --version' >/dev/null 2>&1 || echo 'no nvm in a login shell'"
+                bash -lc 'nvm --version' >/dev/null 2>&1 || echo 'no nvm in a login shell';
+                test -x /usr/bin/python3 || echo 'no /usr/bin/python3, which runs loop-to-delivery'"
                if claude_code_podman_test_real | bool else ':' }}
       register: __claude_code_podman_test_image
       changed_when: false
@@ -152,6 +184,67 @@
           PASSED images/ holds claude-code-{{ __claude_code_podman_test_version }}.tar; its Claude Code says
           "{{ __claude_code_podman_test_claude.stdout }}" and runs as 1001 in /opt/claude-code with
           {{ __claude_code_podman_test_commands | join(', ') }}{{ ', every package up to date' if claude_code_podman_test_real | bool else '' }}.
+
+    # loop-to-delivery's hook runs with the image's /usr/bin/python3 -I (3.9 on
+    # UBI 9), and asks qa-budget's guard in the same process, so claude_code_skills'
+    # whole unit suite runs there too, from read-only mounts (-B: no __pycache__),
+    # finding the program through LOOP_TO_DELIVERY_PROGRAM and the guard (which
+    # needs its ledger.py next to it) through LOOP_TO_DELIVERY_GUARD.
+    - name: Look up loop-to-delivery's program in claude_code_skills and qa-budget's guard in claude_code_settings
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ __claude_code_podman_test_program_dir }}/loop_to_delivery.py"
+        - "{{ __claude_code_podman_test_guard_dir }}/guard.py"
+        - "{{ __claude_code_podman_test_guard_dir }}/ledger.py"
+      register: __claude_code_podman_test_program
+      when: claude_code_podman_test_real | bool
+
+    - name: Run claude_code_skills' unit tests in the image, with its Python
+      ansible.builtin.command:
+        argv:
+          - podman
+          - run
+          - --rm
+          - -v
+          - "{{ __claude_code_podman_test_suite_dir }}:/suite:ro"
+          - -v
+          - "{{ __claude_code_podman_test_program_dir }}:/program:ro"
+          - -v
+          - "{{ __claude_code_podman_test_guard_dir }}:/guard:ro"
+          - -e
+          - LOOP_TO_DELIVERY_PROGRAM=/program/loop_to_delivery.py
+          - -e
+          - LOOP_TO_DELIVERY_GUARD=/guard/guard.py
+          - localhost/claude-code:{{ __claude_code_podman_test_version | default('none') }}
+          - /usr/bin/python3
+          - -I
+          - -B
+          - -m
+          - unittest
+          - discover
+          - -s
+          - /suite
+          - -t
+          - /suite
+      register: __claude_code_podman_test_unit
+      changed_when: false
+      failed_when: false
+      when: claude_code_podman_test_real | bool and __claude_code_podman_test_program.results | map(attribute='stat.exists') | min
+
+    - name: Check the unit tests passed with the image's Python
+      ansible.builtin.assert:
+        that:
+          - __claude_code_podman_test_program.results | map(attribute='stat.exists') | min
+          - __claude_code_podman_test_unit.rc == 0
+        fail_msg: >-
+          {{ 'Missing: ' ~ (__claude_code_podman_test_program.results | rejectattr('stat.exists') | map(attribute='item') | list | join(', '))
+             if not (__claude_code_podman_test_program.results | map(attribute='stat.exists') | min)
+             else (__claude_code_podman_test_unit.stderr_lines | default(['skipped']))[-60:] | join('\n') }}
+        success_msg: >-
+          PASSED claude_code_skills' unit tests pass in the image with /usr/bin/python3 -I, the guard of qa-budget included:
+          {{ (__claude_code_podman_test_unit.stderr_lines | default(['skipped']))[-3:] | join(' ') }}
+      when: claude_code_podman_test_real | bool
 
     # The update, as a developer would run it: from the project's ansible/ directory,
     # with its ansible.cfg and, since playbooks find the project through it, PWD.

@@ -1,0 +1,21 @@
+---
+# Checks what claude_code_skills hands its targets: its defaults, loop-to-delivery
+# on with qa-budget on (and the stop when qa-budget is off or unset, with the
+# values as -e passes them), the hook policy with the defaults of 5 wake-ups
+# and 24 hours and with other values, the stops (a maximum of wake-ups or hours
+# that is not a whole number in its bounds, values that are not booleans), the
+# hook command where its program is absent, and the hook program's unit tests
+# with this ansible-core's Python. Nothing to set up: the role only computes,
+# where Ansible runs.
+scenario:
+  name: build_machine
+driver:
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      # The tested ansible-core's own Python, see node_image's build_machine scenario.
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+platforms:
+  - name: localhost

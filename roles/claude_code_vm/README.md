@@ -92,7 +92,16 @@ and each project's `CLAUDE.md`, which are yours and Claude's.
 With `claude_code_settings_qa: true`, change requests go through the [qa skill
 and its five expert subagents](../claude_code_settings/README.md#the-qa-skill-and-its-five-experts),
 which every run installs in `/etc/claude-code/.claude/`; with `false` (the
-default), a run removes them and leaves any other file there alone.
+default), a run removes them and leaves any other file there alone. With
+`claude_code_skills_loop_to_delivery: true`, Claude keeps long work going by
+itself until it is delivered: [loop-to-delivery](../claude_code_skills/README.md#the-loop-to-delivery-skill),
+installed the same way, with its hooks in the policy. It needs
+`claude_code_settings_qa_budget: true`, whose guard keeps the loop's wake-ups
+within the subscription's budget ([how](../claude_code_skills/README.md#how-it-stays-inside-the-budget)):
+a run with the loop on and qa-budget off stops, naming both, before it touches
+the VM. A loop gets at most 5 wake-ups and 24 hours by default
+(`claude_code_skills_loop_to_delivery_max_wakes` and `_max_hours`). Both skills
+are off by default.
 
 aslib.infra's tests run there as in CI (`<repository>` is the URL of the
 aslib.infra repository you use):
@@ -145,7 +154,15 @@ claude_code_vm_memory: 6144
 claude_code_settings_theme: light
 claude_code_settings_permission_mode: default   # with permission prompts
 claude_code_settings_qa: true                    # the qa skill and its experts
+claude_code_settings_qa_budget: true             # qa-budget, which the loop needs
+claude_code_skills_loop_to_delivery: true        # Claude keeps long work going until it is delivered
+claude_code_skills_loop_to_delivery_max_wakes: 5
+claude_code_skills_loop_to_delivery_max_hours: 24
 ```
+
+A file written by an earlier version gets the three loop settings appended at
+the next run, at the value that run uses (off, 5 and 24 unless you gave others);
+no line there changes. Raise the limits there once you have seen the budget hold.
 
 The download sources (image, repositories, keys) and the debugging options
 are not in it: they stay aslib.infra's, so that an update can change them. A
@@ -225,7 +242,8 @@ VM as it was made.
 ## Options
 
 `ansible-doc -t role aslib.infra.claude_code_vm` (entry points `main`, `guest`,
-`remove`, and for debugging `overview` and `boot_trial`), and
-`ansible-doc -t role aslib.infra.claude_code_settings` for how sessions start.
+`remove`, and for debugging `overview` and `boot_trial`),
+`ansible-doc -t role aslib.infra.claude_code_settings` for how sessions start and
+`ansible-doc -t role aslib.infra.claude_code_skills` for the skills.
 A setting of before 0.7.0 (`claude_vm_*`) stops the run, naming it: rename it
 `claude_code_vm_*`.

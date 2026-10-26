@@ -6,6 +6,39 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 
 ## 0.9.0
 
+- Added: role `claude_code_skills`, the skills Claude Code gets, with the same
+  names and defaults in the container and the VM. For now it holds one skill,
+  loop-to-delivery, off by default; turning it off removes its files and hooks
+  at the next run or deploy. The targets include it after claude_code_settings
+  and merge its part into the policy, after qa-budget's hooks.
+- Added: the skill loop-to-delivery, turned on with
+  `claude_code_skills_loop_to_delivery: true`. For work that outlasts a turn,
+  such as a change request or waiting on CI, a review or an answer, Claude
+  keeps notes and a wake-up job every half hour while the conversation is idle,
+  so that the work goes on after an interruption (a rate or credit limit, a
+  closed laptop) until it is delivered. Hooks in the policy run a small Python
+  program that lets a wake-up through only for the conversation that started
+  the loop and within its limits, and blocks it otherwise before it costs a
+  model call. A person's own prompts are never blocked. It needs
+  `/usr/bin/python3`: the VM's Ubuntu has it, the container's base image must
+  provide it (UBI 9 does). Claude's loops are listed and stopped with the
+  program's `status` and `stop`; the role's README says how.
+- Added: the loop needs qa-budget. A run or deploy with
+  `claude_code_skills_loop_to_delivery: true` while
+  `claude_code_settings_qa_budget` is off stops, naming both settings. The
+  loop's wake-ups begin with an `[auto loop-to-delivery <id>]` tag, so
+  qa-budget's guard treats them as turns no person started: it blocks them at
+  its ceilings (weekly 60%, 5-hour 90%) and at the subscription's limit, and
+  they never go into extra usage. The loop asks the guard itself when a wake-up
+  arrives (through the new function `prompt_block` in `guard.py`), and when the
+  guard blocks one the loop ends for good: it does not resume when the usage
+  drops, and Claude is told why at the next prompt a person starts. A guard
+  that cannot be asked ends the loop as well.
+- Added: the loop's own limits are settings, small on purpose so that they can
+  be raised once the budget has held: `claude_code_skills_loop_to_delivery_max_wakes`
+  (5 by default) and `claude_code_skills_loop_to_delivery_max_hours` (24 by
+  default, at most 168: a recurring job expires after 7 days). A loop also ends
+  after 6 wake-ups in a row without progress.
 - Added: `claude_code_settings_qa_budget` (off by default) installs qa-budget
   in `/etc/claude-code/qa-budget/`, in the container and the VM, which keeps
   agent work within a budget of the subscription. A status line shows the
@@ -31,8 +64,9 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   hour) before it installs the host's missing packages; with stale lists, apt
   asked the mirror for files it no longer had (404), as on CI runners.
 - Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
-  files on the machine it runs on, without the rest of the VM's guest setup,
-  for Claude's own VM to apply a branch's settings to itself.
+  files, and loop-to-delivery's, on the machine it runs on, without the rest of
+  the VM's guest setup, for Claude's own VM to apply a branch's settings to
+  itself.
 
 ### Upgrading from 0.8.0
 
@@ -44,6 +78,29 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - In a container project (claude_code_podman), the policy is read-only, so
   nothing changes. The project can add deny rules in `config/managed-settings.json`
   (lists combine with the base's).
+- A VM host: the next run appends the loop's three settings to the settings
+  file, `/etc/claude-vm/settings.yml`, that 0.8.0 wrote, at the value that run
+  uses (`claude_code_skills_loop_to_delivery: false`, `_max_wakes: 5`,
+  `_max_hours: 24`) and changes no line there.
+- A Claude Code project (container) set up with 0.8.0 has no loop settings in
+  `ansible/group_vars/all/project.yml`, and the roles' defaults apply (loop off,
+  5 and 24). `ansible-playbook update-playbooks.yml` writes them into
+  `defaults.yml`.
+- To turn the loop on, set `claude_code_skills_loop_to_delivery: true` (in the
+  VM's settings file, or the project's `project.yml`) together with
+  `claude_code_settings_qa_budget: true`: with qa-budget off the run stops,
+  naming both. Raise `_max_wakes` and `_max_hours` once the budget has held on
+  your subscription. Sessions that were open before may not have the hooks:
+  start new ones. Turn the loop off only with no loop running, or after ending
+  the sessions that hold one (`status` shows the loops): otherwise each such job
+  costs one model call before Claude deletes it.
+- A playbook of your own that installs claude_code_settings' files and policy
+  and should offer the loop includes claude_code_skills after it, and installs
+  its files and merges its part of the policy too.
+- Rolling back to 0.8.0: turn the loop off first, or remove
+  `/etc/claude-code/.claude/skills/loop-to-delivery/` by hand, as 0.8.0 does not
+  know it and the skill would stay without its hooks. A VM host's settings file
+  must lose the `claude_code_skills_*` lines too, or 0.8.0 stops on them.
 
 ## 0.8.0
 

@@ -105,6 +105,14 @@ minute, also while an expert runs.
 | Any tool, at the limit | Runs (the person may go into extra usage) | Denied: pause |
 | An expert's tool call, once its run used its token budget | Denied: the expert reports now | The same |
 
+[loop-to-delivery](../claude_code_skills/README.md#how-it-stays-inside-the-budget)
+needs qa-budget: its wake-ups are such automatic prompts, and its hook asks the
+guard itself whether to let one through, by calling `prompt_block(moment)` in
+`guard.py`, which returns why an automatic prompt is not run (a ceiling or the
+limit is reached) or `None`. That function and the guard's path,
+`/etc/claude-code/qa-budget/guard.py`, are an interface that
+claude_code_skills relies on.
+
 | Limit | Default | Environment variable |
 |---|---|---|
 | Weekly ceiling for agent work | 60% of the 7-day window | `QA_BUDGET_WEEKLY` |

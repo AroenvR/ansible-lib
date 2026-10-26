@@ -1,6 +1,7 @@
 ---
 # A value outside a setting's type or choices: the run stops, naming the
-# setting, and shows no token. The file gets its own value back.
+# setting (and the words of `also`, when the case has them), and shows no token.
+# The file gets its own value back.
 - name: Note the settings file as it is
   ansible.builtin.set_fact:
     __claude_code_vm_test_good: "{{ lookup('file', __claude_code_vm_test_file, rstrip=false) }}"
@@ -36,6 +37,7 @@
     that:
       - __claude_code_vm_test_bad.rc != 0
       - __claude_code_vm_test_said is search(__claude_code_vm_test_invalid.setting)
+      - __claude_code_vm_test_invalid.also | default([]) | reject('in', __claude_code_vm_test_said) | list == []
       - __claude_code_vm_test_said is not search(__claude_code_vm_test_token)
     fail_msg: "{{ __claude_code_vm_test_bad.stderr_lines[-10:] | default([]) }}"
     success_msg: >-

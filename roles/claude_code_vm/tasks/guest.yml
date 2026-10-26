@@ -2,8 +2,9 @@
 # Entry point "guest": runs in the VM, as claude, who may use sudo. Sets up what
 # Claude Code and aslib.infra's tests need: Podman, git, make, Python 3.11 next to
 # Ubuntu's 3.12, and Claude Code from Anthropic's signed repository with the
-# settings of aslib.infra.claude_code_settings and Claude's token. Running it
-# again changes nothing.
+# settings of aslib.infra.claude_code_settings, the skills of
+# aslib.infra.claude_code_skills and Claude's token. Running it again changes
+# nothing.
 - name: Wait until the VM lets Ansible in
   ansible.builtin.wait_for_connection:
     timeout: 600
@@ -117,6 +118,11 @@
   ansible.builtin.include_role:
     name: aslib.infra.claude_code_settings
 
+# Where loop-to-delivery is on and qa-budget is off, the run stops here.
+- name: Compute Claude Code's skills
+  ansible.builtin.include_role:
+    name: aslib.infra.claude_code_skills
+
 - name: Create /etc/claude-code, where Claude Code reads its policy
   ansible.builtin.file:
     path: /etc/claude-code
@@ -125,45 +131,56 @@
     group: root
     mode: "0755"
 
-- name: Install Claude Code's policy
-  ansible.builtin.copy:
-    content: "{{ claude_code_settings_policy | to_nice_json(indent=2, sort_keys=False) }}\n"
-    dest: /etc/claude-code/managed-settings.json
-    owner: root
-    group: root
-    mode: "0644"
-
-# claude_code_settings' files in /etc/claude-code/.claude/ (the qa skill and its
-# experts, when on), like the policy. Those of features that are off go; any
-# other file there stays.
-- name: Create the folders of claude_code_settings' files
+# qa-budget's files in /etc/claude-code/qa-budget/ and the qa skill's in
+# .claude/ (claude_code_settings', when on), and claude_code_skills' in
+# /etc/claude-code/.claude/ (the skills that are on), like the policy. They come
+# before the policy, whose hooks run their programs, and those of what is off go
+# after it; any other file there stays.
+- name: Create the folders of claude_code_settings' and claude_code_skills' files
   ansible.builtin.file:
     path: /etc/claude-code/{{ __claude_code_vm_folder }}
     state: directory
     owner: root
     group: root
     mode: "0755"
-  loop: "{{ claude_code_settings_files | map(attribute='name') | map('dirname') | unique | list }}"
+  loop: "{{ (claude_code_settings_files + claude_code_skills_files) | map(attribute='name') | map('dirname') | unique | list }}"
   loop_control:
     loop_var: __claude_code_vm_folder
 
-- name: Install claude_code_settings' files
+- name: Install claude_code_settings' and claude_code_skills' files
   ansible.builtin.copy:
     src: "{{ __claude_code_vm_file.src }}"
     dest: /etc/claude-code/{{ __claude_code_vm_file.name }}
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ claude_code_settings_files }}"
+  loop: "{{ claude_code_settings_files + claude_code_skills_files }}"
   loop_control:
     loop_var: __claude_code_vm_file
     label: "{{ __claude_code_vm_file.name }}"
 
-- name: Remove claude_code_settings' files of the features that are off
+# claude_code_settings' base (with qa-budget's status line and hooks, when on)
+# and claude_code_skills' part (loop-to-delivery's hooks, when on, after
+# qa-budget's).
+# Merged in a variable, and the filter last in a one-line expression: with a line
+# break before the filter, Ansible turns the text into a dict and writes it as
+# one line of JSON, without the final line break.
+- name: Install Claude Code's policy
+  vars:
+    __claude_code_vm_policy: >-
+      {{ claude_code_settings_policy | combine(claude_code_skills_policy, recursive=True, list_merge='append_rp') }}
+  ansible.builtin.copy:
+    content: "{{ __claude_code_vm_policy | to_nice_json(indent=2, sort_keys=False) }}\n"
+    dest: /etc/claude-code/managed-settings.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Remove the files of claude_code_settings and claude_code_skills, where the features are off
   ansible.builtin.file:
     path: /etc/claude-code/{{ __claude_code_vm_absent }}
     state: absent
-  loop: "{{ claude_code_settings_absent }}"
+  loop: "{{ claude_code_settings_absent + claude_code_skills_absent }}"
   loop_control:
     loop_var: __claude_code_vm_absent
 

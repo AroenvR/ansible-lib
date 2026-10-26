@@ -61,8 +61,13 @@ writes: change it there and run the playbook again
 `claude_code_settings_qa: true` there, a request to change a project goes
 through the [qa
 skill](../roles/claude_code_settings/README.md#the-qa-skill-and-its-five-experts)
-and its five experts; off by default, as its names win over skills and agents
-of your own.
+and its five experts; with `claude_code_skills_loop_to_delivery: true` (and
+`claude_code_settings_qa_budget: true`, which it needs: a run with the loop on
+and qa-budget off stops, naming both), Claude [keeps long
+work going](../roles/claude_code_skills/README.md#the-loop-to-delivery-skill) by
+itself until it is delivered, within [the budget](../roles/claude_code_skills/README.md#how-it-stays-inside-the-budget)
+and at most 5 wake-ups and 24 hours a loop. Both are off by default, as their
+names win over skills and agents of your own.
 
 To work on aslib.infra there, clone it in the VM (`<repository>` is the URL of
 the aslib.infra repository you use) and run its tests as CI does; the rest is

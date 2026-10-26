@@ -17,8 +17,9 @@ roles (node_setup, node_image, node_deploy) take a Node.js backend from project
 to running service, and the `claude_code_` roles, indexed by `claude_code`,
 run Claude Code: claude_code_podman as an always-on agent for root,
 claude_code_vm in a VM where it may have root, for development, both starting
-sessions as claude_code_settings says. gitlab runs GitLab CE as a rootless
-Podman service. node_deploy, claude_code_podman and gitlab
+sessions as claude_code_settings says and offering the skills that
+claude_code_skills holds (loop-to-delivery for now). gitlab runs GitLab CE as a
+rootless Podman service. node_deploy, claude_code_podman and gitlab
 are thin layers over podman_service. Consumers install a release tarball that
 holds only runtime files; tests and tooling never ship (`build_ignore` in
 `galaxy.yml`). What it offers and how it is used: [README.md](README.md), and
@@ -524,6 +525,31 @@ the entry says it is likely or not verified yet.
   `default` and `acceptEdits` (so refused in a `-p` run), refused in
   `dontAsk`; allow rules don't change that (documented; seen in a `-p` run
   with acceptEdits).
+- Claude Code (2.1.292, verified 2026-10-20) runs the hooks of the managed policy
+  for UserPromptSubmit, Stop, StopFailure and the session events. A hook that
+  exits 1 lets the event pass and the transcript records it as
+  `hook_non_blocking_error`; exit 2 blocks. `python3 <missing file>` exits 2,
+  so as a hook it would block the person's prompt: loop-to-delivery's command
+  tests the file first (`[ -r P ] && ...`), which makes a missing program exit
+  1. The hooks of a skill's own frontmatter are not restored by `claude
+  --resume` (they fired before the resume only), so the loop's hooks are in the
+  policy. The hooks of one event run side by side, so one cannot read what
+  another decides on the same prompt: the loop's hook asks qa-budget's guard
+  itself (see Decisions).
+- A turn that ends in an API error such as a rate limit runs StopFailure, with
+  the turn's `prompt_id` and the error, and no Stop. A job that `CronCreate`
+  made during a turn is in the `session_crons` of that turn's first Stop. A
+  session-only job fires in an idle session as a prompt with the job's text,
+  and a UserPromptSubmit hook that blocks it stops that fire before any API
+  request; the job keeps firing. Durable jobs (`durable: true`) go to the
+  project's `.claude/scheduled_tasks.json` and resume in a new session;
+  `claude --resume` brings back a session-only job. Recurring jobs expire after
+  7 days.
+- `/clear` gives a new session id in the same process, with no link to the old
+  one, and a session-only job made before it keeps firing there: each fire is a
+  prompt with the new session id and the job's text. Compaction keeps the
+  session id. Whether a job follows a `/resume` switch or a fork is not
+  verified.
 
 ## Looking inside a running service (field notes)
 
@@ -550,6 +576,49 @@ podman_service service, a smoke test after a deploy).
 
 Each with its reason, newest first. A decision is changed by a new one here.
 
+- 2026-10-25, loop-to-delivery's hook program, the exception to "Markdown and
+  Ansible only" of the qa decision (which stands for qa): the maintainer asked
+  for work that keeps going across interruptions, and only a hook can block a
+  wake-up before it costs a model call and enforce limits (a maximum of
+  wake-ups and of hours, idle wake-ups in a row, one conversation). The skill
+  ships one Python program, `loop_to_delivery.py`, which the managed policy's
+  hooks (UserPromptSubmit, Stop, StopFailure) and Claude run. It uses only what
+  both targets already have: `/usr/bin/python3` (the VM's Ubuntu; the
+  container's base image, not the Containerfile), run with `-I`, the standard
+  library, no subprocess, no network, no new package or download. A hook that
+  fails never blocks the person's prompts; a wake-up without a working hook
+  costs at most one model call, as the job's own prompt has Claude delete the
+  job. Its state is in Claude's home, and its limits stop a runaway loop, not a
+  hostile model. Off by default.
+  It needs qa-budget (the maintainer's call): a run with the loop on and
+  `claude_code_settings_qa_budget` off stops, naming both, as the qa skill does
+  with agent teams. The loop's wake-ups begin with `[auto loop-to-delivery
+  <id>]`, which qa-budget's guard treats as automatic: blocked at the ceilings
+  and the limit, never into extra usage. As the hooks of one event run side by
+  side, the loop's hook cannot read the guard's decision from a file; it asks
+  the guard itself when a wake-up arrives, by calling `prompt_block(moment)` in
+  `guard.py` (the one function and the guard's path are the interface, so the
+  two cannot disagree on the rule), and a block ends the loop for good, also
+  after the usage has dropped. A guard that cannot be asked ends it too: it
+  never lets a wake-up through unchecked. The limits start small, 5 wake-ups
+  and 24 hours (at most 168, as a recurring job expires after 7 days), to be
+  raised once the budget has held; 6 wake-ups in a row without progress stays
+  a constant.
+- 2026-10-25, the skills as a role of their own, claude_code_skills: a utility
+  both targets include after claude_code_settings. For now it holds
+  loop-to-delivery only (the maintainer's order is one change per pull
+  request); the qa skill stays in claude_code_settings and follows later. It
+  hands over the files of the skills that are on, the paths of those that are
+  off, and a part of the policy (the loop's hooks, `{}` while it is off); the
+  targets install the files before the policy, whose hooks run the program, and
+  merge the part after claude_code_settings' base, so the loop's hooks come
+  after qa-budget's, and before their own. One job per role: how a session
+  starts and which skills it has change for different reasons. The role reads
+  `claude_code_settings_qa_budget` without declaring it, and knows one path of
+  another role's files, qa-budget's guard, which claude_code_settings' README
+  names as an interface. In the VM's host run, the settings file's values are
+  taken before either role is included, so the qa-budget check sees what the
+  file says.
 - 2026-10-25, deny rules of the base policy (pull request #35, after the
   maintainer's review): the policy no longer denies edits to `/etc/claude-code/`;
   the deny on `**/.claude/settings.json`, which the same pull request had
@@ -829,9 +898,10 @@ Each with its reason, newest first. A decision is changed by a new one here.
 
 ## Status
 
-Last updated 2026-10-19. v0.6.0 is the latest release; 0.7.0 (the Claude Code
-family, issue #25) is in accept, and 0.8.0 (the qa skill, issue #26) on its
-way from develop.
+Last updated 2026-10-25. v0.6.0 is the latest release; accept holds 0.7.0 (the
+Claude Code family, issue #25) and 0.8.0 (the qa skill, issue #26); develop
+holds the next version's work so far: qa-budget, and the role claude_code_skills
+with loop-to-delivery, which needs it (CHANGELOG.md's top section lists it).
 
 - CI passes every job before a release is tagged. Memory limits are checked
   only where cgroup v2 delegates the memory controller (CI's runners).
