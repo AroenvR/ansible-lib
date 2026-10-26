@@ -1,0 +1,18 @@
+---
+# What a target runs before it installs anything: the settings, then the skills,
+# with qa-budget on (loop-to-delivery needs it).
+- name: Compute Claude Code's settings and skills, as each target does
+  hosts: localhost
+  gather_facts: false
+  vars:
+    claude_code_settings_qa_budget: true
+  tasks:
+    - name: Compute the settings
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_settings
+
+    - name: Compute the skills, loop-to-delivery on
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_skills_loop_to_delivery: true

@@ -1,0 +1,36 @@
+---
+# What claude_code_skills ships for Claude Code's managed settings directory
+# (/etc/claude-code on Linux), as paths there: each comes from files/ with
+# .claude/ left out. A skill is its folder.
+__claude_code_skills_loop_files:
+  - .claude/skills/loop-to-delivery/SKILL.md
+  - .claude/skills/loop-to-delivery/loop_to_delivery.py
+
+# loop-to-delivery's hooks, in the policy (managed-settings.json): one command
+# for the three events, which the program tells apart. Its test keeps a missing
+# or unreadable program from making python3 exit 2, which would block the
+# person's prompt; /usr/bin/python3 -I runs it whatever PATH and PYTHON*
+# variables Claude's or a project's environment has. The program asks qa-budget's
+# guard whether a wake-up may run, and ends the loop when it may not (a guard it
+# cannot ask ends the loop too, so a missing guard is the program's business,
+# not the shell test's).
+__claude_code_skills_program: /etc/claude-code/.claude/skills/loop-to-delivery/loop_to_delivery.py
+# Where claude_code_settings installs qa-budget's guard in both targets: the one
+# path this role knows of another role's files (an interface, documented in
+# claude_code_settings' README).
+__claude_code_skills_budget_guard: /etc/claude-code/qa-budget/guard.py
+__claude_code_skills_hook_command: >-
+  [ -r {{ __claude_code_skills_program }} ] && /usr/bin/python3 -I {{ __claude_code_skills_program }}
+  hook --max-wakes {{ claude_code_skills_loop_to_delivery_max_wakes | int }}
+  --max-hours {{ claude_code_skills_loop_to_delivery_max_hours | int }}
+  --budget-guard {{ __claude_code_skills_budget_guard }}
+__claude_code_skills_hook:
+  - hooks:
+      - type: command
+        timeout: 30
+        command: "{{ __claude_code_skills_hook_command }}"
+__claude_code_skills_loop_policy:
+  hooks:
+    UserPromptSubmit: "{{ __claude_code_skills_hook }}"
+    Stop: "{{ __claude_code_skills_hook }}"
+    StopFailure: "{{ __claude_code_skills_hook }}"

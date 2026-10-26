@@ -1,0 +1,56 @@
+---
+# Entry point "main": computes the skills every target installs, as facts for
+# the role that includes this one. Changes nothing.
+
+# First, as the qa skill's stop with agent teams is in claude_code_settings:
+# an invalid limit does not hide it.
+- name: Check loop-to-delivery has qa-budget
+  ansible.builtin.assert:
+    that: not (claude_code_skills_loop_to_delivery | bool and not (claude_code_settings_qa_budget | default(false) | bool))
+    fail_msg: >-
+      claude_code_skills_loop_to_delivery needs claude_code_settings_qa_budget on: qa-budget's guard is what keeps
+      the loop's wake-ups inside the subscription's budget (it blocks them, as automatic prompts, at its ceilings),
+      and the loop ends when the guard blocks one. Turn on claude_code_settings_qa_budget, or turn
+      claude_code_skills_loop_to_delivery off.
+    quiet: true
+
+# The argument spec checks the type only.
+- name: Check loop-to-delivery's maximum of wake-ups is above 0
+  ansible.builtin.assert:
+    that: claude_code_skills_loop_to_delivery_max_wakes | int > 0
+    fail_msg: >-
+      claude_code_skills_loop_to_delivery_max_wakes is the number of wake-ups a loop may have, so it must be a
+      whole number above 0, not {{ claude_code_skills_loop_to_delivery_max_wakes }}.
+    quiet: true
+
+- name: Check loop-to-delivery's maximum of hours is from 1 to 168
+  ansible.builtin.assert:
+    that: claude_code_skills_loop_to_delivery_max_hours | int >= 1 and claude_code_skills_loop_to_delivery_max_hours | int <= 168
+    fail_msg: >-
+      claude_code_skills_loop_to_delivery_max_hours is the number of hours a loop may run, so it must be a whole
+      number from 1 to 168 (7 days: a recurring job expires after 7 days), not
+      {{ claude_code_skills_loop_to_delivery_max_hours }}.
+    quiet: true
+
+- name: Note the skills' files for the target, the files of those that are off, and the hooks they need
+  vars:
+    __claude_code_skills_on: >-
+      {{ (__claude_code_skills_loop_files if claude_code_skills_loop_to_delivery | bool else []) }}
+    __claude_code_skills_off: >-
+      {{ ([] if claude_code_skills_loop_to_delivery | bool else __claude_code_skills_loop_files) }}
+    __claude_code_skills_sources: >-
+      {{ [role_path ~ '/files/'] | product(__claude_code_skills_on | map('regex_replace', '^[.]claude/', ''))
+         | map('join') | list }}
+  ansible.builtin.set_fact:
+    # The files of the skills that are on, for the managed settings directory:
+    # its path there (name) and the file on the Ansible machine (src).
+    claude_code_skills_files: >-
+      {{ dict(__claude_code_skills_on | zip(__claude_code_skills_sources))
+         | dict2items(key_name='name', value_name='src') }}
+    # What the skills that are off would have put there, for a target to remove
+    # where an earlier run installed it: a skill's folder.
+    claude_code_skills_absent: >-
+      {{ __claude_code_skills_off | select('match', '[.]claude/skills/') | map('dirname') | unique | list
+         + __claude_code_skills_off | reject('match', '[.]claude/skills/') | list }}
+    # A part of the policy (managed-settings.json): loop-to-delivery's hooks.
+    claude_code_skills_policy: "{{ __claude_code_skills_loop_policy if claude_code_skills_loop_to_delivery | bool else {} }}"

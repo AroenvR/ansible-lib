@@ -123,9 +123,21 @@
       register: __claude_code_vm_test_reach
       failed_when: false
 
-    - name: Compute what claude_code_settings hands every target, with the settings of this run (the defaults)
+    - name: Compute what claude_code_settings hands every target, with qa-budget as this run had it (on)
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_settings
+      vars:
+        claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
+
+    # qa-budget on, as the loop needs it (FR-1): its guard keeps the loop's wake-ups inside the budget.
+    - name: Compute what claude_code_skills hands every target, with the loop as this run had it (on, 7 wake-ups, 48 hours)
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
+        claude_code_skills_loop_to_delivery: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery }}"
+        claude_code_skills_loop_to_delivery_max_wakes: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_wakes }}"
+        claude_code_skills_loop_to_delivery_max_hours: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_hours }}"
 
     - name: Read the policy Claude Code finds in the VM
       ansible.builtin.slurp:
@@ -151,10 +163,11 @@
           - __claude_code_vm_test_reach.results[2].status == -1
           - __claude_code_vm_test_reach.results[3].status == 200
           - __claude_code_vm_test_tools.stdout is search('^' ~ __claude_code_vm_test_host_ip ~ ' +host-service[.]home[.]arpa$', multiline=True)
-          # The policy of claude_code_settings, the base of Claude Code's container too.
+          # The policy of claude_code_settings, the base of Claude Code's container too,
+          # with the hooks of claude_code_skills (loop-to-delivery) after qa-budget's.
           - >-
             (__claude_code_vm_test_policy.content | default('') | b64decode | default('{}', true) | from_json)
-            == claude_code_settings_policy
+            == claude_code_settings_policy | combine(claude_code_skills_policy, recursive=True, list_merge='append_rp')
           # aslib.infra's instructions for the VM (claude_code_vm/files/CLAUDE.md).
           - >-
             (__claude_code_vm_test_instructions.content | default('') | b64decode)
@@ -166,7 +179,7 @@
           {{ __claude_code_vm_test_instructions.content | default('') | b64decode }}
         success_msg: >-
           PASSED claude_code_vm: claude has sudo, Podman, Python 3.11 and Claude Code with the policy of
-          claude_code_settings and aslib.infra's instructions,
+          claude_code_settings and the hooks of claude_code_skills, and aslib.infra's instructions,
           reaches the internet, and reaches neither a machine on the local network nor the host's own services,
           except the one port it was given, by the host's name it was given.
 
@@ -237,15 +250,25 @@
           PASSED Claude Code started in a new git repository in claude's home in bypassPermissions mode, signed in,
           without asking to trust the folder, to accept the mode, or for its first-run setup.
 
-- name: Check Claude Code in claude-dev finds the qa skill and its five experts, as claude
+- name: Check Claude Code in claude-dev finds the qa skill, its five experts and loop-to-delivery, and the loop's hook runs, as claude
   hosts: claude-dev
   gather_facts: false
   tasks:
-    - name: Compute what claude_code_settings hands every target, with the qa skill as this run had it (on)
+    - name: Compute what claude_code_settings hands every target, with the qa skill and qa-budget as this run had them (on)
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_settings
       vars:
         claude_code_settings_qa: "{{ hostvars['localhost'].claude_code_settings_qa }}"
+        claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
+
+    - name: Compute what claude_code_skills hands every target, with the loop as this run had it (on, 7 wake-ups, 48 hours)
+      ansible.builtin.include_role:
+        name: aslib.infra.claude_code_skills
+      vars:
+        claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
+        claude_code_skills_loop_to_delivery: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery }}"
+        claude_code_skills_loop_to_delivery_max_wakes: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_wakes }}"
+        claude_code_skills_loop_to_delivery_max_hours: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_hours }}"
 
     - name: Find the files in /etc/claude-code
       ansible.builtin.find:
@@ -264,26 +287,45 @@
       register: __claude_code_vm_test_request
       changed_when: false
 
-    - name: Check /etc/claude-code holds exactly the policy, the instructions and the qa skill's files, as the policy is owned and moded
+    # As Claude Code runs it (sh -c, the event on stdin), with the VM's /usr/bin/python3
+    # and the loop's state and qa-budget's readings in a home of its own.
+    - name: Run loop-to-delivery's installed hook command for a prompt, for a loop's wake-up, and for the next wake-up with a reading over the ceiling
+      ansible.builtin.script:
+        cmd: >-
+          loop-hook.py /etc/claude-code/managed-settings.json
+          /etc/claude-code/.claude/skills/loop-to-delivery/loop_to_delivery.py
+        chdir: /home/claude
+        executable: python3
+      register: __claude_code_vm_test_loop
+      changed_when: false
+      failed_when: false
+
+    # The qa skill (7 files) and qa-budget (4) are claude_code_settings', loop-to-delivery (2) claude_code_skills'.
+    - name: Check /etc/claude-code holds exactly the policy, the instructions, qa-budget's and the skills' files, as the policy is owned and moded
       vars:
         __claude_code_vm_test_found: "{{ __claude_code_vm_test_managed.files | map(attribute='path') | map('relpath', '/etc/claude-code') | list }}"
         __claude_code_vm_test_policy_file: >-
           {{ __claude_code_vm_test_managed.files | selectattr('path', 'eq', '/etc/claude-code/managed-settings.json') | first }}
         __claude_code_vm_test_installed: >-
-          {{ __claude_code_vm_test_managed.files | selectattr('path', 'search', '^/etc/claude-code/[.]claude/') | list }}
+          {{ __claude_code_vm_test_managed.files | selectattr('path', 'search', '^/etc/claude-code/([.]claude|qa-budget)/') | list }}
+        __claude_code_vm_test_names: >-
+          {{ (claude_code_settings_files + claude_code_skills_files) | map(attribute='name') | list }}
       ansible.builtin.assert:
         that:
-          - claude_code_settings_files | length == 7
-          - >-
-            __claude_code_vm_test_found | sort
-            == (['CLAUDE.md', 'managed-settings.json'] + claude_code_settings_files | map(attribute='name') | list) | sort
+          - claude_code_settings_files | length == 11
+          - claude_code_skills_files | length == 2
+          - "'qa-budget/guard.py' in __claude_code_vm_test_names"
+          - "'.claude/skills/loop-to-delivery/loop_to_delivery.py' in __claude_code_vm_test_names"
+          - __claude_code_vm_test_found | sort == (['CLAUDE.md', 'managed-settings.json'] + __claude_code_vm_test_names) | sort
+          - __claude_code_vm_test_installed | length == 13
           - __claude_code_vm_test_installed | map(attribute='pw_name') | unique == [__claude_code_vm_test_policy_file.pw_name]
           - __claude_code_vm_test_installed | map(attribute='mode') | unique == [__claude_code_vm_test_policy_file.mode]
         fail_msg: "/etc/claude-code: {{ __claude_code_vm_test_managed.files | map(attribute='path') | list }}"
         success_msg: >-
-          PASSED claude_code_vm installed claude_code_settings' qa skill (SKILL.md, protocol.md) and its five experts in
-          /etc/claude-code/.claude/, {{ __claude_code_vm_test_policy_file.pw_name }}'s and
-          {{ __claude_code_vm_test_policy_file.mode }} like the policy, next to the policy and the instructions only.
+          PASSED claude_code_vm installed claude_code_settings' qa skill (SKILL.md, protocol.md), its five experts and
+          qa-budget's four files, and claude_code_skills' loop-to-delivery (SKILL.md, loop_to_delivery.py), in
+          /etc/claude-code/, {{ __claude_code_vm_test_policy_file.pw_name }}'s and {{ __claude_code_vm_test_policy_file.mode }}
+          like the policy, next to the policy and the instructions only.
 
     - name: Check each is the same as the collection's
       vars:
@@ -293,16 +335,17 @@
         that: __claude_code_vm_test_installed.checksum == lookup('ansible.builtin.file', item.src, rstrip=false) | hash('sha1')
         fail_msg: "{{ item.name }} differs from {{ item.src }}."
         quiet: true
-      loop: "{{ claude_code_settings_files }}"
+      loop: "{{ claude_code_settings_files + claude_code_skills_files }}"
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Check Claude Code lists qa among its skills and the five experts among its agents
+    - name: Check Claude Code lists qa and loop-to-delivery among its skills and the five experts among its agents
       vars:
         __claude_code_vm_test_sent: "{{ __claude_code_vm_test_request.stdout | from_json | to_json }}"
       ansible.builtin.assert:
         that:
           - "__claude_code_vm_test_sent is search('- qa: Use this skill before changing anything in a project')"
+          - "__claude_code_vm_test_sent is search('- loop-to-delivery: [A-Za-z]')"
           - "__claude_code_vm_test_sent is search('- architect: Serves the qa skill')"
           - "__claude_code_vm_test_sent is search('- tester: Serves the qa skill')"
           - "__claude_code_vm_test_sent is search('- reviewer: Serves the qa skill')"
@@ -310,8 +353,47 @@
           - "__claude_code_vm_test_sent is search('- documenter: Serves the qa skill')"
         fail_msg: "Claude Code sent: {{ __claude_code_vm_test_sent[:3000] }}"
         success_msg: >-
-          PASSED the real Claude Code in claude-dev, started with the claude command, offered its model the skill qa and
-          the agents architect, tester, reviewer, developer and documenter, from /etc/claude-code/.claude/.
+          PASSED the real Claude Code in claude-dev, started with the claude command, offered its model the skills qa
+          and loop-to-delivery and the agents architect, tester, reviewer, developer and documenter, from
+          /etc/claude-code/.claude/.
+
+    - name: Check the installed hook has the run's limits and guard, passes a prompt, counts the wake-up as 1 of 7, and lets the budget end the loop
+      vars:
+        __claude_code_vm_test_ran: "{{ __claude_code_vm_test_loop.stdout | default('', true) | from_json if __claude_code_vm_test_loop.rc == 0 else {} }}"
+        __claude_code_vm_test_context: >-
+          {{ (__claude_code_vm_test_ran.wake.stdout | from_json).hookSpecificOutput.additionalContext
+             if __claude_code_vm_test_ran.wake.stdout | default('') is match('[{]') else '' }}
+        __claude_code_vm_test_blocked: >-
+          {{ __claude_code_vm_test_ran.over.stdout | from_json
+             if __claude_code_vm_test_ran.over.stdout | default('') is match('[{]') else {} }}
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_loop.rc == 0
+          - __claude_code_vm_test_ran.commands | length == 1
+          - >-
+            __claude_code_vm_test_ran.command | default('')
+            is search('hook --max-wakes 7 --max-hours 48 --budget-guard /etc/claude-code/qa-budget/guard[.]py$')
+          - __claude_code_vm_test_ran.unknown.rc == 0
+          - __claude_code_vm_test_ran.unknown.stdout == ''
+          - __claude_code_vm_test_ran.start.rc == 0
+          - __claude_code_vm_test_ran.wake is defined
+          - __claude_code_vm_test_ran.wake.rc == 0
+          - >-
+            __claude_code_vm_test_context is match('loop-to-delivery: wake-up 1 of 7 of loop [0-9a-f]{8}')
+          # 48 hours: the date the hook gives as the end, not a day later (24) or a week (168).
+          - "__claude_code_vm_test_context is search('and on (' ~ __claude_code_vm_test_ran.ends_on | join('|') ~ ')[.]')"
+          - __claude_code_vm_test_ran.over.rc == 0
+          - __claude_code_vm_test_blocked.decision | default('') == 'block'
+          - >-
+            __claude_code_vm_test_blocked.reason | default('')
+            is search('the loop has ended [(]qa-budget stopped the loop: the weekly ceiling [(]61% of the week used, ceiling 60%[)] is reached')
+        fail_msg: "{{ __claude_code_vm_test_loop.stdout }} {{ __claude_code_vm_test_loop.stderr }}"
+        success_msg: >-
+          PASSED the installed hook command, run by sh -c with the VM's /usr/bin/python3, carries the run's 7 wake-ups,
+          48 hours and qa-budget's guard, passed a prompt of a conversation without a loop with no output, let the
+          wake-up of a loop started in that conversation through as wake-up 1 of 7 ending on
+          {{ __claude_code_vm_test_ran.ends_on | join(' or ') }}, and, with a reading of the status line over the weekly
+          ceiling, ended the loop at its next wake-up through the installed guard: "{{ (__claude_code_vm_test_blocked.reason | default(''))[:150] }}".
 
 - name: Remove the stand-in for the local network
   hosts: localhost
@@ -336,10 +418,22 @@
     __claude_code_vm_test_settings_options: >-
       {{ (lookup('file', playbook_dir ~ '/../../../claude_code_settings/meta/argument_specs.yml') | from_yaml)
          .argument_specs.main.options.keys() | list }}
+    # The settings of claude_code_skills (loop-to-delivery's three) are in the file too.
+    __claude_code_vm_test_skills_options: >-
+      {{ (lookup('file', playbook_dir ~ '/../../../claude_code_skills/meta/argument_specs.yml') | from_yaml)
+         .argument_specs.main.options.keys() | list }}
     __claude_code_vm_test_expected: >-
       {{ ['claude_code_vm_memory', 'claude_code_vm_vcpus', 'claude_code_vm_disk_size', 'claude_code_vm_network_prefix',
           'claude_code_vm_lan_block', 'claude_code_vm_host_ports', 'claude_code_vm_host_names',
-          'claude_code_vm_authorized_keys', 'claude_code_vm_oauth_token'] + __claude_code_vm_test_settings_options }}
+          'claude_code_vm_authorized_keys', 'claude_code_vm_oauth_token'] + __claude_code_vm_test_settings_options
+         + __claude_code_vm_test_skills_options }}
+    # What a run with -e gives the loop's settings, other than their defaults (false, 5, 24), and qa-budget, which
+    # the loop needs: the run reads -e before it reads the file, where the same value is (FR-1 is checked then too).
+    __claude_code_vm_test_loop_settings:
+      claude_code_settings_qa_budget: true
+      claude_code_skills_loop_to_delivery: true
+      claude_code_skills_loop_to_delivery_max_wakes: 7
+      claude_code_skills_loop_to_delivery_max_hours: 48
     # Each run with its own run log, as a project's ansible.cfg enables it.
     __claude_code_vm_test_env:
       ANSIBLE_CALLBACKS_ENABLED: aslib.infra.run_log
@@ -370,6 +464,10 @@
           - __claude_code_vm_test_values.claude_code_vm_memory == 4096
           - __claude_code_vm_test_values.claude_code_settings_theme == 'dark'
           - __claude_code_vm_test_values.claude_code_settings_qa is true
+          - __claude_code_vm_test_values.claude_code_settings_qa_budget is true
+          - __claude_code_vm_test_values.claude_code_skills_loop_to_delivery is true
+          - __claude_code_vm_test_values.claude_code_skills_loop_to_delivery_max_wakes == 7
+          - __claude_code_vm_test_values.claude_code_skills_loop_to_delivery_max_hours == 48
           - __claude_code_vm_test_values.claude_code_vm_oauth_token == __claude_code_vm_test_token
           - __claude_code_vm_test_setting_lines | length == __claude_code_vm_test_expected | length
         fail_msg: "{{ __claude_code_vm_test_stat.stat.mode | default('none') }}: {{ __claude_code_vm_test_values.keys() | list }}"
@@ -396,15 +494,18 @@
       failed_when: __claude_code_vm_test_seed.rc != 1
       no_log: true
 
-    # A comment of one's own, a setting removed and one changed, and no newline at the end.
+    # A comment of one's own, a setting removed and one changed, and no newline at the end. Four
+    # settings, each with its comment, are removed: ultracode, and loop-to-delivery's three, which a
+    # file written before the loop existed lacks.
     - name: Change the settings file by hand
       vars:
         __claude_code_vm_test_lines: "{{ __claude_code_vm_test_written.splitlines() }}"
-        __claude_code_vm_test_at: >-
-          {{ __claude_code_vm_test_lines.index(__claude_code_vm_test_lines | select('match', 'claude_code_settings_ultracode: ') | first) }}
+        __claude_code_vm_test_dropped: "^(claude_code_settings_ultracode|claude_code_skills_loop_to_delivery(_max_wakes|_max_hours)?): "
+        # A line goes when it is a dropped setting, or the comment right before one.
+        __claude_code_vm_test_pairs: "{{ __claude_code_vm_test_lines | zip((__claude_code_vm_test_lines[1:] | list) + ['']) | list }}"
         __claude_code_vm_test_kept: >-
-          {{ __claude_code_vm_test_lines[:(__claude_code_vm_test_at | int) - 1]
-             + __claude_code_vm_test_lines[(__claude_code_vm_test_at | int) + 1:] }}
+          {{ __claude_code_vm_test_pairs | rejectattr('0', 'match', __claude_code_vm_test_dropped)
+             | rejectattr('1', 'match', __claude_code_vm_test_dropped) | map(attribute='0') | list }}
       ansible.builtin.set_fact:
         __claude_code_vm_test_edited: >-
           {{ (['# Mine: a note of my own, which stays as it is']
@@ -424,9 +525,12 @@
         path: "{{ __claude_code_vm_test_logs }}"
         state: absent
 
-    - name: Run aslib.infra.claude_code_vm again, as a person would after changing the file
+    # -e gives the loop's settings the values of the inventory the first run had (this run has none), so
+    # that the settings the file lacks are added at the value this run uses, other than the defaults.
+    # The file's qa-budget is given too: FR-1 is checked before the file is read as well as after.
+    - name: Run aslib.infra.claude_code_vm again, as a person would after changing the file, with the loop's settings in -e
       ansible.builtin.command:
-        argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+        argv: [ansible-playbook, aslib.infra.claude_code_vm, -v, -e, "{{ __claude_code_vm_test_loop_settings | to_json }}"]
         chdir: /
       environment: "{{ __claude_code_vm_test_env }}"
       register: __claude_code_vm_test_run
@@ -439,27 +543,45 @@
       delegate_to: claude-dev
       register: __claude_code_vm_test_policy_after
 
-    - name: Check the run kept every line of the file, added only the setting it lacked, and took the changed one to the VM
+    - name: Check the run kept every line of the file, added only the settings it lacked, and took the changed one and the loop's to the VM
       vars:
         __claude_code_vm_test_now: "{{ lookup('file', __claude_code_vm_test_file, rstrip=false) }}"
         __claude_code_vm_test_added: "{{ __claude_code_vm_test_now.replace(__claude_code_vm_test_edited, '', 1) }}"
+        __claude_code_vm_test_added_lines: "{{ __claude_code_vm_test_added.splitlines() | reject('eq', '') | list }}"
+        __claude_code_vm_test_policy_hooks: "{{ (__claude_code_vm_test_policy_after.content | b64decode | from_json).hooks }}"
       ansible.builtin.assert:
         that:
           - __claude_code_vm_test_now.startswith(__claude_code_vm_test_edited)
-          - __claude_code_vm_test_added.splitlines() | reject('eq', '') | list | length == 2
-          - __claude_code_vm_test_added.splitlines() | reject('eq', '') | first is match('# .')
-          - "__claude_code_vm_test_added.splitlines() | last == 'claude_code_settings_ultracode: false'"
+          # Each after a comment, in the order of the settings, at the values of this run (-e), not the defaults.
+          - __claude_code_vm_test_added_lines | length == 8
+          - __claude_code_vm_test_added_lines[0::2] | select('match', '# .') | list | length == 4
+          - >-
+            __claude_code_vm_test_added_lines[1::2]
+            == ['claude_code_settings_ultracode: false', 'claude_code_skills_loop_to_delivery: true',
+                'claude_code_skills_loop_to_delivery_max_wakes: 7', 'claude_code_skills_loop_to_delivery_max_hours: 48']
           - (__claude_code_vm_test_policy_after.content | b64decode | from_json).theme == 'light'
+          # The loop's hooks after qa-budget's, with the limits that came from -e through the file.
+          - __claude_code_vm_test_policy_hooks.UserPromptSubmit[0].hooks[0].command == 'python3 /etc/claude-code/qa-budget/guard.py'
+          - >-
+            __claude_code_vm_test_policy_hooks.UserPromptSubmit[-1].hooks[0].command
+            is search('hook --max-wakes 7 --max-hours 48 --budget-guard /etc/claude-code/qa-budget/guard[.]py$')
         fail_msg: "Added: {{ __claude_code_vm_test_added }}"
         success_msg: >-
           PASSED a run kept every line of the changed settings file byte for byte, the comment of its own included,
-          added only the setting it lacked, after a comment, and gave the VM the theme changed in the file.
+          added only the four settings it lacked (ultracode and loop-to-delivery's three, the latter at the values it
+          was given with -e: true, 7 and 48), each after a comment, and gave the VM the theme changed in the file and
+          the loop's hook with 7 wake-ups and 48 hours after qa-budget's.
 
     - name: Try a value outside each setting's type or choices, in the settings file
       ansible.builtin.include_tasks: tasks/invalid-setting.yml
       loop:
         - { setting: claude_code_vm_memory, value: lots }
         - { setting: claude_code_settings_theme, value: neon }
+        # loop-to-delivery's own checks are reached from the settings file, before the VM is touched.
+        - { setting: claude_code_skills_loop_to_delivery_max_wakes, value: 0 }
+        - { setting: claude_code_skills_loop_to_delivery_max_hours, value: 169 }
+        # FR-1: the loop on with qa-budget off stops the run, naming both settings and the guard.
+        - { setting: claude_code_settings_qa_budget, value: "false", also: [claude_code_skills_loop_to_delivery, guard] }
       loop_control:
         loop_var: __claude_code_vm_test_invalid
 
@@ -470,13 +592,14 @@
         replace: 'claude_code_vm_oauth_token: ""'
       no_log: true
 
-    - name: Turn the qa skill off in the settings file
+    - name: Turn the qa skill and the loop off in the settings file, and qa-budget stays on
       ansible.builtin.replace:
         path: "{{ __claude_code_vm_test_file }}"
-        regexp: '^claude_code_settings_qa: .*$'
-        replace: 'claude_code_settings_qa: false'
+        regexp: "^{{ item }}: .*$"
+        replace: "{{ item }}: false"
+      loop: [claude_code_settings_qa, claude_code_skills_loop_to_delivery]
 
-    - name: Run aslib.infra.claude_code_vm again, without a token and without the qa skill
+    - name: Run aslib.infra.claude_code_vm again, without a token, without the qa skill and without the loop
       ansible.builtin.command:
         argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
         chdir: /
@@ -499,16 +622,40 @@
       delegate_to: claude-dev
       register: __claude_code_vm_test_managed_after
 
-    - name: Check the run took the qa skill and its experts out of the VM
+    - name: Look up the loop's folder in the VM
+      ansible.builtin.stat:
+        path: /etc/claude-code/.claude/skills/loop-to-delivery
+      delegate_to: claude-dev
+      register: __claude_code_vm_test_loop_folder
+
+    - name: Read the VM's policy after that run
+      ansible.builtin.slurp:
+        src: /etc/claude-code/managed-settings.json
+      delegate_to: claude-dev
+      register: __claude_code_vm_test_policy_off
+
+    - name: Check the run took the qa skill, its experts and loop-to-delivery with its hooks out of the VM, and left qa-budget
+      vars:
+        __claude_code_vm_test_policy_text: "{{ __claude_code_vm_test_policy_off.content | b64decode }}"
+        # 2.16 turns a variable that renders JSON into a dict, so the policy is parsed from the file's content.
+        __claude_code_vm_test_policy_after_off: "{{ __claude_code_vm_test_policy_off.content | b64decode | from_json }}"
       ansible.builtin.assert:
         that:
           - >-
             __claude_code_vm_test_managed_after.files | map(attribute='path') | sort
-            == ['/etc/claude-code/CLAUDE.md', '/etc/claude-code/managed-settings.json']
-        fail_msg: "/etc/claude-code: {{ __claude_code_vm_test_managed_after.files | map(attribute='path') | list }}"
+            == ['/etc/claude-code/CLAUDE.md', '/etc/claude-code/managed-settings.json', '/etc/claude-code/qa-budget/budget.md',
+                '/etc/claude-code/qa-budget/guard.py', '/etc/claude-code/qa-budget/ledger.py', '/etc/claude-code/qa-budget/statusline.py']
+          - not __claude_code_vm_test_loop_folder.stat.exists
+          - __claude_code_vm_test_policy_text is not search('loop_to_delivery')
+          - __claude_code_vm_test_policy_after_off.hooks.UserPromptSubmit | length == 1
+          - __claude_code_vm_test_policy_after_off.hooks.UserPromptSubmit[0].hooks[0].command == 'python3 /etc/claude-code/qa-budget/guard.py'
+        fail_msg: >-
+          /etc/claude-code: {{ __claude_code_vm_test_managed_after.files | map(attribute='path') | list }};
+          policy: {{ __claude_code_vm_test_policy_text }}
         success_msg: >-
-          PASSED with claude_code_settings_qa false in the settings file, a run removed the qa skill and its five experts
-          from the VM's /etc/claude-code, which kept the policy and the instructions.
+          PASSED with claude_code_settings_qa and claude_code_skills_loop_to_delivery false in the settings file, a run
+          removed the qa skill, its five experts and loop-to-delivery with its hooks from the VM's /etc/claude-code, which
+          kept the policy, the instructions and qa-budget with its guard's hook.
 
     - name: Remove claude-dev, as aslib.infra.claude_code_vm_remove does
       ansible.builtin.command:

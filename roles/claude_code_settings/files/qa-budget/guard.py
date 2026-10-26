@@ -193,6 +193,18 @@ def save_activity(activity):
         sys.stderr.write("qa-budget guard: activity not saved: %s\n" % error)
 
 
+def prompt_block(moment, activity=None):
+    """Why an automatic prompt is not run at `moment` (an aware datetime): "<ceiling> is reached; <resets>", or None.
+    Reads qa-budget's files, writes none. `activity` is activity.json's content when the caller has it."""
+    if activity is None:
+        activity = load("activity.json", {})
+    if not isinstance(activity, dict):
+        activity = {}
+    used = usage_now(moment)
+    reached = over(used, activity, moment)
+    return "%s is reached; %s" % (reached, resets(used)) if reached else None
+
+
 def on_prompt(event, activity, moment):
     automatic = re.search(os.environ.get("QA_BUDGET_AUTO_PROMPT") or AUTO_PROMPT, event.get("prompt") or "") is not None
     sessions = {k: v for k, v in (activity.get("sessions") or {}).items()
@@ -203,11 +215,10 @@ def on_prompt(event, activity, moment):
         activity["person_prompt_at"] = moment.isoformat()
     answer = None
     if automatic:
-        used = usage_now(moment)
-        reached = over(used, activity, moment)
+        reached = prompt_block(moment, activity)
         if reached:
-            answer = {"decision": "block", "reason": "qa-budget: automatic prompt not run, %s is reached; %s. "
-                      "It runs again after the reset, or when a person starts the turn." % (reached, resets(used))}
+            answer = {"decision": "block", "reason": "qa-budget: automatic prompt not run, %s. "
+                      "It runs again after the reset, or when a person starts the turn." % reached}
     save_activity(activity)
     return answer
 

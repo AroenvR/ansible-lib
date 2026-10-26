@@ -1,12 +1,15 @@
 """Tests of qa-budget's guard and status line: python3 test_qa_budget.py <folder of guard.py>. Each test runs the hook as Claude
 Code does, with a fresh configuration directory holding the readings and ledger it sets up."""
+import copy
 import datetime
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 FOLDER = sys.argv.pop(1)
 GUARD = os.path.join(FOLDER, "guard.py")
@@ -163,6 +166,107 @@ class Guard(unittest.TestCase):
         done = subprocess.run([sys.executable, GUARD], input="not json", capture_output=True, text=True,
                               env=dict(os.environ, CLAUDE_CONFIG_DIR=self.dir.name))
         self.assertEqual((done.returncode, done.stdout), (0, ""))
+
+
+class PromptBlock(unittest.TestCase):
+    """loop-to-delivery asks guard.prompt_block(moment) instead of reading the limits itself (IF-101): it must say what
+    a blocked automatic prompt says, and nothing where the guard lets the prompt through."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = os.path.join(self.dir.name, "qa-budget")
+        os.makedirs(self.state)
+        environment = mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": self.dir.name})
+        environment.start()
+        self.addCleanup(environment.stop)
+        for name in [name for name in os.environ if name.startswith("QA_BUDGET_")]:
+            del os.environ[name]
+        spec = importlib.util.spec_from_file_location("guard_under_test", GUARD)
+        self.guard = importlib.util.module_from_spec(spec)
+        saved = list(sys.path)   # guard.py puts its own folder first on sys.path to import ledger
+        try:
+            spec.loader.exec_module(self.guard)
+        finally:
+            sys.path[:] = saved
+        self.assertTrue(callable(getattr(self.guard, "prompt_block", None)), "the guard has no prompt_block (IF-101)")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def put(self, name, content):
+        with open(os.path.join(self.state, name), "w") as f:
+            json.dump(content, f)
+
+    def listing(self):
+        return {name: os.stat(os.path.join(self.state, name)).st_mtime_ns for name in os.listdir(self.state)}
+
+    def reading(self, week, five, when=0, week_reset_hours=72):
+        self.put("rate-limits.json", {"time": at(when), "rate_limits": {
+            "seven_day": {"used_percentage": week, "resets_at": (NOW + datetime.timedelta(hours=week_reset_hours)).timestamp()},
+            "five_hour": {"used_percentage": five, "resets_at": NOW.timestamp() + 3600}}})
+
+    def agree(self, activity=None):
+        """prompt_block (activity from activity.json, and given) against on_prompt for an automatic prompt, same
+        reading, same moment; returns the text, or None where the prompt passes."""
+        saved = activity if activity is not None else {}
+        if activity is not None:
+            self.put("activity.json", activity)
+        before = self.listing()
+        by_file = self.guard.prompt_block(NOW)
+        given = self.guard.prompt_block(NOW, copy.deepcopy(saved))
+        self.assertEqual(self.listing(), before, "prompt_block wrote a file")
+        self.assertEqual(by_file, given)
+        answer = self.guard.on_prompt({"session_id": "s1", "prompt": "[auto resume] go on"}, copy.deepcopy(saved), NOW)
+        if answer is None:
+            self.assertIsNone(given)
+            return None
+        self.assertEqual(answer["decision"], "block")
+        self.assertIsInstance(given, str)
+        self.assertEqual(answer["reason"], "qa-budget: automatic prompt not run, %s. It runs again after the reset, or "
+                         "when a person starts the turn." % given)
+        return given
+
+    def test_prompt_block_agrees_with_the_blocked_automatic_prompt(self):
+        with self.subTest("the ceilings and the limit"):
+            self.reading(week=10, five=10)
+            self.assertIsNone(self.agree())
+            self.reading(week=61, five=10)
+            text = self.agree()
+            self.assertTrue(text.startswith("the weekly ceiling (61% of the week used, ceiling 60%) is reached; "
+                                            "weekly window resets "), text)
+            self.assertIn("5-hour window resets ", text)
+            self.reading(week=10, five=91)
+            self.assertTrue(self.agree().startswith("the 5-hour ceiling (91% used, ceiling 90%) is reached; "))
+            self.reading(week=98, five=10)
+            self.assertTrue(self.agree().startswith("the subscription's limit (98%) is reached; "))
+        with self.subTest("the spend-down and the person's activity"):
+            self.reading(week=80, five=10, week_reset_hours=2)
+            self.assertIsNone(self.agree({"person_prompt_at": at(-4)}), "inactive person: the ceiling rises to the limit")
+            self.assertIn("the weekly ceiling (80% of the week used, ceiling 60%)", self.agree({"person_prompt_at": at(-1)}))
+            os.remove(os.path.join(self.state, "activity.json"))
+        with self.subTest("a reading as the guard judges it"):
+            # A window whose reset has passed counts as 0; a stale reading over a ceiling still blocks (the guard
+            # ignores its staleness for a prompt), so the loop must end where the guard blocks.
+            self.put("rate-limits.json", {"time": at(0), "rate_limits": {
+                "seven_day": {"used_percentage": 100, "resets_at": NOW.timestamp() - 60},
+                "five_hour": {"used_percentage": 100, "resets_at": NOW.timestamp() - 60}}})
+            self.assertIsNone(self.agree())
+            self.reading(week=70, five=10, when=-1)
+            self.assertIn("the weekly ceiling (70% of the week used, ceiling 60%) is reached", self.agree())
+            os.remove(os.path.join(self.state, "rate-limits.json"))
+            self.assertIsNone(self.agree(), "no reading: the prompt passes")
+        with self.subTest("an activity file that is not an object counts as empty"):
+            self.reading(week=61, five=10)
+            self.put("activity.json", ["not", "an", "object"])
+            self.assertEqual(self.guard.prompt_block(NOW), self.guard.prompt_block(NOW, {}))
+            self.assertIsNotNone(self.guard.prompt_block(NOW))
+            os.remove(os.path.join(self.state, "activity.json"))
+        with self.subTest("the environment's limits apply"):
+            self.reading(week=61, five=10)
+            with mock.patch.dict(os.environ, {"QA_BUDGET_WEEKLY": "70"}):
+                self.assertIsNone(self.agree())
+            with mock.patch.dict(os.environ, {"QA_BUDGET_WEEKLY": "50"}):
+                self.assertIn("ceiling 50%", self.agree())
 
 
 class StatusLine(unittest.TestCase):

@@ -17,15 +17,21 @@ In CI:
   it) on the same server: separate accounts and UIDs, the shared zone both ways,
   root running Claude Code, its read-only policy with every setting of how a
   session starts, a deploy that still sets a setting of before 0.7.0 stopped,
-  the qa skill and its five experts in its `/etc/claude-code` exactly as the
-  collection ships them and removed again when turned off, and its removal;
+  the qa skill with its five experts and loop-to-delivery in its
+  `/etc/claude-code` exactly as the collection ships them, with the loop's hooks
+  in the policy after qa-budget's and their command run on a wake-up, which a
+  usage reading over a ceiling blocks and so ends the loop, and removed again
+  when turned off, a deploy with the loop on and qa-budget off stopped, and its
+  removal;
   podman_service's
   checks after every deploy and restart, and the Node.js service's health check
   getting an app that answers with server errors restarted; a private file in the
   shared zone staying private, a replaced README caught by its checksum and put
   back by the next deploy, and Claude Code's 4 GiB memory limit;
 - the Claude Code project's setup, update and real image build, with every
-  package up to date;
+  package up to date, the loop's hook program running its unit tests in the
+  image's own Python, and the project's settings files holding the loop's
+  settings at the roles' defaults;
 - GitLab 19.4.1, deployed and used as a person would: an account and token, a
   private project, pushes and clones over HTTP and SSH, a fork, its settings, a
   restart, and a removal and new deploy on the data it left;
@@ -42,12 +48,23 @@ In CI:
   the folder, to confirm the mode or for its first-run setup; the qa skill and
   its five experts in `/etc/claude-code` exactly as the collection ships them,
   offered to the model by the real Claude Code, and removed by a run that
-  turns them off;
+  turns them off; loop-to-delivery's files and hooks, its hook command run by
+  the VM's own Python (a wake-up let through, then blocked and the loop ended by
+  a usage reading over a ceiling); the loop's settings appended to a settings
+  file that lacks them, its other lines untouched, and a file with the loop on
+  and qa-budget off stopping the run;
 - claude_code_settings with ansible-core 2.14 and 2.16: its policy with the
   defaults and with every setting changed, and a value outside the choices
   stopping the run; the qa skill's files off by default and handed over when
   on, the experts' frontmatter as Claude Code needs it, and the qa skill with
-  agent teams stopping the run.
+  agent teams stopping the run; and qa-budget's `prompt_block` function, which
+  loop-to-delivery calls, giving the answer the guard's own hook gives;
+- claude_code_skills with ansible-core 2.14 and 2.16: the files and the part of
+  the policy it hands over with loop-to-delivery off and on, the hook command
+  with the default maximums (5 wake-ups, 24 hours) and with changed ones, the loop
+  on with qa-budget off stopping the run, and a number of wake-ups that is not
+  above 0 or of hours outside 1 to 168 stopping it; and the hook program's unit
+  tests, run with the Python of the ansible-core under test.
 
 ## Not tested yet
 
@@ -68,6 +85,10 @@ In CI:
   Claude takes it for a change request and not for a question, runs the
   experts one at a time in the protocol's order, and stops after three BLOCKs
   at one gate. These are checked by hand before a release.
+- loop-to-delivery at work with a real model: the hook program is tested with
+  recorded hook inputs, and the real Claude Code only against a stand-in for
+  the API, so that no real loop (set up, a wake-up, delivered, ended by the
+  budget) runs in CI. One is checked by hand before a release.
 
 ## Known limits and open work
 

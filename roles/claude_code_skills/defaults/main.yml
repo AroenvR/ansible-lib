@@ -1,0 +1,6 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml: the
+# skills Claude Code gets, the same in every target that includes this role.
+claude_code_skills_loop_to_delivery: false
+claude_code_skills_loop_to_delivery_max_wakes: 5
+claude_code_skills_loop_to_delivery_max_hours: 24

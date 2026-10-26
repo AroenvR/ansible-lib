@@ -46,7 +46,11 @@ the packages, until the base image changes. Needs Podman 4.9 or newer, Red Hat's
 registry and UBI repositories, Anthropic's repository and GitHub (nvm), or
 mirrors of them (`claude_code_podman_base_image` or `registries.conf`,
 `claude_code_podman_rpm_repos`, `claude_code_podman_repository`, `claude_code_podman_nvm_url`: the
-project guide's "Download sources").
+project guide's "Download sources"). The base image must provide
+`/usr/bin/python3` (UBI 9 does; the Containerfile adds Python 3.12 as
+`python3.12` and leaves `python3` alone), as the hook of
+[loop-to-delivery](../claude_code_skills/README.md#the-loop-to-delivery-skill)
+runs with it.
 
 ## On the server
 
@@ -54,11 +58,11 @@ project guide's "Download sources").
 |---|---|
 | The service and its account | `claude-code` (`podman_service_user`), no port |
 | Its home, with Claude's login, history, memory and notes | `/opt/claude-code/`, the same path in the container; a removal keeps it |
-| The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/`; with `claude_code_settings_qa`, also the qa skill and its experts, in `.claude/` |
+| The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/`; with `claude_code_settings_qa`, also the qa skill and its experts, and with `claude_code_skills_loop_to_delivery` the loop-to-delivery skill, in `.claude/` |
 | The shared zone | `/opt/containers/shared/`, with every other service of aslib.infra that has it (`podman_service_shared`) |
 | The command | `/usr/local/sbin/claude-code`, for root: runs `claude` in the container, with a terminal or without one (`claude-code -p "..."` in a script) |
 
-A new image, policy, `CLAUDE.md` or qa skill restarts the service, which ends what runs in
+A new image, policy, `CLAUDE.md` or skill restarts the service, which ends what runs in
 it; conversations stay (`claude-code --continue`, `--resume`). It has no health
 check: nothing in it serves until root runs `claude-code`, so a running
 container is all there is to check.
@@ -70,12 +74,13 @@ process in the container. Set another size in `project.yml`, or `""` for no limi
 ## The policy
 
 Claude Code reads an organisation's policy, above every other setting, from
-`/etc/claude-code/managed-settings.json`. Every deploy assembles it from three
-files, in this order:
+`/etc/claude-code/managed-settings.json`. Every deploy assembles it from these,
+in this order:
 
 | File | Whose | What |
 |---|---|---|
 | [claude_code_settings](../claude_code_settings/README.md)'s base | aslib.infra's, the same for every project and for [claude_code_vm](../claude_code_vm/README.md)'s VM | How a session starts (the `claude_code_settings_*` settings, below), ready to work; the self-updater and telemetry off, workflows on, plans in `plans/`, every directory a working directory; keeps Claude away from `.env` files and the files that would run code at its next start (hooks, `.mcp.json`, `.git/config`) |
+| [claude_code_skills](../claude_code_skills/README.md)'s part | aslib.infra's, the same for the VM | loop-to-delivery's hooks, after qa-budget's, while `claude_code_skills_loop_to_delivery` is on; nothing otherwise |
 | [files/managed-settings.container.json](files/managed-settings.container.json) | aslib.infra's, for the container | Claude's memory in `/opt/claude-code/memory`; keeps it away from its login and config (`.claude/`) and the instruction files in its home (`CLAUDE.md`, `AGENTS.md`) |
 | `config/managed-settings.json` | The project's, `{}` to start | What this project adds or changes |
 
@@ -110,6 +115,18 @@ or with `-e`; each deploy installs them:
 | `claude_code_settings_agent_teams` | `false` |
 | `claude_code_settings_ultracode` | `false` |
 | `claude_code_settings_qa` | `false`; `true` installs the [qa skill and its five experts](../claude_code_settings/README.md#the-qa-skill-and-its-five-experts) |
+| `claude_code_settings_qa_budget` | `false`: [qa-budget](../claude_code_settings/README.md#qa-budget-a-budget-for-agent-work), which measures and limits what agents spend of the subscription |
+
+**Skills:** the same names and defaults as in the VM
+([claude_code_skills](../claude_code_skills/README.md)), set the same way, each
+deploy installing them in `config/.claude/`, which the container reads as
+`/etc/claude-code/.claude/`:
+
+| Setting | Default |
+|---|---|
+| `claude_code_skills_loop_to_delivery` | `false`; `true` installs [loop-to-delivery](../claude_code_skills/README.md#the-loop-to-delivery-skill), which keeps long work going until it is delivered, and its hooks. Needs `claude_code_settings_qa_budget: true`: a deploy with the loop on and qa-budget off stops, naming both |
+| `claude_code_skills_loop_to_delivery_max_wakes` | `5`, the most wake-ups a loop gets |
+| `claude_code_skills_loop_to_delivery_max_hours` | `24`, the most hours a loop runs (1 to 168) |
 
 Whatever they say, Claude Code starts ready to work: bypassPermissions mode
 needs no confirmation, no folder asks to be trusted (Claude's home, any
