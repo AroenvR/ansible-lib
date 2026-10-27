@@ -2,8 +2,17 @@
 # Entry point "main": computes the skills every target installs, as facts for
 # the role that includes this one. Changes nothing.
 
-# First, as the qa skill's stop with agent teams is in claude_code_settings:
-# an invalid limit does not hide it.
+# First, so that an invalid limit below does not hide it.
+- name: Check the qa skill and agent teams are not both on
+  ansible.builtin.assert:
+    that: not (claude_code_skills_qa | bool and claude_code_settings_agent_teams | default(false) | bool)
+    fail_msg: >-
+      claude_code_skills_qa needs claude_code_settings_agent_teams off: the qa skill runs its experts as
+      subagents, one at a time, and with agent teams on, Claude Code starts a subagent that Claude names as a
+      teammate instead. Turn one of them off.
+    quiet: true
+
+# Next, as the qa skill's stop above: an invalid limit does not hide it.
 - name: Check loop-to-delivery has qa-budget
   ansible.builtin.assert:
     that: not (claude_code_skills_loop_to_delivery | bool and not (claude_code_settings_qa_budget | default(false) | bool))
@@ -35,9 +44,11 @@
 - name: Note the skills' files for the target, the files of those that are off, and the hooks they need
   vars:
     __claude_code_skills_on: >-
-      {{ (__claude_code_skills_loop_files if claude_code_skills_loop_to_delivery | bool else []) }}
+      {{ (__claude_code_skills_qa_files if claude_code_skills_qa | bool else [])
+         + (__claude_code_skills_loop_files if claude_code_skills_loop_to_delivery | bool else []) }}
     __claude_code_skills_off: >-
-      {{ ([] if claude_code_skills_loop_to_delivery | bool else __claude_code_skills_loop_files) }}
+      {{ ([] if claude_code_skills_qa | bool else __claude_code_skills_qa_files)
+         + ([] if claude_code_skills_loop_to_delivery | bool else __claude_code_skills_loop_files) }}
     __claude_code_skills_sources: >-
       {{ [role_path ~ '/files/'] | product(__claude_code_skills_on | map('regex_replace', '^[.]claude/', ''))
          | map('join') | list }}
@@ -48,7 +59,7 @@
       {{ dict(__claude_code_skills_on | zip(__claude_code_skills_sources))
          | dict2items(key_name='name', value_name='src') }}
     # What the skills that are off would have put there, for a target to remove
-    # where an earlier run installed it: a skill's folder.
+    # where an earlier run installed it: a skill's folder, an agent's file.
     claude_code_skills_absent: >-
       {{ __claude_code_skills_off | select('match', '[.]claude/skills/') | map('dirname') | unique | list
          + __claude_code_skills_off | reject('match', '[.]claude/skills/') | list }}

@@ -131,9 +131,9 @@
     group: root
     mode: "0755"
 
-# qa-budget's files in /etc/claude-code/qa-budget/ and the qa skill's in
-# .claude/ (claude_code_settings', when on), and claude_code_skills' in
-# /etc/claude-code/.claude/ (the skills that are on), like the policy. They come
+# claude_code_settings' files (qa-budget's, in /etc/claude-code/qa-budget/, when
+# on) and claude_code_skills' in /etc/claude-code/.claude/ (the skills that are
+# on, the qa skill with its experts), like the policy. They come
 # before the policy, whose hooks run their programs, and those of what is off go
 # after it; any other file there stays.
 - name: Create the folders of claude_code_settings' and claude_code_skills' files

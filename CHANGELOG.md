@@ -7,10 +7,27 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 ## 0.9.0
 
 - Added: role `claude_code_skills`, the skills Claude Code gets, with the same
-  names and defaults in the container and the VM. For now it holds one skill,
-  loop-to-delivery, off by default; turning it off removes its files and hooks
-  at the next run or deploy. The targets include it after claude_code_settings
-  and merge its part into the policy, after qa-budget's hooks.
+  names and defaults in the container and the VM. It holds the qa skill with
+  its five experts and loop-to-delivery, both off by default; turning one off
+  removes its files (and the loop's hooks) at the next run or deploy. The
+  targets include it after claude_code_settings and merge its part into the
+  policy, after qa-budget's hooks.
+- Changed, **breaking**: the qa skill moved from claude_code_settings to
+  claude_code_skills, and its setting is now `claude_code_skills_qa` (it was
+  `claude_code_settings_qa` up to 0.8.0). The skill, its default (off), the
+  files it installs and its stop with agent teams are the same; the stop now
+  names `claude_code_skills_qa`. A run, build or deploy that still sets the old
+  name stops before it changes anything, naming the new one: in the VM's
+  settings file, the inventory or `-e`, and in a container project's
+  `project.yml`, the inventory or `-e`. The VM's settings file is not
+  rewritten. A container project's `update-playbooks.yml` still runs, and the
+  stop's message names it first. See "Upgrading from 0.8.0" below.
+- Changed: the qa skill's files and absent paths, which claude_code_settings
+  handed over as `claude_code_settings_files` and `claude_code_settings_absent`
+  in 0.8.0, are now part of `claude_code_skills_files` and
+  `claude_code_skills_absent`, with the loop's; claude_code_settings' two facts
+  hold only qa-budget's files. A playbook of your own that includes
+  claude_code_settings and installs its files includes claude_code_skills too.
 - Added: the skill loop-to-delivery, turned on with
   `claude_code_skills_loop_to_delivery: true`. For work that outlasts a turn,
   such as a change request or waiting on CI, a review or an answer, Claude
@@ -51,8 +68,8 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   session and a token budget per run: a turn no person started (a wake-up, a
   loop; its prompt begins with an `[auto ...]` tag) is blocked or denied there
   and never goes into extra usage, while the person is asked. The qa skill's `SKILL.md` points to `budget.md`, which says
-  how to work within it: two review rounds per gate, low findings into a list
-  of improvements, deliver or pause when the guard says so.
+  how to work within it: at most two review rounds per gate, low findings into
+  a list of improvements, deliver or pause when the guard says so.
 - Changed: the base policy no longer denies edits to `/etc/claude-code/`, the
   policy itself. It changes only through the project's playbooks, and a deny
   there would make that approved path "another way" around the denial. The
@@ -64,9 +81,22 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   hour) before it installs the host's missing packages; with stale lists, apt
   asked the mirror for files it no longer had (404), as on CI runners.
 - Added: `dev/claude-dev-settings.yml` installs claude_code_settings' policy and
-  files, and loop-to-delivery's, on the machine it runs on, without the rest of
-  the VM's guest setup, for Claude's own VM to apply a branch's settings to
-  itself.
+  files, and the skills' (the qa skill and loop-to-delivery), on the machine it
+  runs on, without the rest of the VM's guest setup, for Claude's own VM to
+  apply a branch's settings to itself. Set `claude_code_skills_qa` there: it
+  does not check for the qa skill's old name, which is ignored.
+- Changed: the qa skill and its experts ask less of the person and waste less.
+  QA decides what the project's rules decide (the version number, who fixes a
+  finding, re-running an expert within the budget) and lists those decisions in
+  its report; it asks only what is the person's to decide, in one batch while
+  it writes the spec, each question with its recommendation. It makes
+  corrections that change no behavior itself, with a mechanical proof, for the
+  next review to check; it sizes each expert's task to one run and runs the
+  tests that only CI can run as soon as they exist; each gate takes one review
+  round by default, and lower findings go to a list of improvements. Messages,
+  pull requests and everything that ships use plain words: no labels from the
+  spec, and only the version file and the changelog's heading carry the
+  upcoming version.
 
 ### Upgrading from 0.8.0
 
@@ -78,14 +108,27 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - In a container project (claude_code_podman), the policy is read-only, so
   nothing changes. The project can add deny rules in `config/managed-settings.json`
   (lists combine with the base's).
-- A VM host: the next run appends the loop's three settings to the settings
-  file, `/etc/claude-vm/settings.yml`, that 0.8.0 wrote, at the value that run
-  uses (`claude_code_skills_loop_to_delivery: false`, `_max_wakes: 5`,
-  `_max_hours: 24`) and changes no line there.
-- A Claude Code project (container) set up with 0.8.0 has no loop settings in
-  `ansible/group_vars/all/project.yml`, and the roles' defaults apply (loop off,
-  5 and 24). `ansible-playbook update-playbooks.yml` writes them into
-  `defaults.yml`.
+- A VM host: the settings file, `/etc/claude-vm/settings.yml`, that 0.8.0 wrote
+  has a `claude_code_settings_qa: <value>` line. The first run stops, naming
+  the file, until you rename that line to `claude_code_skills_qa`, keeping the
+  value: a run never changes a line of the file. The run after that appends
+  the settings the file lacks, at the value it uses
+  (`claude_code_settings_qa_budget: false`, `claude_code_skills_loop_to_delivery: false`,
+  `_max_wakes: 5`, `_max_hours: 24`) and changes no line there. An inventory or
+  a `-e` that sets the old name stops the run likewise, before it touches the
+  VM: rename it there.
+- A Claude Code project (container) set up with 0.8.0 has
+  `claude_code_settings_qa` in `ansible/group_vars/all/project.yml`: the setup
+  wrote every setting at its default, `false` included. It has no loop
+  settings there, and the roles' defaults apply (loop off, 5 and 24). After
+  installing this version, in the project's `ansible/` directory, first run
+  `ansible-playbook update-playbooks.yml`: it still runs with the old name in
+  the project, and rewrites `defaults.yml` (aslib.infra's own file) with the
+  new settings and without the old name. Then rename the line in `project.yml`
+  to `claude_code_skills_qa`, keeping the value, or delete it, and run
+  `build-and-deploy.yml` or `deploy.yml`: they stop at the old name, as do
+  `image.yml`, `restart.yml` and `remove.yml`, before they change anything.
+  A project set up before 0.8.0 has no such line.
 - To turn the loop on, set `claude_code_skills_loop_to_delivery: true` (in the
   VM's settings file, or the project's `project.yml`) together with
   `claude_code_settings_qa_budget: true`: with qa-budget off the run stops,
@@ -95,12 +138,17 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   the sessions that hold one (`status` shows the loops): otherwise each such job
   costs one model call before Claude deletes it.
 - A playbook of your own that installs claude_code_settings' files and policy
-  and should offer the loop includes claude_code_skills after it, and installs
-  its files and merges its part of the policy too.
+  and should offer the qa skill or the loop includes claude_code_skills after
+  it, and installs its files and merges its part of the policy too. Without it
+  the qa skill is no longer installed: claude_code_settings' files are
+  qa-budget's only now.
 - Rolling back to 0.8.0: turn the loop off first, or remove
   `/etc/claude-code/.claude/skills/loop-to-delivery/` by hand, as 0.8.0 does not
   know it and the skill would stay without its hooks. A VM host's settings file
-  must lose the `claude_code_skills_*` lines too, or 0.8.0 stops on them.
+  must lose the `claude_code_skills_*` lines too, or 0.8.0 stops on them; put
+  `claude_code_settings_qa` back where you had `claude_code_skills_qa`. In a
+  container project, rename that line in `project.yml` back as well: 0.8.0
+  does not read `claude_code_skills_qa`, so the qa skill would be off.
 
 ## 0.8.0
 

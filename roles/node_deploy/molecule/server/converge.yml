@@ -17,7 +17,7 @@
         name: aslib.infra.claude_code_podman
       vars:
         podman_service_uid: ""
-        claude_code_settings_qa: true
+        claude_code_skills_qa: true
         claude_code_settings_qa_budget: true
         claude_code_skills_loop_to_delivery: true
         claude_code_skills_loop_to_delivery_max_wakes: 7

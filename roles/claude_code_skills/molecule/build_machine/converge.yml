@@ -11,8 +11,9 @@
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_settings
 
-    - name: Compute the skills, loop-to-delivery on
+    - name: Compute the skills, the qa skill and loop-to-delivery on
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_skills
       vars:
+        claude_code_skills_qa: true
         claude_code_skills_loop_to_delivery: true

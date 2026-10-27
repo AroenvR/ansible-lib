@@ -58,9 +58,9 @@ What you choose, the VM's size and network, keys, the token and how sessions
 start, lives on the host in `/etc/claude-vm/settings.yml`, which the first run
 writes: change it there and run the playbook again
 ([Settings](../roles/claude_code_vm/README.md#settings)). With
-`claude_code_settings_qa: true` there, a request to change a project goes
+`claude_code_skills_qa: true` there, a request to change a project goes
 through the [qa
-skill](../roles/claude_code_settings/README.md#the-qa-skill-and-its-five-experts)
+skill](../roles/claude_code_skills/README.md#the-qa-skill-and-its-five-experts)
 and its five experts; with `claude_code_skills_loop_to_delivery: true` (and
 `claude_code_settings_qa_budget: true`, which it needs: a run with the loop on
 and qa-budget off stops, naming both), Claude [keeps long

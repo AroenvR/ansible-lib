@@ -26,6 +26,16 @@
       {{ __claude_code_vm_old | join(', ') }}. Rename them where they are set (the inventory or -e).
     quiet: true
 
+# After 0.8.0 the qa skill moved to claude_code_skills; settings.yml checks the
+# settings file for the old name.
+- name: Stop at claude_code_settings_qa, which is now claude_code_skills_qa
+  ansible.builtin.assert:
+    that: query('ansible.builtin.varnames', '^claude_code_settings_qa$') | length == 0
+    fail_msg: >-
+      claude_code_settings_qa is now claude_code_skills_qa (the qa skill moved to aslib.infra.claude_code_skills
+      after 0.8.0): rename it where it is set (the inventory or -e).
+    quiet: true
+
 # First: every value below may come from it.
 - name: Read the settings file, /etc/claude-vm/settings.yml, or write it
   ansible.builtin.import_tasks: settings.yml
@@ -326,8 +336,8 @@
     claude_code_settings_theme: "{{ claude_code_settings_theme }}"
     claude_code_settings_agent_teams: "{{ claude_code_settings_agent_teams }}"
     claude_code_settings_ultracode: "{{ claude_code_settings_ultracode }}"
-    claude_code_settings_qa: "{{ claude_code_settings_qa }}"
     claude_code_settings_qa_budget: "{{ claude_code_settings_qa_budget }}"
+    claude_code_skills_qa: "{{ claude_code_skills_qa }}"
     claude_code_skills_loop_to_delivery: "{{ claude_code_skills_loop_to_delivery }}"
     claude_code_skills_loop_to_delivery_max_wakes: "{{ claude_code_skills_loop_to_delivery_max_wakes }}"
     claude_code_skills_loop_to_delivery_max_hours: "{{ claude_code_skills_loop_to_delivery_max_hours }}"

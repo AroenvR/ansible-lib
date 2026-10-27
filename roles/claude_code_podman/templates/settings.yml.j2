@@ -37,11 +37,11 @@ claude_code_settings_effort: xhigh     # low, medium, high or xhigh
 claude_code_settings_theme: dark       # auto, dark, light, dark-daltonized, light-daltonized, dark-ansi, light-ansi
 claude_code_settings_agent_teams: false   # true: agent teams on
 claude_code_settings_ultracode: false  # true: sessions start with ultracode on
-claude_code_settings_qa: false         # true: the qa skill and its five experts handle change requests; needs agent teams off
 claude_code_settings_qa_budget: false  # true: qa-budget measures and limits what agents spend of the subscription
 
 # The skills Claude Code gets, the same names as in claude_code_vm's VM:
 # ansible-doc -t role aslib.infra.claude_code_skills. Each deploy installs them.
+claude_code_skills_qa: false           # true: the qa skill and its five experts handle change requests; needs agent teams off
 claude_code_skills_loop_to_delivery: false   # true: Claude keeps long work going by itself, waking up every 30 minutes; needs claude_code_settings_qa_budget
 claude_code_skills_loop_to_delivery_max_wakes: 5   # the most wake-ups such a loop gets
 claude_code_skills_loop_to_delivery_max_hours: 24  # the most hours such a loop runs, 1 to 168

@@ -1,7 +1,15 @@
 ---
 # What claude_code_skills ships for Claude Code's managed settings directory
 # (/etc/claude-code on Linux), as paths there: each comes from files/ with
-# .claude/ left out. A skill is its folder.
+# .claude/ left out. A skill is its folder, an agent its file.
+__claude_code_skills_qa_files:
+  - .claude/skills/qa/SKILL.md
+  - .claude/skills/qa/protocol.md
+  - .claude/agents/architect.md
+  - .claude/agents/tester.md
+  - .claude/agents/reviewer.md
+  - .claude/agents/developer.md
+  - .claude/agents/documenter.md
 __claude_code_skills_loop_files:
   - .claude/skills/loop-to-delivery/SKILL.md
   - .claude/skills/loop-to-delivery/loop_to_delivery.py

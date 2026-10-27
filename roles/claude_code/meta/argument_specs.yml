@@ -10,8 +10,8 @@ argument_specs:
         aslib.infra.claude_code_vm, claude_code_vm_remove, claude_code_vm_overview, claude_code_vm_boot_trial).
       - aslib.infra.claude_code_settings - how a new session starts, the same in both, which both include
         (claude_code_settings_* settings).
-      - aslib.infra.claude_code_skills - the skills Claude Code gets, the same in both, which both include
-        (loop-to-delivery; claude_code_skills_* settings).
+      - aslib.infra.claude_code_skills - the skills Claude Code gets, the same in both, which both include (the qa
+        skill with its five expert subagents, and loop-to-delivery; claude_code_skills_* settings).
       - Before 0.7.0 this name was the container's role, now claude_code_podman. Its entry point main stops with
         this list, so that a project's deploy.yml of then does not silently do nothing.
     options: {}

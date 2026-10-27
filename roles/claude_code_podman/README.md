@@ -58,7 +58,7 @@ runs with it.
 |---|---|
 | The service and its account | `claude-code` (`podman_service_user`), no port |
 | Its home, with Claude's login, history, memory and notes | `/opt/claude-code/`, the same path in the container; a removal keeps it |
-| The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/`; with `claude_code_settings_qa`, also the qa skill and its experts, and with `claude_code_skills_loop_to_delivery` the loop-to-delivery skill, in `.claude/` |
+| The policy and instructions | `/opt/claude-code/config/`, read-only in the container, where it is `/etc/claude-code/`; with `claude_code_skills_qa`, also the qa skill and its experts, and with `claude_code_skills_loop_to_delivery` the loop-to-delivery skill, in `.claude/` |
 | The shared zone | `/opt/containers/shared/`, with every other service of aslib.infra that has it (`podman_service_shared`) |
 | The command | `/usr/local/sbin/claude-code`, for root: runs `claude` in the container, with a terminal or without one (`claude-code -p "..."` in a script) |
 
@@ -114,7 +114,6 @@ or with `-e`; each deploy installs them:
 | `claude_code_settings_theme` | `dark` |
 | `claude_code_settings_agent_teams` | `false` |
 | `claude_code_settings_ultracode` | `false` |
-| `claude_code_settings_qa` | `false`; `true` installs the [qa skill and its five experts](../claude_code_settings/README.md#the-qa-skill-and-its-five-experts) |
 | `claude_code_settings_qa_budget` | `false`: [qa-budget](../claude_code_settings/README.md#qa-budget-a-budget-for-agent-work), which measures and limits what agents spend of the subscription |
 
 **Skills:** the same names and defaults as in the VM
@@ -124,6 +123,7 @@ deploy installing them in `config/.claude/`, which the container reads as
 
 | Setting | Default |
 |---|---|
+| `claude_code_skills_qa` | `false`; `true` installs the [qa skill and its five experts](../claude_code_skills/README.md#the-qa-skill-and-its-five-experts). Needs `claude_code_settings_agent_teams` off: a deploy with both on stops, naming both |
 | `claude_code_skills_loop_to_delivery` | `false`; `true` installs [loop-to-delivery](../claude_code_skills/README.md#the-loop-to-delivery-skill), which keeps long work going until it is delivered, and its hooks. Needs `claude_code_settings_qa_budget: true`: a deploy with the loop on and qa-budget off stops, naming both |
 | `claude_code_skills_loop_to_delivery_max_wakes` | `5`, the most wake-ups a loop gets |
 | `claude_code_skills_loop_to_delivery_max_hours` | `24`, the most hours a loop runs (1 to 168) |
@@ -147,6 +147,15 @@ With neither, Claude signs in with a claude.ai account in its first session.
 restart or removal that still sets a setting by its old name stops, naming the
 new one; `claude_code_bypass_permissions` is gone, as bypassPermissions is
 the default now.
+
+**From 0.8.0**: the qa skill moved to claude_code_skills, and its setting
+`claude_code_settings_qa` is now `claude_code_skills_qa`. A build, deploy,
+restart or removal that still sets the old name (in `project.yml`, the
+inventory or with `-e`) stops before it changes anything, naming the new one.
+`update-playbooks.yml` still runs, and rewrites `defaults.yml` without the old
+name; run it first, then rename the line in `project.yml` (the project's own
+file, which no update touches) or delete it
+([upgrading from 0.8.0](../../CHANGELOG.md#upgrading-from-080)).
 
 ## Requirements
 

@@ -10,10 +10,10 @@ argument_specs:
         templates/managed-settings.json.j2 with the values below; a target may add its own part.
         C(claude_code_settings_environment), the environment variables every claude process needs.
         C(claude_code_settings_global_config), Claude Code's .claude.json for an account that has none yet.
-        C(claude_code_settings_files), the files of the features that are on for Claude Code's managed settings
-        directory (/etc/claude-code), each with its path there (C(name)) and its file on the Ansible machine
-        (C(src)). C(claude_code_settings_absent), the paths there of the features that are off, for a target to
-        remove where an earlier run installed them.
+        C(claude_code_settings_files), qa-budget's files when it is on, for Claude Code's managed settings directory
+        (/etc/claude-code), each with its path there (C(name)) and its file on the Ansible machine (C(src)).
+        C(claude_code_settings_absent), qa-budget's folder there when it is off, for a target to remove. The skills,
+        the qa skill among them, are aslib.infra.claude_code_skills'.
       - Whatever these settings say, a new session starts ready to work - signed in where the target has a token,
         without the first-run setup, without asking to trust a folder (any folder, git repositories cloned later
         included), without the confirmation of bypassPermissions mode; and a cd in Bash sticks for later commands,
@@ -55,16 +55,6 @@ argument_specs:
         default: false
         description: Start sessions with ultracode on, so that Claude plans a workflow of agents for each substantive
           task without being asked (C(ultracode)). /effort ultracode off still turns it off for a session.
-      claude_code_settings_qa:
-        type: bool
-        default: false
-        description:
-          - The qa skill and its five expert subagents, in Claude Code's managed settings directory. A request to change
-            a project then goes through the qa skill, which turns the session into QA, the lead, and runs the experts
-            C(architect), C(tester), C(reviewer), C(developer) and C(documenter) one at a time, through review gates,
-            as its protocol says. Questions are answered without it.
-          - Off by default, as managed skills and subagents win over a person's or a project's of the same names.
-            Needs C(claude_code_settings_agent_teams) off; the run stops when both are on.
       claude_code_settings_qa_budget:
         type: bool
         default: false

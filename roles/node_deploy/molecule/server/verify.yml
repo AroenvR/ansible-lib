@@ -331,18 +331,18 @@
 
     # converge.yml deploys Claude Code with the qa skill, qa-budget and
     # loop-to-delivery on, the loop with 7 wake-ups and 48 hours.
-    - name: Compute what claude_code_settings hands every target with the qa skill and qa-budget on, as the deploy had it
+    - name: Compute what claude_code_settings hands every target with qa-budget on, as the deploy had it
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_settings
       vars:
-        claude_code_settings_qa: true
         claude_code_settings_qa_budget: true
 
-    - name: Compute what claude_code_skills hands every target with loop-to-delivery on, as the deploy had it
+    - name: Compute what claude_code_skills hands every target with the qa skill and loop-to-delivery on, as the deploy had it
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_skills
       vars:
         claude_code_settings_qa_budget: true
+        claude_code_skills_qa: true
         claude_code_skills_loop_to_delivery: true
         claude_code_skills_loop_to_delivery_max_wakes: 7
         claude_code_skills_loop_to_delivery_max_hours: 48
@@ -352,7 +352,7 @@
         that:
           - claude_code_skills_files is defined
           - claude_code_skills_policy is defined
-          - claude_code_skills_files | length == 2
+          - claude_code_skills_files | length == 9
         fail_msg: aslib.infra.claude_code_skills handed over no files or no policy.
         quiet: true
 
@@ -399,7 +399,7 @@
       register: __node_deploy_test_files_inside
       changed_when: false
 
-    # The qa skill (7 files) and qa-budget (4) are claude_code_settings', loop-to-delivery (2) claude_code_skills'.
+    # The qa skill (7 files) and loop-to-delivery (2) are claude_code_skills', qa-budget (4) claude_code_settings'.
     - name: Check config/ holds exactly the policy, the instructions, qa-budget's and the skills' files, as the policy is owned and moded
       vars:
         __node_deploy_test_found: >-
@@ -433,8 +433,8 @@
           config/: {{ __node_deploy_test_config.files | map(attribute='path') | list }};
           in the container: {{ __node_deploy_test_files_inside.stdout_lines }}
         success_msg: >-
-          PASSED claude_code_podman installed claude_code_settings' qa skill (SKILL.md, protocol.md), its five experts and
-          qa-budget's four files, and claude_code_skills' loop-to-delivery (SKILL.md, loop_to_delivery.py), in config/,
+          PASSED claude_code_podman installed claude_code_skills' qa skill (SKILL.md, protocol.md), its five experts and
+          loop-to-delivery (SKILL.md, loop_to_delivery.py), and qa-budget's four files of claude_code_settings, in config/,
           {{ __node_deploy_test_policy_file.pw_name }}'s and {{ __node_deploy_test_policy_file.mode }} like the policy, in
           folders of the account; the container finds exactly these, the policy and the instructions in /etc/claude-code,
           each the same as the collection's.
@@ -772,6 +772,48 @@
               PASSED claude_code_podman stops a deploy with claude_code_skills_loop_to_delivery on and
               claude_code_settings_qa_budget off, naming both settings and qa-budget's guard.
 
+    # claude_code_skills_qa replaced it after 0.8.0; a 0.8.0 project's settings
+    # have it, false by default, which stops a deploy too.
+    - name: Look up the installed policy before a deploy that sets claude_code_settings_qa
+      ansible.builtin.stat:
+        path: /opt/claude-code/config/managed-settings.json
+      register: __node_deploy_test_before_rename
+
+    - name: Deploy Claude Code with claude_code_settings_qa, as a 0.8.0 project does
+      block:
+        - name: Deploy Claude Code with claude_code_settings_qa
+          ansible.builtin.include_role:
+            name: aslib.infra.claude_code_podman
+          vars:
+            podman_service_uid: ""
+            claude_code_settings_qa: false
+
+        - name: Fail, as the deploy went ahead
+          ansible.builtin.fail:
+            msg: claude_code_podman deployed with claude_code_settings_qa set.
+      rescue:
+        - name: Note what stopped the deploy
+          ansible.builtin.set_fact:
+            __node_deploy_test_rename_task: "{{ ansible_failed_task.name }}"
+            __node_deploy_test_rename_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+
+        - name: Look up the installed policy after the stopped deploy
+          ansible.builtin.stat:
+            path: /opt/claude-code/config/managed-settings.json
+          register: __node_deploy_test_after_rename
+
+        - name: Check the deploy stopped before changing anything, naming the new name and the steps in order
+          ansible.builtin.assert:
+            that:
+              - __node_deploy_test_rename_task != 'Fail, as the deploy went ahead'
+              - __node_deploy_test_rename_msg is search('claude_code_skills_qa')
+              - __node_deploy_test_rename_msg is search('update-playbooks[.]yml.*project[.]yml')
+              - __node_deploy_test_after_rename.stat.checksum == __node_deploy_test_before_rename.stat.checksum
+            fail_msg: "{{ __node_deploy_test_rename_task }}: {{ __node_deploy_test_rename_msg }}"
+            success_msg: >-
+              PASSED claude_code_podman stops a deploy that sets claude_code_settings_qa before changing the policy,
+              naming claude_code_skills_qa, update-playbooks.yml and then project.yml.
+
     # Every deploy writes the README again, as this one does. qa-budget stays on
     # (loop-to-delivery needed it, and turning the loop off does not turn it off).
     - name: Deploy Claude Code again, with every setting of claude_code_settings changed, the qa skill and loop-to-delivery off
@@ -785,7 +827,7 @@
         claude_code_settings_theme: light
         claude_code_settings_agent_teams: "true"   # as -e passes it
         claude_code_settings_ultracode: true
-        claude_code_settings_qa: false
+        claude_code_skills_qa: false
         claude_code_settings_qa_budget: true
         claude_code_skills_loop_to_delivery: false
 

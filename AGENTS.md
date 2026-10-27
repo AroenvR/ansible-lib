@@ -18,10 +18,10 @@ to running service, and the `claude_code_` roles, indexed by `claude_code`,
 run Claude Code: claude_code_podman as an always-on agent for root,
 claude_code_vm in a VM where it may have root, for development, both starting
 sessions as claude_code_settings says and offering the skills that
-claude_code_skills holds (loop-to-delivery for now). gitlab runs GitLab CE as a
-rootless Podman service. node_deploy, claude_code_podman and gitlab
-are thin layers over podman_service. Consumers install a release tarball that
-holds only runtime files; tests and tooling never ship (`build_ignore` in
+claude_code_skills holds (the qa skill and loop-to-delivery). gitlab runs
+GitLab CE as a rootless Podman service. node_deploy, claude_code_podman and
+gitlab are thin layers over podman_service. Consumers install a release tarball
+that holds only runtime files; tests and tooling never ship (`build_ignore` in
 `galaxy.yml`). What it offers and how it is used: [README.md](README.md), and
 the guides and the reference in [docs/](docs/README.md).
 
@@ -576,6 +576,22 @@ podman_service service, a smoke test after a deploy).
 
 Each with its reason, newest first. A decision is changed by a new one here.
 
+- 2026-10-25, the qa skill's working rules, from what went wrong while it
+  built the skills role and loop-to-delivery (the maintainer: too many
+  questions, too long, numbers and labels changed and fixed again and again):
+  QA decides what the project's rules decide and lists those decisions in its
+  report; it asks only the person's decisions, in one batch at spec time, each
+  with a recommendation; it makes behavior-neutral corrections itself with a
+  mechanical proof (a word diff, `git diff -w`, unchanged syntax trees), which
+  the next review checks; it sizes each expert's task to one run (the per-run
+  token budget cut one documentation run short) and pushes tests that only CI
+  can run as soon as they exist (a VM test's whitespace defect surfaced only
+  after the code review). Product text names the last release, not the
+  upcoming one, so a late change of the number touches only galaxy.yml and the
+  changelog's heading; spec labels stay in `.claude/specs/` (a hook program
+  shipped with them). Each gate takes one review round (qa-budget's `budget.md`
+  caps it at two); lower findings go to the list of improvements. Reports to
+  the person use plain words.
 - 2026-10-25, loop-to-delivery's hook program, the exception to "Markdown and
   Ansible only" of the qa decision (which stands for qa): the maintainer asked
   for work that keeps going across interruptions, and only a hook can block a
@@ -605,20 +621,27 @@ Each with its reason, newest first. A decision is changed by a new one here.
   raised once the budget has held; 6 wake-ups in a row without progress stays
   a constant.
 - 2026-10-25, the skills as a role of their own, claude_code_skills: a utility
-  both targets include after claude_code_settings. For now it holds
-  loop-to-delivery only (the maintainer's order is one change per pull
-  request); the qa skill stays in claude_code_settings and follows later. It
-  hands over the files of the skills that are on, the paths of those that are
-  off, and a part of the policy (the loop's hooks, `{}` while it is off); the
-  targets install the files before the policy, whose hooks run the program, and
-  merge the part after claude_code_settings' base, so the loop's hooks come
-  after qa-budget's, and before their own. One job per role: how a session
-  starts and which skills it has change for different reasons. The role reads
-  `claude_code_settings_qa_budget` without declaring it, and knows one path of
-  another role's files, qa-budget's guard, which claude_code_settings' README
-  names as an interface. In the VM's host run, the settings file's values are
-  taken before either role is included, so the qa-budget check sees what the
-  file says.
+  both targets include after claude_code_settings. It owns the qa skill with
+  its five experts, moved from claude_code_settings (its setting is now
+  `claude_code_skills_qa`, and a run that still sets the name it had there
+  stops, naming the new one), and loop-to-delivery. It hands over the files of
+  the skills that are on, the paths of those that are off, and a part of the
+  policy (the loop's hooks, `{}` while it is off); the targets install the
+  files before the policy, whose hooks run the program, and merge the part
+  after claude_code_settings' base, so the loop's hooks come after qa-budget's,
+  and before their own. One job per role: how a session starts and which skills
+  it has change for different reasons, and the maintainer found a Claude skill
+  poorly named as a `claude_code_settings` setting. The role reads
+  `claude_code_settings_agent_teams` and `claude_code_settings_qa_budget`
+  without declaring them, and knows one path of another role's files,
+  qa-budget's guard, which claude_code_settings' README names as an interface.
+  In the VM's host run, the settings file's values are taken before either
+  role is included, so the agent-teams and qa-budget checks see what the file
+  says. The stops at the old name are in the targets, not in the roles: the VM
+  also reads its settings file, which a run never rewrites, and in a container
+  project they are in the build and deploy tasks, not in the setup, so
+  `update-playbooks.yml` still runs and rewrites `defaults.yml`, which a 0.8.0
+  setup wrote with the old name.
 - 2026-10-25, deny rules of the base policy (pull request #35, after the
   maintainer's review): the policy no longer denies edits to `/etc/claude-code/`;
   the deny on `**/.claude/settings.json`, which the same pull request had
@@ -642,23 +665,22 @@ Each with its reason, newest first. A decision is changed by a new one here.
   would get round the deny on hooks. The need that led to dropping it (resume
   hooks written by hand into `~/.claude/settings.json`) is gone, as hooks come
   from the managed policy, which the playbooks install.
-- 2026-10-19, the qa skill (issue #26, for #11): claude_code_settings ships
-  the skill `qa` (with its protocol next to it) and five subagents
-  (architect, tester, reviewer, developer, documenter), which both targets
-  install in `/etc/claude-code/.claude/`. Synchronous: the session you talk to
-  becomes QA through the skill and runs the experts as subagents one at a
-  time, passing each report on; QA gives each the protocol's path
+- 2026-10-19, the qa skill (issue #26, for #11): the skill `qa` (with its
+  protocol next to it) and five subagents (architect, tester, reviewer,
+  developer, documenter), which both targets install in
+  `/etc/claude-code/.claude/`. Synchronous: the session you talk to becomes QA
+  through the skill and runs the experts as subagents one at a time, passing
+  each report on; QA gives each the protocol's path
   (`${CLAUDE_SKILL_DIR}/protocol.md`), as a subagent starts without the
   conversation. The texts are #11's package (written for agent teams), changed
   only where the synchronous design needs it; its settings, hook script,
   README and examples are not shipped: Markdown and Ansible only. Off by
-  default (`claude_code_settings_qa`, the maintainer's call), as managed names
-  win over a person's and a project's. It needs agent teams off, so a run with
-  both on stops (the issue asked only for the README to say so). The targets
-  get the files as facts (`claude_code_settings_files`, and
-  `claude_code_settings_absent` for those of features turned off): the
-  container's config/ (podman_service) now mirrors names with folders; the VM
-  removes only what claude_code_settings ships, so other files there stay.
+  default (the maintainer's call), as managed names win over a person's and a
+  project's. It needs agent teams off, so a run with both on stops (the issue
+  asked only for the README to say so). The targets get the files as facts,
+  and the container's config/ (podman_service) now mirrors names with folders;
+  the VM removes only what the role ships, so other files there stay. Since
+  2026-10-25 claude_code_skills ships it (above).
 - 2026-10-18, Claude Code roles as one family (issue #25, the maintainer's
   design): `claude_code` is the index (README and an entry point that stops
   with the map), `claude_code_podman` (was claude_code) and `claude_code_vm`
@@ -898,10 +920,12 @@ Each with its reason, newest first. A decision is changed by a new one here.
 
 ## Status
 
-Last updated 2026-10-25. v0.6.0 is the latest release; accept holds 0.7.0 (the
+Last updated 2026-10-27. v0.6.0 is the latest release; accept holds 0.7.0 (the
 Claude Code family, issue #25) and 0.8.0 (the qa skill, issue #26); develop
 holds the next version's work so far: qa-budget, and the role claude_code_skills
-with loop-to-delivery, which needs it (CHANGELOG.md's top section lists it).
+with the qa skill, moved there from claude_code_settings with its setting
+renamed and new working rules, and loop-to-delivery, which needs qa-budget
+(CHANGELOG.md's top section lists it).
 
 - CI passes every job before a release is tagged. Memory limits are checked
   only where cgroup v2 delegates the memory controller (CI's runners).

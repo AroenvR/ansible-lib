@@ -1,0 +1,96 @@
+---
+# claude_code_settings_qa is now claude_code_skills_qa (after 0.8.0). A run with
+# the old name in the settings file or as -e stops before changing anything,
+# naming the new one, and never rewrites the file's lines. A file that is not a
+# mapping still gets the settings check's own message.
+- name: Note the settings file before the old name goes in
+  ansible.builtin.slurp:
+    src: "{{ __claude_code_vm_test_file }}"
+  register: __claude_code_vm_test_before_old
+  no_log: true
+
+- name: Add the old name to the settings file, as 0.8.0 wrote it
+  ansible.builtin.lineinfile:
+    path: "{{ __claude_code_vm_test_file }}"
+    line: "claude_code_settings_qa: true"
+
+- name: Look up the settings file with the old name
+  ansible.builtin.stat:
+    path: "{{ __claude_code_vm_test_file }}"
+  register: __claude_code_vm_test_with_old
+
+- name: Run aslib.infra.claude_code_vm with the old name in the settings file
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  register: __claude_code_vm_test_old_in_file
+  changed_when: false
+  failed_when: false
+
+- name: Look up the settings file after that run
+  ansible.builtin.stat:
+    path: "{{ __claude_code_vm_test_file }}"
+  register: __claude_code_vm_test_after_old
+
+- name: Put the settings file back, without the old name
+  ansible.builtin.copy:
+    content: "{{ __claude_code_vm_test_before_old.content | b64decode }}"
+    dest: "{{ __claude_code_vm_test_file }}"
+    mode: "0600"
+  no_log: true
+
+- name: Run aslib.infra.claude_code_vm with -e claude_code_settings_qa=false
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v, -e, claude_code_settings_qa=false]
+    chdir: /
+  register: __claude_code_vm_test_old_as_e
+  changed_when: false
+  failed_when: false
+
+- name: Write a settings file that is not a mapping
+  ansible.builtin.copy:
+    content: "42\n"
+    dest: "{{ __claude_code_vm_test_file }}"
+    mode: "0600"
+
+- name: Run aslib.infra.claude_code_vm with it
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  register: __claude_code_vm_test_garbled
+  changed_when: false
+  failed_when: false
+
+- name: Put the settings file back
+  ansible.builtin.copy:
+    content: "{{ __claude_code_vm_test_before_old.content | b64decode }}"
+    dest: "{{ __claude_code_vm_test_file }}"
+    mode: "0600"
+  no_log: true
+
+- name: Check each run stopped with its own message, naming claude_code_skills_qa, and the file kept its lines byte for byte
+  vars:
+    __claude_code_vm_test_in_file: "{{ __claude_code_vm_test_old_in_file.stdout ~ __claude_code_vm_test_old_in_file.stderr }}"
+    __claude_code_vm_test_as_e: "{{ __claude_code_vm_test_old_as_e.stdout ~ __claude_code_vm_test_old_as_e.stderr }}"
+    __claude_code_vm_test_not_mapping: "{{ __claude_code_vm_test_garbled.stdout ~ __claude_code_vm_test_garbled.stderr }}"
+    __claude_code_vm_test_as_e_stop: >-
+      claude_code_settings_qa is now claude_code_skills_qa [(]the qa skill moved to
+      aslib[.]infra[.]claude_code_skills after 0[.]8[.]0[)]: rename it where it is set
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_old_in_file.rc != 0
+      - "__claude_code_vm_test_in_file is search('has claude_code_settings_qa, which is now claude_code_skills_qa: rename that line in the file')"
+      - __claude_code_vm_test_in_file is not search('must hold settings')
+      - __claude_code_vm_test_after_old.stat.checksum == __claude_code_vm_test_with_old.stat.checksum
+      - __claude_code_vm_test_old_as_e.rc != 0
+      - __claude_code_vm_test_as_e is search(__claude_code_vm_test_as_e_stop)
+      - __claude_code_vm_test_garbled.rc != 0
+      - __claude_code_vm_test_not_mapping is search('must hold settings')
+      - __claude_code_vm_test_not_mapping is not search('error while evaluating|argument of type|TypeError')
+    fail_msg: >-
+      In the file: rc {{ __claude_code_vm_test_old_in_file.rc }} {{ __claude_code_vm_test_old_in_file.stdout_lines[-4:] }};
+      as -e: rc {{ __claude_code_vm_test_old_as_e.rc }} {{ __claude_code_vm_test_old_as_e.stdout_lines[-4:] }};
+      not a mapping: rc {{ __claude_code_vm_test_garbled.rc }} {{ __claude_code_vm_test_garbled.stdout_lines[-4:] }}
+    success_msg: >-
+      PASSED claude_code_settings_qa in the settings file and as -e each stopped the run, naming
+      claude_code_skills_qa, and the file kept every byte; a file that is not settings got the settings check's message.

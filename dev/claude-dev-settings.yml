@@ -8,7 +8,7 @@
 # checkout, with the settings the VM has (its host's settings file) and the
 # branch's new ones, e.g.:
 #   ANSIBLE_COLLECTIONS_PATH=.venv/self:.venv/collections ansible-playbook dev/claude-dev-settings.yml \
-#     -e claude_code_skills_loop_to_delivery=true -e claude_code_settings_qa_budget=true
+#     -e claude_code_skills_qa=true -e claude_code_skills_loop_to_delivery=true -e claude_code_settings_qa_budget=true
 # Claude Code reads the new policy in sessions it starts from then on.
 - name: Install Claude Code's policy, qa-budget's files and the skills on this machine
   hosts: localhost
