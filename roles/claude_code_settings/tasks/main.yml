@@ -1,23 +1,10 @@
 ---
 # Entry point "main": computes what every target installs, as facts for the role
 # that includes this one. Changes nothing.
-- name: Check the qa skill and agent teams are not both on
-  ansible.builtin.assert:
-    that: not (claude_code_settings_qa | bool and claude_code_settings_agent_teams | bool)
-    fail_msg: >-
-      claude_code_settings_qa needs claude_code_settings_agent_teams off: the qa skill runs its experts as
-      subagents, one at a time, and with agent teams on, Claude Code starts a subagent that Claude names as a
-      teammate instead. Turn one of them off.
-    quiet: true
-
 - name: Note Claude Code's settings for the target
   vars:
-    __claude_code_settings_names: >-
-      {{ (__claude_code_settings_qa_files if claude_code_settings_qa | bool else [])
-         + (__claude_code_settings_qa_budget_files if claude_code_settings_qa_budget | bool else []) }}
-    __claude_code_settings_sources: >-
-      {{ [role_path ~ '/files/'] | product(__claude_code_settings_names | map('regex_replace', '^[.]claude/', ''))
-         | map('join') | list }}
+    __claude_code_settings_names: "{{ __claude_code_settings_qa_budget_files if claude_code_settings_qa_budget | bool else [] }}"
+    __claude_code_settings_sources: "{{ [role_path ~ '/files/'] | product(__claude_code_settings_names) | map('join') | list }}"
   ansible.builtin.set_fact:
     # The base of the policy, with the settings' values (reading it also checks it is JSON).
     claude_code_settings_policy: "{{ lookup('ansible.builtin.template', 'managed-settings.json.j2', convert_data=false) | from_json }}"
@@ -32,16 +19,11 @@
     # sign-in), as the policy and the token already answer it.
     claude_code_settings_global_config:
       hasCompletedOnboarding: true
-    # The files of the features that are on, for the managed settings directory:
-    # its path there (name) and the file on the Ansible machine (src).
+    # qa-budget's files when it is on, for the managed settings directory: the
+    # path there (name) and the file on the Ansible machine (src).
     claude_code_settings_files: >-
       {{ dict(__claude_code_settings_names | zip(__claude_code_settings_sources))
          | dict2items(key_name='name', value_name='src') }}
-    # What the features that are off would have put there, for a target to
-    # remove where an earlier run installed it: a skill's folder, an agent's
-    # file, qa-budget's folder.
-    claude_code_settings_absent: >-
-      {{ ([] if claude_code_settings_qa | bool
-          else __claude_code_settings_qa_files | select('match', '[.]claude/skills/') | map('dirname') | unique | list
-               + __claude_code_settings_qa_files | reject('match', '[.]claude/skills/') | list)
-         + ([] if claude_code_settings_qa_budget | bool else ['qa-budget']) }}
+    # qa-budget's folder when it is off, for a target to remove where an earlier
+    # run installed it.
+    claude_code_settings_absent: "{{ [] if claude_code_settings_qa_budget | bool else ['qa-budget'] }}"

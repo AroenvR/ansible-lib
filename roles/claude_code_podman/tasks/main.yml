@@ -46,9 +46,9 @@
 
 # config/ becomes /etc/claude-code/ in the container: the policy, Claude's
 # instructions (CLAUDE.md) and any other file of the project's config/ that
-# Claude Code reads there, claude_code_settings' files in .claude/ (the qa
-# skill and its experts, when on) and claude_code_skills' (the loop's files,
-# when on). The policy Claude Code reads is, in this order: claude_code_settings'
+# Claude Code reads there, claude_code_settings' files (qa-budget's, when on)
+# and claude_code_skills' in .claude/ (the qa skill and its experts, and the
+# loop's files, when on). The policy Claude Code reads is, in this order: claude_code_settings'
 # base, claude_code_skills' part (loop-to-delivery's hooks, when on, after
 # qa-budget's), the container's own part (files/managed-settings.container.json)
 # and the project's config/managed-settings.json. A later value replaces an

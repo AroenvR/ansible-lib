@@ -1,14 +1,14 @@
 # aslib.infra.claude_code_skills
 
-The skills Claude Code gets, the same wherever aslib.infra installs Claude
-Code: in its container ([claude_code_podman](../claude_code_podman/README.md))
-and in its VM ([claude_code_vm](../claude_code_vm/README.md)). For now it holds
-one, [loop-to-delivery](#the-loop-to-delivery-skill), off by default; the qa
-skill is still claude_code_settings' ([its README](../claude_code_settings/README.md#the-qa-skill-and-its-five-experts)).
-A utility of the [Claude Code roles](../claude_code/README.md): each target
-includes it after [claude_code_settings](../claude_code_settings/README.md) and
-installs what it hands over where its Claude Code reads it. It changes nothing
-itself.
+The skills Claude Code gets, both off by default, the same wherever
+aslib.infra installs Claude Code: in its container
+([claude_code_podman](../claude_code_podman/README.md)) and in its VM
+([claude_code_vm](../claude_code_vm/README.md)): the
+[qa skill](#the-qa-skill-and-its-five-experts) with the five expert subagents
+it runs, and [loop-to-delivery](#the-loop-to-delivery-skill). A utility of the
+[Claude Code roles](../claude_code/README.md): each target includes it after
+[claude_code_settings](../claude_code_settings/README.md) and installs what it
+hands over where its Claude Code reads it. It changes nothing itself.
 
 ## Settings
 
@@ -17,6 +17,7 @@ The same names and defaults in every target. Options and their choices:
 
 | Variable | Default | What |
 |---|---|---|
+| `claude_code_skills_qa` | `false` | The [qa skill and its five experts](#the-qa-skill-and-its-five-experts) on or off. Needs `claude_code_settings_agent_teams` off |
 | `claude_code_skills_loop_to_delivery` | `false` | The [loop-to-delivery skill](#the-loop-to-delivery-skill), its program and its hooks on or off. Needs `claude_code_settings_qa_budget: true` |
 | `claude_code_skills_loop_to_delivery_max_wakes` | `5` | The most wake-ups a loop gets; a whole number above 0 |
 | `claude_code_skills_loop_to_delivery_max_hours` | `24` | The most hours a loop runs, from its start; a whole number from 1 to 168 (a recurring job expires after 7 days) |
@@ -24,14 +25,79 @@ The same names and defaults in every target. Options and their choices:
 The defaults are small on purpose: a handful of wake-ups and a day. Raise them
 once you have seen the budget hold on your subscription.
 
-A managed skill wins over a person's and a project's with the same name, so
-turning it on hides those. Turning it off again removes its files and hooks at
-the next run or deploy.
+Managed skills and subagents win over a person's and a project's with the same
+name, so turning one on hides those. Turning it off again removes its files (and
+the loop's hooks) at the next run or deploy.
+
+Up to 0.8.0 the qa skill was `claude_code_settings_qa`, an option of
+claude_code_settings. A run, build or deploy of the VM or the container that
+still sets it stops, naming `claude_code_skills_qa`
+([upgrading from 0.8.0](../../CHANGELOG.md#upgrading-from-080)). This role
+itself ignores the old name: the stops are in the targets.
 
 A run or deploy with `claude_code_skills_loop_to_delivery: true` while
 `claude_code_settings_qa_budget` is off stops, naming both settings
 ([why](#how-it-stays-inside-the-budget)). With the loop off, qa-budget is not
 needed.
+
+## The qa skill and its five experts
+
+With `claude_code_skills_qa: true`, every target installs a skill and five
+subagents in Claude Code's managed settings directory, `/etc/claude-code/`:
+
+| File | What |
+|---|---|
+| `.claude/skills/qa/SKILL.md` | The skill `qa`: the session you talk to becomes QA, the lead |
+| `.claude/skills/qa/protocol.md` | The protocol QA and every expert follow: roles, ownership, artifacts, the four review gates, the handoff, when to stop |
+| `.claude/agents/architect.md` | Technical architecture and contracts |
+| `.claude/agents/tester.md` | Tests and their RED |
+| `.claude/agents/reviewer.md` | The gates' verdicts; never edits what it reviews |
+| `.claude/agents/developer.md` | Production code, GREEN and REFACTOR |
+| `.claude/agents/documenter.md` | Docs and code comments |
+
+Its description has Claude take the skill for any request to change a
+project, without being told; a question is answered without it, and `/qa`
+starts it by hand. QA writes the spec and the acceptance, and runs the experts
+one at a time, passing each one's report on to the next, in the protocol's
+order: spec, architect, review of the architecture, tester (RED), review of the
+tests, developer (GREEN), review of the code, documenter, final review,
+acceptance. A small change takes only the experts it needs (documentation
+only: the documenter and the final review; a test only: the tester and its
+review). Each gate takes one review round:
+only a serious finding sends work back to the expert who owns it, and the rest
+goes to the list of improvements that comes with the delivery; after three
+BLOCKs in a row at the same gate, QA stops and asks. QA writes no production
+code, tests or docs itself, apart from corrections that change no behavior and
+that it proves mechanically (a version number replaced everywhere, whitespace,
+a label removed from a comment, a merge of reviewed work); the next review
+checks them. Each expert writes only the paths QA gives it, reading only the
+files and sections its brief names, so that each run fits its token budget.
+
+QA works so that the person can leave the work with it. It decides what the
+project's own rules decide (the version number, who fixes a finding, re-running
+an expert within the budget) and lists those decisions in its report; it asks
+only what is the person's to decide, in one batch while it writes the spec,
+each question with its recommendation. Its messages and pull requests use
+plain words, not the team's labels; nothing the project keeps (code, comments,
+tests, docs, changelogs, commits) carries a label from the spec or the number
+of the upcoming release, which only the version file and the changelog's
+heading hold. It runs the tests that only CI can run as soon as they exist, so
+their defects surface before the reviews. The artifacts go in
+`.claude/specs/<change-id>/` in the project; whether it commits them is the
+project's choice. Git, branches and releases stay under the project's own
+rules. With loop-to-delivery on as well, QA starts a loop for the change
+request before the first expert runs. With
+[qa-budget](../claude_code_settings/README.md#qa-budget-a-budget-for-agent-work)
+on, QA reads its `budget.md` before the first expert run and works within it.
+
+Claude Code protects a project's `.claude/` folder: in bypassPermissions mode
+(the default) QA and the experts write their artifacts there freely; in
+`default` and `acceptEdits` mode Claude Code asks first (its prompt can allow it
+for the session), and in `dontAsk` mode it refuses.
+
+The qa skill needs agent teams off (`claude_code_settings_agent_teams: false`,
+the default): with agent teams on, Claude starts a subagent it names as a
+teammate instead, and the run stops when both are on.
 
 ## The loop-to-delivery skill
 
@@ -165,8 +231,8 @@ Facts, for the role that includes it:
 
 | Fact | What | Where the targets put it |
 |---|---|---|
-| `claude_code_skills_files` | The files of the skills that are on, each its path in the managed settings directory (`name`) and its file in this role (`src`) | `/etc/claude-code/`: the container's `config/`, the VM's `/etc/claude-code/` |
-| `claude_code_skills_absent` | The paths there of the skills that are off (a skill's folder) | Removed where an earlier run installed them (the container's `config/` holds only what the deploy lists anyway) |
+| `claude_code_skills_files` | The files of the skills that are on, with the subagents they use (the qa skill's first), each its path in the managed settings directory (`name`) and its file in this role (`src`) | `/etc/claude-code/`: the container's `config/`, the VM's `/etc/claude-code/` |
+| `claude_code_skills_absent` | The paths there of the skills that are off (a skill's folder, an agent's file) | Removed where an earlier run installed them (the container's `config/` holds only what the deploy lists anyway) |
 | `claude_code_skills_policy` | A part of the policy: loop-to-delivery's hooks with the maximums of wake-ups and hours; `{}` while it is off | Merged into [claude_code_settings](../claude_code_settings/README.md)' base, so its hooks come after qa-budget's, before the container's own part and the project's |
 
 A target installs the files before the policy, whose hooks run the program,

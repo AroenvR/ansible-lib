@@ -13,15 +13,16 @@ argument_specs:
         qa-budget's), the container's own part (files/managed-settings.container.json) and the project's
         config/managed-settings.json, merged in that order - later values win, lists combine. How a session starts
         (permission mode, model, effort, theme, agent teams, ultracode) is claude_code_settings' settings, the same
-        names in every target, and so is the qa skill with its five experts (claude_code_settings_qa), which the
-        deploy adds to config/.claude/. The skills of aslib.infra.claude_code_skills (loop-to-delivery,
-        claude_code_skills_loop_to_delivery) are the same in every target too, and their files are added there. The
-        deploy stops when loop-to-delivery is on and qa-budget (claude_code_settings_qa_budget) is off. The
+        names in every target, and so are the skills of aslib.infra.claude_code_skills - the qa skill with its five
+        experts (claude_code_skills_qa) and loop-to-delivery (claude_code_skills_loop_to_delivery) - whose files the
+        deploy adds to config/.claude/. The deploy stops when loop-to-delivery is on and qa-budget
+        (claude_code_settings_qa_budget) is off. The
         container's environment variables come from ansible/container.env, Claude's sign-in too
         (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY). With podman_service_shared, Claude also works in the shared
         zone, /opt/containers/shared/.
       - A deploy that still sets a setting of before 0.7.0 (claude_code_bypass_permissions, claude_code_memory, ...)
-        stops, naming what replaced it.
+        stops, naming what replaced it; so does one that sets claude_code_settings_qa, which is now
+        claude_code_skills_qa.
       - Installs /usr/local/sbin/claude-code, for root, which runs Claude in the container, with or without a
         terminal; its arguments go to claude.
       - Servers need what aslib.infra.podman_service needs.

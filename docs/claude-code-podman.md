@@ -79,10 +79,10 @@ to keep a terminal around, use tmux or screen on your side.
   `claude_code_settings_permission_mode: default`. The policy's deny rules
   apply in every mode ([How a session
   starts](../roles/claude_code_podman/README.md#how-a-session-starts)).
-- **Changes through QA and five experts**: `claude_code_settings_qa: true` in
+- **Changes through QA and five experts**: `claude_code_skills_qa: true` in
   `project.yml`, then `ansible-playbook deploy.yml`: a request to change a
   project then goes through the [qa
-  skill](../roles/claude_code_settings/README.md#the-qa-skill-and-its-five-experts),
+  skill](../roles/claude_code_skills/README.md#the-qa-skill-and-its-five-experts),
   which runs an architect, a tester, a reviewer, a developer and a documenter
   one at a time. Off by default, as its names win over skills and agents of
   your own.

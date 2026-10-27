@@ -1,21 +1,33 @@
 ---
 argument_specs:
   main:
-    short_description: Compute the skills that every target of aslib.infra installs, loop-to-delivery for now
+    short_description: Compute the skills that every target of aslib.infra installs, the qa skill and loop-to-delivery
     description:
       - The skills Claude Code gets wherever aslib.infra installs it, in its container (claude_code_podman) and in its
         VM (claude_code_vm), which include this role after aslib.infra.claude_code_settings and install what it
         hands over, each where its Claude Code reads it. Changes nothing itself.
-      - Hands over three facts. C(claude_code_skills_files), the files of the skills that are on, for Claude Code's
-        managed settings directory (/etc/claude-code), each with its path there (C(name)) and its file on the
-        Ansible machine (C(src)). C(claude_code_skills_absent), the paths there of the skills that are off, for a
-        target to remove where an earlier run installed them. C(claude_code_skills_policy), a part of the policy
-        managed-settings.json, which a target merges into claude_code_settings' base; empty unless
-        loop-to-delivery is on.
+      - Hands over three facts. C(claude_code_skills_files), the files of the skills that are on, with the
+        subagents they use, for Claude Code's managed settings directory (/etc/claude-code), each with its path
+        there (C(name)) and its file on the Ansible machine (C(src)). C(claude_code_skills_absent), the paths there
+        of the skills and subagents that are off, for a target to remove where an earlier run installed them.
+        C(claude_code_skills_policy), a part of the policy managed-settings.json, which a target merges into
+        claude_code_settings' base; empty unless loop-to-delivery is on.
       - loop-to-delivery needs qa-budget (C(claude_code_settings_qa_budget) of aslib.infra.claude_code_settings,
         which this role reads and does not declare). A run with loop-to-delivery on and qa-budget off stops, naming
         both settings.
     options:
+      claude_code_skills_qa:
+        type: bool
+        default: false
+        description:
+          - The qa skill and its five expert subagents, in Claude Code's managed settings directory. A request to change
+            a project then goes through the qa skill, which turns the session into QA, the lead, and runs the experts
+            C(architect), C(tester), C(reviewer), C(developer) and C(documenter) one at a time, through review gates,
+            as its protocol says. Questions are answered without it.
+          - Off by default, as managed skills and subagents win over a person's or a project's of the same names.
+            Needs C(claude_code_settings_agent_teams) off; the run stops when both are on. Up to 0.8.0 this was
+            C(claude_code_settings_qa), which the playbooks of aslib.infra (the VM and the container targets) now stop
+            at, naming this one; this role itself ignores it.
       claude_code_skills_loop_to_delivery:
         type: bool
         default: false

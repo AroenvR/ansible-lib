@@ -37,6 +37,15 @@
       {{ __claude_code_vm_settings_read.content | b64decode if __claude_code_vm_settings_stat.stat.exists else '' }}
   no_log: true
 
+# Renamed after 0.8.0. The file stays as the person wrote it: no task above writes it.
+- name: Stop at claude_code_settings_qa in the settings file, which is now claude_code_skills_qa
+  ansible.builtin.assert:
+    that: not (__claude_code_vm_settings_values is mapping and 'claude_code_settings_qa' in __claude_code_vm_settings_values)
+    fail_msg: >-
+      {{ __claude_code_vm_settings_file }} has claude_code_settings_qa, which is now claude_code_skills_qa: rename
+      that line in the file (a run never changes its lines) and run again.
+    quiet: true
+
 - name: Check the settings file holds settings and nothing else
   vars:
     __claude_code_vm_settings_unknown: >-

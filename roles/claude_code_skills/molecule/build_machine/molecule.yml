@@ -1,12 +1,14 @@
 ---
-# Checks what claude_code_skills hands its targets: its defaults, loop-to-delivery
-# on with qa-budget on (and the stop when qa-budget is off or unset, with the
-# values as -e passes them), the hook policy with the defaults of 5 wake-ups
-# and 24 hours and with other values, the stops (a maximum of wake-ups or hours
-# that is not a whole number in its bounds, values that are not booleans), the
-# hook command where its program is absent, and the hook program's unit tests
-# with this ansible-core's Python. Nothing to set up: the role only computes,
-# where Ansible runs.
+# Checks what claude_code_skills hands its targets: its defaults, the qa skill
+# with its five experts (their files, frontmatter and texts, free of spec labels,
+# an upcoming version and a tool's marks), loop-to-delivery on with qa-budget on
+# (and the stop when qa-budget is off or unset, with the values as -e passes
+# them), both on, the hook policy with the defaults of 5 wake-ups and 24 hours
+# and with other values, the stops (the qa skill with agent teams on, a maximum
+# of wake-ups or hours that is not a whole number in its bounds, values that are
+# not booleans), the hook command where its program is absent, and the hook
+# program's unit tests with this ansible-core's Python. Nothing to set up: the
+# role only computes, where Ansible runs.
 scenario:
   name: build_machine
 driver:

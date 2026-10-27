@@ -130,11 +130,12 @@
         claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
 
     # qa-budget on, as the loop needs it (FR-1): its guard keeps the loop's wake-ups inside the budget.
-    - name: Compute what claude_code_skills hands every target, with the loop as this run had it (on, 7 wake-ups, 48 hours)
+    - name: Compute what claude_code_skills hands every target, with the qa skill and the loop as this run had them (on, 7 wake-ups, 48 hours)
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_skills
       vars:
         claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
+        claude_code_skills_qa: "{{ hostvars['localhost'].claude_code_skills_qa }}"
         claude_code_skills_loop_to_delivery: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery }}"
         claude_code_skills_loop_to_delivery_max_wakes: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_wakes }}"
         claude_code_skills_loop_to_delivery_max_hours: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_hours }}"
@@ -254,18 +255,18 @@
   hosts: claude-dev
   gather_facts: false
   tasks:
-    - name: Compute what claude_code_settings hands every target, with the qa skill and qa-budget as this run had them (on)
+    - name: Compute what claude_code_settings hands every target, with qa-budget as this run had it (on)
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_settings
       vars:
-        claude_code_settings_qa: "{{ hostvars['localhost'].claude_code_settings_qa }}"
         claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
 
-    - name: Compute what claude_code_skills hands every target, with the loop as this run had it (on, 7 wake-ups, 48 hours)
+    - name: Compute what claude_code_skills hands every target, with the qa skill and the loop as this run had them (on, 7 wake-ups, 48 hours)
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_skills
       vars:
         claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
+        claude_code_skills_qa: "{{ hostvars['localhost'].claude_code_skills_qa }}"
         claude_code_skills_loop_to_delivery: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery }}"
         claude_code_skills_loop_to_delivery_max_wakes: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_wakes }}"
         claude_code_skills_loop_to_delivery_max_hours: "{{ hostvars['localhost'].claude_code_skills_loop_to_delivery_max_hours }}"
@@ -300,7 +301,7 @@
       changed_when: false
       failed_when: false
 
-    # The qa skill (7 files) and qa-budget (4) are claude_code_settings', loop-to-delivery (2) claude_code_skills'.
+    # The qa skill (7 files) and loop-to-delivery (2) are claude_code_skills', qa-budget (4) claude_code_settings'.
     - name: Check /etc/claude-code holds exactly the policy, the instructions, qa-budget's and the skills' files, as the policy is owned and moded
       vars:
         __claude_code_vm_test_found: "{{ __claude_code_vm_test_managed.files | map(attribute='path') | map('relpath', '/etc/claude-code') | list }}"
@@ -312,8 +313,8 @@
           {{ (claude_code_settings_files + claude_code_skills_files) | map(attribute='name') | list }}
       ansible.builtin.assert:
         that:
-          - claude_code_settings_files | length == 11
-          - claude_code_skills_files | length == 2
+          - claude_code_settings_files | length == 4
+          - claude_code_skills_files | length == 9
           - "'qa-budget/guard.py' in __claude_code_vm_test_names"
           - "'.claude/skills/loop-to-delivery/loop_to_delivery.py' in __claude_code_vm_test_names"
           - __claude_code_vm_test_found | sort == (['CLAUDE.md', 'managed-settings.json'] + __claude_code_vm_test_names) | sort
@@ -322,8 +323,8 @@
           - __claude_code_vm_test_installed | map(attribute='mode') | unique == [__claude_code_vm_test_policy_file.mode]
         fail_msg: "/etc/claude-code: {{ __claude_code_vm_test_managed.files | map(attribute='path') | list }}"
         success_msg: >-
-          PASSED claude_code_vm installed claude_code_settings' qa skill (SKILL.md, protocol.md), its five experts and
-          qa-budget's four files, and claude_code_skills' loop-to-delivery (SKILL.md, loop_to_delivery.py), in
+          PASSED claude_code_vm installed claude_code_skills' qa skill (SKILL.md, protocol.md), its five experts and
+          loop-to-delivery (SKILL.md, loop_to_delivery.py), and qa-budget's four files of claude_code_settings, in
           /etc/claude-code/, {{ __claude_code_vm_test_policy_file.pw_name }}'s and {{ __claude_code_vm_test_policy_file.mode }}
           like the policy, next to the policy and the instructions only.
 
@@ -418,7 +419,7 @@
     __claude_code_vm_test_settings_options: >-
       {{ (lookup('file', playbook_dir ~ '/../../../claude_code_settings/meta/argument_specs.yml') | from_yaml)
          .argument_specs.main.options.keys() | list }}
-    # The settings of claude_code_skills (loop-to-delivery's three) are in the file too.
+    # The settings of claude_code_skills (the qa skill's and loop-to-delivery's three) are in the file too.
     __claude_code_vm_test_skills_options: >-
       {{ (lookup('file', playbook_dir ~ '/../../../claude_code_skills/meta/argument_specs.yml') | from_yaml)
          .argument_specs.main.options.keys() | list }}
@@ -463,7 +464,8 @@
           - __claude_code_vm_test_values.claude_code_vm_host_names == ['host-service.home.arpa']
           - __claude_code_vm_test_values.claude_code_vm_memory == 4096
           - __claude_code_vm_test_values.claude_code_settings_theme == 'dark'
-          - __claude_code_vm_test_values.claude_code_settings_qa is true
+          - __claude_code_vm_test_values.claude_code_skills_qa is true
+          - "'claude_code_settings_qa' not in __claude_code_vm_test_values"
           - __claude_code_vm_test_values.claude_code_settings_qa_budget is true
           - __claude_code_vm_test_values.claude_code_skills_loop_to_delivery is true
           - __claude_code_vm_test_values.claude_code_skills_loop_to_delivery_max_wakes == 7
@@ -585,6 +587,27 @@
       loop_control:
         loop_var: __claude_code_vm_test_invalid
 
+    - name: Note the settings file before the cases of the old qa name
+      ansible.builtin.slurp:
+        src: "{{ __claude_code_vm_test_file }}"
+      register: __claude_code_vm_test_before_renamed
+      no_log: true
+
+    - name: Check the old name of the qa option stops a run, in the settings file and as -e
+      ansible.builtin.include_tasks: tasks/renamed.yml
+
+    - name: Look up the settings file after the cases of the old qa name
+      ansible.builtin.slurp:
+        src: "{{ __claude_code_vm_test_file }}"
+      register: __claude_code_vm_test_after_renamed
+      no_log: true
+
+    - name: Check the cases of the old qa name left the settings file as it was
+      ansible.builtin.assert:
+        that: __claude_code_vm_test_after_renamed.content == __claude_code_vm_test_before_renamed.content
+        fail_msg: The settings file is not as it was before the cases of the old qa name.
+        success_msg: PASSED the settings file is as it was, after the cases of the old qa name.
+
     - name: Empty the token in the settings file
       ansible.builtin.replace:
         path: "{{ __claude_code_vm_test_file }}"
@@ -597,7 +620,7 @@
         path: "{{ __claude_code_vm_test_file }}"
         regexp: "^{{ item }}: .*$"
         replace: "{{ item }}: false"
-      loop: [claude_code_settings_qa, claude_code_skills_loop_to_delivery]
+      loop: [claude_code_skills_qa, claude_code_skills_loop_to_delivery]
 
     - name: Run aslib.infra.claude_code_vm again, without a token, without the qa skill and without the loop
       ansible.builtin.command:
@@ -653,7 +676,7 @@
           /etc/claude-code: {{ __claude_code_vm_test_managed_after.files | map(attribute='path') | list }};
           policy: {{ __claude_code_vm_test_policy_text }}
         success_msg: >-
-          PASSED with claude_code_settings_qa and claude_code_skills_loop_to_delivery false in the settings file, a run
+          PASSED with claude_code_skills_qa and claude_code_skills_loop_to_delivery false in the settings file, a run
           removed the qa skill, its five experts and loop-to-delivery with its hooks from the VM's /etc/claude-code, which
           kept the policy, the instructions and qa-budget with its guard's hook.
 
