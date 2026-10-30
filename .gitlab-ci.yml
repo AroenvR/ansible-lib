@@ -32,6 +32,7 @@ lint:
   image: $PYTHON_IMAGE
   script:
     - make lint PYTHON_LINT=python3
+    - make test-scripts
 
 # A branch on its way to accept raises the version: galaxy.yml's must be higher
 # than accept's, with its CHANGELOG.md section. Not for main and accept themselves.
@@ -43,6 +44,22 @@ version-raised:
   script:
     - git fetch --quiet --depth=1 origin +refs/heads/accept:refs/remotes/origin/accept
     - make version-raised
+
+# A commit that reaches develop and ends with "Closes #N" lines closes those
+# issues: GitLab closes them by itself only on the default branch. Needs the
+# CI/CD variable GITLAB_TOKEN, a project access token (role Reporter, scope api),
+# masked and protected, with develop a protected branch so that no other
+# branch's pipeline sees it. Without it the job says so and passes.
+close-issues:
+  stage: check
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"
+  variables:
+    GITLAB_HOST: $CI_SERVER_URL
+  script:
+    - printf '%s\n' "$CI_COMMIT_MESSAGE" | sh dev/ci/close-issues.sh gitlab "$CI_COMMIT_SHA"
 
 runner-check:
   stage: check

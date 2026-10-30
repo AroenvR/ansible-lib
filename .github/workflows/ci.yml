@@ -26,6 +26,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: make lint
+      - run: make test-scripts
 
   # A branch on its way to accept raises the version: galaxy.yml's must be higher
   # than accept's, with its CHANGELOG.md section. Not for main and accept
@@ -41,6 +42,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: git fetch --quiet --depth=1 origin +refs/heads/accept:refs/remotes/origin/accept
       - run: make version-raised
+
+  # A commit that reaches develop and ends with "Closes #N" lines closes those
+  # issues: GitHub closes them by itself only on the default branch. The only job
+  # that may write issues. The message reaches the script through the
+  # environment, never inside the command.
+  close-issues:
+    name: close issues
+    if: github.event_name == 'push' && github.ref_name == 'develop'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - run: printf '%s\n' "$MESSAGE" | sh dev/ci/close-issues.sh github "$GITHUB_SHA"
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
 
   servers:
     name: server roles · ansible-core ${{ matrix.ansible }}
