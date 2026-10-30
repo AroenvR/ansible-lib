@@ -25,7 +25,8 @@ cd "$tmp"
 # gh repository from outside.
 unset AGENT_NAME CLAIM_REMOTE CLAIM_BASE CLAIM_STALE_DAYS GH_REPO GH_HOST GH_TOKEN GITHUB_TOKEN \
   GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
-  GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE EMAIL XDG_CONFIG_HOME
+  GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE EMAIL XDG_CONFIG_HOME \
+  GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
 HOME=$tmp/home
 GIT_CONFIG_NOSYSTEM=1
 GIT_TERMINAL_PROMPT=0
@@ -52,11 +53,18 @@ git -C "$tmp/seed" commit -q -m "Work on trunk"
 git -C "$tmp/seed" push -q origin trunk
 develop=$(git -C "$origin" rev-parse refs/heads/develop)
 trunk=$(git -C "$origin" rev-parse refs/heads/trunk)
-for clone in A B C; do
+for clone in A B C D E; do
   git clone -q "$origin" "$tmp/$clone"
 done
 git -C "$tmp/A" config user.name Alice
 git -C "$tmp/B" config user.name Bob
+# C has no user.name, and git may not guess one: with a HOME without
+# configuration it has no identity at all.
+git -C "$tmp/C" config user.useConfigOnly true
+mkdir "$tmp/no-identity"
+# D and E are two agents with the same name and identity.
+git -C "$tmp/D" config user.name "Same Agent"
+git -C "$tmp/E" config user.name "Same Agent"
 # Work in progress in A, which a claim must not touch: staged, changed, untracked.
 echo "staged" >"$tmp/A/staged.txt"
 git -C "$tmp/A" add staged.txt
@@ -86,6 +94,23 @@ for dir in $plain_path; do
 done
 unset IFS
 rm -f "$no_gh/gh"
+
+# A date that gives the claim's time as fixed at the start, so that two claims in
+# the same second of git time make the same commit even when the minute changes.
+same_time=$(date -u +%Y-%m-%dT%H:%MZ)
+same_stamp=$(date -u '+%Y-%m-%d %H:%M:%S +0000')
+real_date=$(command -v date)
+fixed_date=$tmp/fixed-date
+mkdir "$fixed_date"
+cat >"$fixed_date/date" <<EOF
+#!/bin/sh
+if [ "\$*" = "-u +%Y-%m-%dT%H:%MZ" ]; then
+  echo "$same_time"
+else
+  exec "$real_date" "\$@"
+fi
+EOF
+chmod 755 "$fixed_date/date"
 if (PATH=$no_gh && command -v gh >/dev/null) || ! (PATH=$no_gh && command -v git >/dev/null); then
   echo "FAIL: setup: could not make a PATH without gh."
   exit 1
@@ -360,6 +385,39 @@ expect_rc 2
 expect_line err "Could not fetch develop from nowhere: not claimed."
 expect_nothing_left "$tmp/A" 18
 expect_not_on_origin 18
+
+start "two agents with the same name and identity claim at the same time: only the first gets it"
+set_open 20
+before_e=$(snapshot "$tmp/E")
+GIT_AUTHOR_DATE=$same_stamp
+GIT_COMMITTER_DATE=$same_stamp
+export GIT_AUTHOR_DATE GIT_COMMITTER_DATE
+PATH=$fixed_date:$here/bin:$plain_path
+claim "$tmp/D" "Agent Same" 20
+expect_rc 0
+expect_claim "$tmp/D" 20 "Agent Same" "$develop"
+same=$(origin_tip 20)
+same_subject=$(git -C "$origin" log -1 --format=%s "$same" 2>/dev/null)
+claim "$tmp/E" "Agent Same" 20
+PATH=$here/bin:$plain_path
+unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE
+expect_rc 1
+expect_text err "Issue #20 is claimed already: $same_subject (issue/20, last commit "
+expect_text err "Take another issue."
+expect_no_text out "Claimed #20"
+expect_nothing_left "$tmp/E" 20
+[ "$(origin_tip 20)" = "$same" ] || fail "origin's issue/20 changed"
+[ "$(snapshot "$tmp/E")" = "$before_e" ] || fail "the refusal changed the clone's branch, index or working tree"
+
+start "no git identity: the claim commit cannot be made"
+set_open 21
+HOME=$tmp/no-identity
+claim "$tmp/C" "Agent C" 21
+HOME=$tmp/home
+expect_rc 2
+expect_line err "Could not make the claim commit (git's user.name and user.email): not claimed."
+expect_nothing_left "$tmp/C" 21
+expect_not_on_origin 21
 
 start "a push the remote refuses for another reason stops the claim"
 set_open 17
