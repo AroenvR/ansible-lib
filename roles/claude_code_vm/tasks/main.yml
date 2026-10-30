@@ -299,11 +299,132 @@
           + ansible_failed_result.stderr_lines | default([]) + [ansible_failed_result.msg | default('')]) | select | first }} -
           change what it names (claude_code_vm_memory, claude_code_vm_vcpus) and run the playbook again.
 
-- name: Start the VM, which is shut off
+# claude_code_vm_memory and claude_code_vm_vcpus apply to a VM that exists too:
+# its definition for the next start takes them while the VM is shut off, and the
+# start below applies them. A VM that does not shut down is never forced off.
+- name: Look up the VM's memory and vCPUs for its next start
   ansible.builtin.command:
-    argv: "{{ __claude_code_vm_virsh + ['start', __claude_code_vm_name] }}"
-  when: __claude_code_vm_state.stdout is search('shut off')
+    argv: "{{ __claude_code_vm_virsh + ['dumpxml', '--inactive', __claude_code_vm_name] }}"
+  register: __claude_code_vm_definition
+  changed_when: false
+  when: __claude_code_vm_state.rc == 0
+
+- name: Note them, the VM's state, and whether the settings change them
+  vars:
+    __claude_code_vm_xml: "{{ __claude_code_vm_definition.stdout }}"
+    __claude_code_vm_vcpus_now: "{{ __claude_code_vm_xml | regex_findall(__claude_code_vm_xml_patterns.vcpus) | first | default('') }}"
+  ansible.builtin.set_fact:
+    __claude_code_vm_had:
+      state: "{{ __claude_code_vm_state.stdout | trim }}"
+      memory_kib: "{{ __claude_code_vm_xml | regex_findall(__claude_code_vm_xml_patterns.memory) | first | default('') }}"
+      current_memory_kib: >-
+        {{ __claude_code_vm_xml | regex_findall(__claude_code_vm_xml_patterns.current_memory) | first | default('') }}
+      vcpus: "{{ __claude_code_vm_vcpus_now }}"
+      current_vcpus: >-
+        {{ __claude_code_vm_xml | regex_findall(__claude_code_vm_xml_patterns.current_vcpus) | first
+           | default(__claude_code_vm_vcpus_now) }}
+  when: __claude_code_vm_state.rc == 0
+
+- name: Check the VM's definition gives its memory in KiB and its vCPUs
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_had.memory_kib | string | length > 0
+      - __claude_code_vm_had.current_memory_kib | string | length > 0
+      - __claude_code_vm_had.vcpus | string | length > 0
+    fail_msg: >-
+      virsh dumpxml --inactive {{ __claude_code_vm_name }} gives no memory in KiB or no vCPUs, so the run cannot
+      compare them with claude_code_vm_memory and claude_code_vm_vcpus; nothing was changed. Look at it with
+      ansible-playbook aslib.infra.claude_code_vm_overview.
+    quiet: true
+  when: __claude_code_vm_state.rc == 0
+
+- name: Note whether the settings change the VM's memory or vCPUs
+  ansible.builtin.set_fact:
+    __claude_code_vm_resize: >-
+      {{ __claude_code_vm_state.rc == 0
+         and ([__claude_code_vm_had.memory_kib, __claude_code_vm_had.current_memory_kib] | map('int') | list
+              != [claude_code_vm_memory | int * 1024] * 2
+              or [__claude_code_vm_had.vcpus, __claude_code_vm_had.current_vcpus] | map('int') | list
+              != [claude_code_vm_vcpus | int] * 2) }}
+
+- name: Stop, as the VM is neither running nor shut off
+  ansible.builtin.fail:
+    msg: >-
+      {{ __claude_code_vm_name }} is {{ __claude_code_vm_had.state }}, so its new memory and vCPUs cannot be given to
+      it; nothing was changed. Start it (virsh start) or shut it down from inside (sudo poweroff), then run the
+      playbook again.
+  when: __claude_code_vm_resize | bool and __claude_code_vm_had.state not in ['running', 'shut off']
+
+- name: Shut down the VM, so that it starts with its new memory and vCPUs
+  when: __claude_code_vm_resize | bool and __claude_code_vm_had.state == 'running'
+  block:
+    - name: Ask the VM to shut down, as its power button would
+      ansible.builtin.command:
+        argv: "{{ __claude_code_vm_virsh + ['shutdown', __claude_code_vm_name] }}"
+      changed_when: true
+
+    - name: Wait until the VM is shut off
+      ansible.builtin.command:
+        argv: "{{ __claude_code_vm_virsh + ['domstate', __claude_code_vm_name] }}"
+      register: __claude_code_vm_stopping
+      changed_when: false
+      until: __claude_code_vm_stopping.stdout is search('shut off')
+      retries: "{{ (__claude_code_vm_shutdown_timeout | int / 5) | round(0, 'ceil') | int }}"
+      delay: 5
+  rescue:
+    - name: Stop, as the VM did not shut down
+      ansible.builtin.fail:
+        msg: >-
+          {{ __claude_code_vm_name }} did not shut down within {{ __claude_code_vm_shutdown_timeout | int }} seconds,
+          so it is still running with its old memory and vCPUs ({{ __claude_code_vm_had.current_memory_kib | int // 1024 }}
+          MiB, {{ __claude_code_vm_had.current_vcpus }} vCPUs); nothing was changed. Shut it down from inside (sudo
+          poweroff), or end what keeps it busy, then run the playbook again. It is never forced off.
+
+# Current never above the maximum: growing sets the maximum first, shrinking last.
+- name: Give the VM its new memory and vCPUs, for its next start
+  vars:
+    __claude_code_vm_kib: "{{ claude_code_vm_memory | int * 1024 }}"
+    __claude_code_vm_memory_steps:
+      - [setmaxmem, "{{ __claude_code_vm_name }}", "{{ __claude_code_vm_kib }}", --config]
+      - [setmem, "{{ __claude_code_vm_name }}", "{{ __claude_code_vm_kib }}", --config]
+    __claude_code_vm_vcpu_steps:
+      - [setvcpus, "{{ __claude_code_vm_name }}", "{{ claude_code_vm_vcpus | int }}", --maximum, --config]
+      - [setvcpus, "{{ __claude_code_vm_name }}", "{{ claude_code_vm_vcpus | int }}", --config]
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_virsh + __claude_code_vm_step }}"
+  loop: >-
+    {{ (__claude_code_vm_memory_steps if __claude_code_vm_kib | int >= __claude_code_vm_had.memory_kib | int
+        else __claude_code_vm_memory_steps | reverse | list)
+       + (__claude_code_vm_vcpu_steps if claude_code_vm_vcpus | int >= __claude_code_vm_had.vcpus | int
+          else __claude_code_vm_vcpu_steps | reverse | list) }}
+  loop_control:
+    loop_var: __claude_code_vm_step
+    label: "{{ __claude_code_vm_step | join(' ') }}"
   changed_when: true
+  when: __claude_code_vm_resize | bool
+
+# Every run: the state may have changed since the first lookup.
+- name: Look up the VM's state again
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_virsh + ['domstate', __claude_code_vm_name] }}"
+  register: __claude_code_vm_state_now
+  changed_when: false
+
+- name: Start the VM, which is shut off
+  when: __claude_code_vm_state_now.stdout is search('shut off')
+  block:
+    - name: Start the VM
+      ansible.builtin.command:
+        argv: "{{ __claude_code_vm_virsh + ['start', __claude_code_vm_name] }}"
+      changed_when: true
+  rescue:
+    - name: Stop, as the VM did not start
+      ansible.builtin.fail:
+        msg: >-
+          {{ __claude_code_vm_name }} did not start - {{ (ansible_failed_result.stderr_lines | default([])
+          + [ansible_failed_result.msg | default('')]) | select | first }} - with claude_code_vm_memory {{
+          claude_code_vm_memory }} MiB and claude_code_vm_vcpus {{ claude_code_vm_vcpus }}: the host may have less
+          free memory than that. Lower them in {{ __claude_code_vm_settings_file }} and run the playbook again.
 
 - name: Wait until the VM answers on SSH
   ansible.builtin.wait_for:

@@ -171,8 +171,29 @@ The download sources (image, repositories, keys) and the debugging options
 are not in it: they stay aslib.infra's, so that an update can change them. A
 removal (`aslib.infra.claude_code_vm_remove`) keeps the file, so a reset keeps
 your settings; to start from the defaults again, delete it first:
-`sudo rm /etc/claude-vm/settings.yml`. A size or network change needs a new VM,
-as the file's comments say.
+`sudo rm /etc/claude-vm/settings.yml`. The disk size and the network are for a
+new VM, as the file's comments say; the memory and the vCPUs apply to the VM
+you have ([Resizing the VM](#resizing-the-vm)).
+
+## Resizing the VM
+
+Change `claude_code_vm_memory` or `claude_code_vm_vcpus` in the settings file,
+higher or lower, and run the playbook. After the check that the memory fits
+the host ([The host](#the-host)), which stops the run before it changes
+anything, a run where they differ from the VM's shuts the VM down cleanly, as
+its power button would, gives it the new values and starts it again. A change
+always restarts the VM, which ends every session in it and what runs there
+(Claude Code's sessions come back with `claude --resume`), so run the playbook
+when that suits. Values that match change nothing; a VM that is shut off just
+starts with the new ones.
+
+A VM that does not shut down within 5 minutes is never forced off: the run
+stops, says the VM still runs with its old memory and vCPUs and nothing was
+changed, and how to go on (shut it down from inside with `sudo poweroff`, or
+end what keeps it busy, then run again). One that acts on the shutdown request
+only after those 5 minutes stays off, and the next run starts it. A value
+libvirt refuses, such as 0 vCPUs, stops the run with virsh's message once the
+VM is shut down; the VM stays off, and a run with a corrected value starts it.
 
 ## Signing in
 
@@ -224,8 +245,8 @@ VM as it was made.
 
 ## Limitations
 
-- A proof of concept: one VM per host, named `claude-dev`. Changing the network
-  or the image needs a new VM.
+- A proof of concept: one VM per host, named `claude-dev`. Changing the disk
+  size, the network or the image needs a new VM.
 - Ubuntu hosts only. Its test (`sudo make test-vm-2.16`, which needs KVM) runs
   in CI on GitHub's x86_64 Ubuntu 24.04 runners, which have KVM. On ARM64 it
   runs on a Raspberry Pi 4 with 4 GB (Ubuntu 24.04) with

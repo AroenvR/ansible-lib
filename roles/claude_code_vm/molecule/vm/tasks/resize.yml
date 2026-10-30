@@ -1,0 +1,238 @@
+---
+# claude_code_vm_memory and claude_code_vm_vcpus apply to the existing VM.
+# Starts from the run's values, 4096 MiB and 2 vCPUs, and ends with them.
+- name: Look up the VM before a run with the same values
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Note the VM as it was
+  ansible.builtin.set_fact:
+    __claude_code_vm_test_before: "{{ __claude_code_vm_test_vm }}"
+
+- name: Run aslib.infra.claude_code_vm with the same values
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  register: __claude_code_vm_test_same
+  changed_when: false
+  failed_when: false
+
+- name: Look up the VM after the run with the same values
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Check that run changed nothing on the host and did not restart the VM
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_same.rc == 0
+      - __claude_code_vm_test_same.stdout | regex_findall(__claude_code_vm_test_recap_re) == ['0']
+      - __claude_code_vm_test_vm == __claude_code_vm_test_before
+      - __claude_code_vm_test_before.memory_kib | int == 4194304
+      - __claude_code_vm_test_before.vcpus | int == 2
+    fail_msg: >-
+      rc {{ __claude_code_vm_test_same.rc }}, recap {{ __claude_code_vm_test_same.stdout_lines[-4:] }};
+      before {{ __claude_code_vm_test_before }}; after {{ __claude_code_vm_test_vm }}
+    success_msg: >-
+      PASSED a run with the VM's own memory and vCPUs changed nothing on the host and did not restart the VM.
+
+- name: Lower the VM's memory and vCPUs in the settings file
+  ansible.builtin.replace:
+    path: "{{ __claude_code_vm_test_file }}"
+    regexp: "^{{ __claude_code_vm_test_value.setting }}: .*$"
+    replace: "{{ __claude_code_vm_test_value.setting }}: {{ __claude_code_vm_test_value.value }}"
+  loop:
+    - { setting: claude_code_vm_memory, value: 3072 }
+    - { setting: claude_code_vm_vcpus, value: 1 }
+  loop_control:
+    loop_var: __claude_code_vm_test_value
+
+- name: Run aslib.infra.claude_code_vm with the lower values
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  register: __claude_code_vm_test_lower
+  changed_when: true
+  failed_when: false
+
+- name: Look up the VM after the run with the lower values
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Note the VM with the lower values
+  ansible.builtin.set_fact:
+    __claude_code_vm_test_lowered: "{{ __claude_code_vm_test_vm }}"
+
+# The guest's MemTotal is its memory less what the kernel reserves.
+- name: Check the run reported a change and restarted the VM, which has the lower values in libvirt and in the guest
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_lower.rc == 0
+      - __claude_code_vm_test_lower.stdout | regex_findall(__claude_code_vm_test_recap_re) | first | default('0') | int > 0
+      - __claude_code_vm_test_vm.state == 'running'
+      - __claude_code_vm_test_vm.memory_kib | int == 3145728
+      - __claude_code_vm_test_vm.current_memory_kib | int == 3145728
+      - __claude_code_vm_test_vm.vcpus | int == 1
+      - __claude_code_vm_test_vm.current_vcpus | int == 1
+      - __claude_code_vm_test_vm.boot != __claude_code_vm_test_before.boot
+      - __claude_code_vm_test_vm.mem_total_kib | int <= 3145728
+      - __claude_code_vm_test_vm.mem_total_kib | int > 3145728 * 0.85
+      - __claude_code_vm_test_vm.nproc | int == 1
+    fail_msg: >-
+      rc {{ __claude_code_vm_test_lower.rc }}: {{ __claude_code_vm_test_lower.stdout_lines[-6:] }}
+      {{ __claude_code_vm_test_lower.stderr_lines[-6:] }}; the VM: {{ __claude_code_vm_test_vm }}
+    success_msg: >-
+      PASSED a run with lower memory and vCPUs in the settings file shut claude-dev down, gave it 3072 MiB and
+      1 vCPU (libvirt's definition; the guest sees {{ __claude_code_vm_test_vm.mem_total_kib }} kB and
+      {{ __claude_code_vm_test_vm.nproc }} processor) and started it again, reporting a change.
+
+# A VM that does not shut down cleanly is never forced off. The guest ignores
+# the power key, so the run's clean shutdown cannot end it; the run's internal
+# wait (__claude_code_vm_shutdown_timeout, 300 s) is lowered to 30 s for this
+# case. A guest agent, where there is one, could shut it down instead.
+- name: Make the guest ignore the power key, and stop its guest agent if it runs
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_ssh + [__claude_code_vm_test_script] }}"
+  vars:
+    __claude_code_vm_test_script: >-
+      sudo -n mkdir -p /etc/systemd/logind.conf.d
+      && printf '[Login]\nHandlePowerKey=ignore\n' | sudo -n tee /etc/systemd/logind.conf.d/aslib-test-power-key.conf
+      && sudo -n systemctl restart systemd-logind
+      && { ! systemctl is-active --quiet qemu-guest-agent
+      || { sudo -n systemctl stop qemu-guest-agent && sudo -n touch /run/aslib-test-agent-stopped; }; }
+  changed_when: true
+
+- name: Ask for the run's memory and vCPUs again in the settings file
+  ansible.builtin.replace:
+    path: "{{ __claude_code_vm_test_file }}"
+    regexp: "^{{ __claude_code_vm_test_value.setting }}: .*$"
+    replace: "{{ __claude_code_vm_test_value.setting }}: {{ __claude_code_vm_test_value.value }}"
+  loop:
+    - { setting: claude_code_vm_memory, value: 4096 }
+    - { setting: claude_code_vm_vcpus, value: 2 }
+  loop_control:
+    loop_var: __claude_code_vm_test_value
+
+- name: Run aslib.infra.claude_code_vm, with 30 seconds for the VM to shut down
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v, -e, __claude_code_vm_shutdown_timeout=30]
+    chdir: /
+  register: __claude_code_vm_test_stuck
+  changed_when: true
+  failed_when: false
+
+- name: Look up the VM after the run that could not shut it down
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Let the guest act on the power key again, and start its guest agent if the test stopped it
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_ssh + [__claude_code_vm_test_script] }}"
+  vars:
+    __claude_code_vm_test_script: >-
+      sudo -n rm -f /etc/systemd/logind.conf.d/aslib-test-power-key.conf
+      && sudo -n systemctl restart systemd-logind
+      && { ! test -e /run/aslib-test-agent-stopped
+      || { sudo -n systemctl start qemu-guest-agent && sudo -n rm -f /run/aslib-test-agent-stopped; }; }
+  changed_when: true
+
+- name: Check the run stopped, saying the VM still runs with its old values, and left it so
+  vars:
+    __claude_code_vm_test_said: "{{ __claude_code_vm_test_stuck.stdout ~ __claude_code_vm_test_stuck.stderr }}"
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_stuck.rc != 0
+      - __claude_code_vm_test_said is search('did not shut down')
+      - __claude_code_vm_test_said is search('still running with its old memory and vCPUs')
+      - __claude_code_vm_test_said is search('never forced off')
+      - __claude_code_vm_test_vm == __claude_code_vm_test_lowered
+    fail_msg: >-
+      rc {{ __claude_code_vm_test_stuck.rc }}: {{ __claude_code_vm_test_stuck.stdout_lines[-6:] }}
+      {{ __claude_code_vm_test_stuck.stderr_lines[-6:] }}; the VM: {{ __claude_code_vm_test_vm }}
+    success_msg: >-
+      PASSED a run whose VM did not shut down stopped, saying it still runs with its old memory and vCPUs, and
+      left it running, unchanged: it never forces it off.
+
+- name: Shut the VM down, as a person might before a run
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_virsh + ['shutdown', 'claude-dev'] }}"
+  changed_when: true
+
+- name: Wait until the VM is shut off
+  ansible.builtin.command:
+    argv: "{{ __claude_code_vm_test_virsh + ['domstate', 'claude-dev'] }}"
+  register: __claude_code_vm_test_off
+  until: __claude_code_vm_test_off.stdout is search('shut off')
+  retries: 60
+  delay: 5
+  changed_when: false
+
+- name: Run aslib.infra.claude_code_vm with the VM shut off and higher values in the settings file
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  register: __claude_code_vm_test_from_off
+  changed_when: true
+  failed_when: false
+
+- name: Look up the VM after the run that found it shut off
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Note the VM with the run's values again
+  ansible.builtin.set_fact:
+    __claude_code_vm_test_raised: "{{ __claude_code_vm_test_vm }}"
+
+- name: Check the run gave the VM the higher values and started it, without a shutdown
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_from_off.rc == 0
+      - __claude_code_vm_test_vm.state == 'running'
+      - __claude_code_vm_test_vm.memory_kib | int == 4194304
+      - __claude_code_vm_test_vm.current_memory_kib | int == 4194304
+      - __claude_code_vm_test_vm.vcpus | int == 2
+      - __claude_code_vm_test_vm.current_vcpus | int == 2
+      - __claude_code_vm_test_vm.mem_total_kib | int > 3145728
+      - __claude_code_vm_test_vm.mem_total_kib | int <= 4194304
+      - __claude_code_vm_test_vm.nproc | int == 2
+      # -v prints each command's cmd: an argv list ("shutdown", "claude-dev") or a shell string
+      - __claude_code_vm_test_from_off.stdout is not search('shutdown(", "| )claude-dev')
+    fail_msg: >-
+      rc {{ __claude_code_vm_test_from_off.rc }}: {{ __claude_code_vm_test_from_off.stdout_lines[-6:] }}
+      {{ __claude_code_vm_test_from_off.stderr_lines[-6:] }}; the VM: {{ __claude_code_vm_test_vm }}
+    success_msg: >-
+      PASSED a run that found claude-dev shut off gave it 4096 MiB and 2 vCPUs (the guest sees
+      {{ __claude_code_vm_test_vm.mem_total_kib }} kB and {{ __claude_code_vm_test_vm.nproc }} processors) and
+      started it, without shutting it down.
+
+- name: Ask for more memory than the host has, in the settings file
+  ansible.builtin.replace:
+    path: "{{ __claude_code_vm_test_file }}"
+    regexp: "^claude_code_vm_memory: .*$"
+    replace: "claude_code_vm_memory: 1048576"
+
+- name: Run aslib.infra.claude_code_vm with memory that does not fit
+  ansible.builtin.command:
+    argv: [ansible-playbook, aslib.infra.claude_code_vm, -v]
+    chdir: /
+  register: __claude_code_vm_test_misfit
+  changed_when: false
+  failed_when: false
+
+- name: Ask for the run's memory again
+  ansible.builtin.replace:
+    path: "{{ __claude_code_vm_test_file }}"
+    regexp: "^claude_code_vm_memory: .*$"
+    replace: "claude_code_vm_memory: 4096"
+
+- name: Look up the VM after the run that stopped
+  ansible.builtin.include_tasks: vm-state.yml
+
+- name: Check the run stopped with the fit check's message and left the VM as it was
+  vars:
+    __claude_code_vm_test_said: "{{ __claude_code_vm_test_misfit.stdout ~ __claude_code_vm_test_misfit.stderr }}"
+  ansible.builtin.assert:
+    that:
+      - __claude_code_vm_test_misfit.rc != 0
+      - __claude_code_vm_test_said is search('claude_code_vm_memory 1048576 MiB, does not fit in this host')
+      - __claude_code_vm_test_vm == __claude_code_vm_test_raised
+    fail_msg: >-
+      rc {{ __claude_code_vm_test_misfit.rc }}: {{ __claude_code_vm_test_misfit.stdout_lines[-6:] }}; the VM:
+      {{ __claude_code_vm_test_vm }}
+    success_msg: >-
+      PASSED a run with more memory than the host can give stopped with the fit check's message, before the VM's
+      definition changed or the VM restarted.

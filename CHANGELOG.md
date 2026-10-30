@@ -104,6 +104,15 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 - Changed: the qa skill's reviewer and documenter run on Sonnet; the
   architect, the tester and the developer keep the session's model.
 - Changed: `claude_code_settings_effort` defaults to `high` (it was `xhigh`).
+- Changed: claude_code_vm's `claude_code_vm_memory` and `claude_code_vm_vcpus`
+  now apply to an existing VM at the next run; up to 0.8.0 they applied only
+  when the VM was created. A run where they differ from the VM's shuts it down
+  cleanly, gives it the new values and starts it again, which ends the Claude
+  Code sessions in it (`claude --resume` brings them back); this includes the
+  first run after upgrading, when the settings file already differs from the
+  VM. A VM that does not shut down within 5 minutes is never forced off: the
+  run stops and says how to go on. The disk size and the network are still for
+  a new VM.
 
 ### Upgrading from 0.8.0
 
