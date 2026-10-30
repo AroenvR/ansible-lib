@@ -1,0 +1,82 @@
+#!/bin/sh
+# Stand-in for GitLab's glab in the script tests: answers "glab api" calls from
+# the same files in $STUB_DIR as the gh stand-in and never reaches a network.
+# Every call is appended to $STUB_DIR/calls as one line ("glab" and its
+# arguments, separated by spaces). Like glab, it fails without GITLAB_TOKEN.
+#   GET  projects/<id>/issues?iids[]=<N>&state=opened  a one-issue list when issue-<N>
+#        holds OPEN, else [] (also when there is no issue-<N>)
+#   POST projects/<id>/issues/<N>/notes  with body=<text>: writes the text to comment-<N>
+#   PUT  projects/<id>/issues/<N>        with state_event=close: writes CLOSED to issue-<N>
+set -eu
+if [ -z "${STUB_DIR:-}" ]; then
+  echo "stand-in glab: STUB_DIR is not set" >&2
+  exit 1
+fi
+{
+  printf 'glab'
+  printf ' %s' "$@"
+  printf '\n'
+} >>"$STUB_DIR/calls"
+
+unexpected() {
+  echo "stand-in glab: unexpected call: glab $*" >&2
+  exit 1
+}
+
+if [ "${1:-}" != api ]; then
+  unexpected "$@"
+fi
+if [ -z "${GITLAB_TOKEN:-}" ]; then
+  echo "glab: no token found; set GITLAB_TOKEN" >&2
+  exit 1
+fi
+all="$*"
+shift
+method=GET
+endpoint=
+body=
+state_event=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --method | -X) method=${2:-}; shift ;;
+    --method=*) method=${1#--method=} ;;
+    --raw-field | -f | --field | -F)
+      case "${2:-}" in
+        body=*) body=${2#body=} ;;
+        state_event=*) state_event=${2#state_event=} ;;
+      esac
+      shift
+      ;;
+    -*) ;;
+    *) [ -n "$endpoint" ] || endpoint=$1 ;;
+  esac
+  shift
+done
+
+case "$method $endpoint" in
+  "GET projects/"*"/issues?"*"iids[]="*)
+    number=$(printf '%s\n' "$endpoint" | sed 's/.*iids\[\]=\([0-9]*\).*/\1/')
+    if [ "$(cat "$STUB_DIR/issue-$number" 2>/dev/null)" = OPEN ]; then
+      printf '[{"iid":%s,"state":"opened"}]\n' "$number"
+    else
+      echo '[]'
+    fi
+    ;;
+  "POST projects/"*"/issues/"*"/notes")
+    number=${endpoint%/notes}
+    number=${number##*/}
+    printf '%s\n' "$body" >"$STUB_DIR/comment-$number"
+    echo '{"id":1}'
+    ;;
+  "PUT projects/"*"/issues/"*)
+    number=${endpoint##*/}
+    if [ "$state_event" != close ] || [ ! -f "$STUB_DIR/issue-$number" ]; then
+      unexpected "$all"
+    fi
+    echo CLOSED >"$STUB_DIR/issue-$number"
+    printf '{"iid":%s,"state":"closed"}\n' "$number"
+    ;;
+  *)
+    unexpected "$all"
+    ;;
+esac
