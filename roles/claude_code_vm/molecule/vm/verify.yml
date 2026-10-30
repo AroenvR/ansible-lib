@@ -129,7 +129,7 @@
       vars:
         claude_code_settings_qa_budget: "{{ hostvars['localhost'].claude_code_settings_qa_budget }}"
 
-    # qa-budget on, as the loop needs it (FR-1): its guard keeps the loop's wake-ups inside the budget.
+    # qa-budget on, as the loop needs it: its guard keeps the loop's wake-ups inside the budget.
     - name: Compute what claude_code_skills hands every target, with the qa skill and the loop as this run had them (on, 7 wake-ups, 48 hours)
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_skills
@@ -429,7 +429,7 @@
           'claude_code_vm_authorized_keys', 'claude_code_vm_oauth_token'] + __claude_code_vm_test_settings_options
          + __claude_code_vm_test_skills_options }}
     # What a run with -e gives the loop's settings, other than their defaults (false, 5, 24), and qa-budget, which
-    # the loop needs: the run reads -e before it reads the file, where the same value is (FR-1 is checked then too).
+    # the loop needs: the run reads -e before it reads the file, where the same value is (the loop's need for qa-budget is checked then too).
     __claude_code_vm_test_loop_settings:
       claude_code_settings_qa_budget: true
       claude_code_skills_loop_to_delivery: true
@@ -439,6 +439,30 @@
     __claude_code_vm_test_env:
       ANSIBLE_CALLBACKS_ENABLED: aslib.infra.run_log
       ANSIBLE_RUN_LOG_DIR: "{{ __claude_code_vm_test_logs }}"
+    # The runs that resize the VM restart it; the guest is read over SSH of its own.
+    __claude_code_vm_test_virsh: [virsh, --connect, "qemu:///system"]
+    __claude_code_vm_test_ip: "{{ claude_code_vm_network_prefix | default('192.168.123') }}.10"
+    __claude_code_vm_test_ssh:
+      - ssh
+      - -i
+      - "{{ lookup('env', 'HOME') }}/.ssh/claude-dev"
+      - -o
+      - UserKnownHostsFile={{ lookup('env', 'HOME') }}/.ssh/claude-dev.known_hosts
+      - -o
+      - StrictHostKeyChecking=accept-new
+      - -o
+      - ControlPath=none
+      - -o
+      - BatchMode=yes
+      - -o
+      - ConnectTimeout=10
+      - claude@{{ __claude_code_vm_test_ip }}
+    # Patterns kept out of {{ }}, where Ansible doubles backslashes (none here anyway).
+    __claude_code_vm_test_recap_re: "localhost +: ok=[0-9]+ +changed=([0-9]+)"
+    __claude_code_vm_test_memory_re: "<memory unit='KiB'>([0-9]+)</memory>"
+    __claude_code_vm_test_current_memory_re: "<currentMemory unit='KiB'>([0-9]+)</currentMemory>"
+    __claude_code_vm_test_vcpu_re: "<vcpu[^>]*>([0-9]+)</vcpu>"
+    __claude_code_vm_test_vcpu_current_re: "<vcpu[^>]*current='([0-9]+)'"
   tasks:
     - name: Look up the settings file
       ansible.builtin.stat:
@@ -496,6 +520,26 @@
       failed_when: __claude_code_vm_test_seed.rc != 1
       no_log: true
 
+    - name: Check a run applies changed memory and vCPUs to the existing VM, and never forces it off
+      ansible.builtin.include_tasks: tasks/resize.yml
+
+    - name: Check the runs that resized the VM left the settings file as the first run wrote it
+      vars:
+        __claude_code_vm_test_now: "{{ lookup('file', __claude_code_vm_test_file, rstrip=false) }}"
+      ansible.builtin.assert:
+        that: __claude_code_vm_test_now == __claude_code_vm_test_written
+        fail_msg: >-
+          The settings file is not as the first run wrote it:
+          {{ __claude_code_vm_test_now.splitlines() | select('match', 'claude_code_vm_(memory|vcpus): ') | list }}
+        success_msg: PASSED the settings file is as the first run wrote it, after the runs that resized the VM.
+
+    # Those runs restarted the VM, which breaks an SSH connection Ansible keeps to
+    # it. wait_for_connection drops claude-dev's connection before each try.
+    - name: Wait until the VM lets Ansible in again
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+      delegate_to: claude-dev
+
     # A comment of one's own, a setting removed and one changed, and no newline at the end. Four
     # settings, each with its comment, are removed: ultracode, and loop-to-delivery's three, which a
     # file written before the loop existed lacks.
@@ -529,7 +573,7 @@
 
     # -e gives the loop's settings the values of the inventory the first run had (this run has none), so
     # that the settings the file lacks are added at the value this run uses, other than the defaults.
-    # The file's qa-budget is given too: FR-1 is checked before the file is read as well as after.
+    # The file's qa-budget is given too: the loop's need for it is checked before the file is read as well as after.
     - name: Run aslib.infra.claude_code_vm again, as a person would after changing the file, with the loop's settings in -e
       ansible.builtin.command:
         argv: [ansible-playbook, aslib.infra.claude_code_vm, -v, -e, "{{ __claude_code_vm_test_loop_settings | to_json }}"]
@@ -582,7 +626,7 @@
         # loop-to-delivery's own checks are reached from the settings file, before the VM is touched.
         - { setting: claude_code_skills_loop_to_delivery_max_wakes, value: 0 }
         - { setting: claude_code_skills_loop_to_delivery_max_hours, value: 169 }
-        # FR-1: the loop on with qa-budget off stops the run, naming both settings and the guard.
+        # The loop on with qa-budget off stops the run, naming both settings and the guard.
         - { setting: claude_code_settings_qa_budget, value: "false", also: [claude_code_skills_loop_to_delivery, guard] }
       loop_control:
         loop_var: __claude_code_vm_test_invalid

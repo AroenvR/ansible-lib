@@ -6,8 +6,9 @@
 # port and name it is given (as for GitLab on the host). Also checks the host's
 # settings file, Claude's token in the VM, that Claude Code starts there ready
 # to work, that it finds the qa skill and its experts, and loop-to-delivery
-# (whose hook runs, and asks qa-budget's guard), and that the old name of the qa
-# option stops a run. Not part of `make test`:
+# (whose hook runs, and asks qa-budget's guard), that a run adjusts the VM's
+# memory and vCPUs and restarts it when it must, never forcing it off, and that
+# the old name of the qa option stops a run. Not part of `make test`:
 # run it with `sudo make test-vm-2.16` on a machine with KVM (claude_code_vm needs
 # ansible-core 2.16); CI runs it on GitHub's runners, which have KVM.
 scenario:

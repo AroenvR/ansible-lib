@@ -96,6 +96,17 @@ your own](gitlab.md). For a fresh VM, `ansible-playbook
 aslib.infra.claude_code_vm_remove --ask-become-pass`, then `aslib.infra.claude_code_vm`
 again.
 
+## Change its memory or vCPUs
+
+Change `claude_code_vm_memory` or `claude_code_vm_vcpus` in
+`/etc/claude-vm/settings.yml`, higher or lower, and run the playbook again. A
+change always restarts the VM: the run shuts it down cleanly, gives it the new
+values and starts it again. That ends the Claude Code sessions in it; they come
+back with `claude --resume`. A VM that does not shut down within 5 minutes is
+never forced off: the run stops and says how to go on. The disk size and the
+network are for a new VM. Details: [Resizing the
+VM](../roles/claude_code_vm/README.md#resizing-the-vm).
+
 ## When it does not come up
 
 Two playbooks find out why, run like the others:
