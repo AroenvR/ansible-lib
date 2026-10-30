@@ -3,7 +3,7 @@
 # session of Claude Code starts, the same in every target that includes this role.
 claude_code_settings_permission_mode: bypassPermissions
 claude_code_settings_model: opus
-claude_code_settings_effort: xhigh
+claude_code_settings_effort: high
 claude_code_settings_theme: dark
 claude_code_settings_agent_teams: false
 claude_code_settings_ultracode: false

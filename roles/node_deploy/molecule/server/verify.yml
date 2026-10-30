@@ -823,7 +823,7 @@
         podman_service_uid: ""
         claude_code_settings_permission_mode: acceptEdits
         claude_code_settings_model: sonnet
-        claude_code_settings_effort: high
+        claude_code_settings_effort: medium
         claude_code_settings_theme: light
         claude_code_settings_agent_teams: "true"   # as -e passes it
         claude_code_settings_ultracode: true
@@ -916,7 +916,7 @@
         that:
           - __node_deploy_test_installed.permissions.defaultMode == 'acceptEdits'
           - __node_deploy_test_installed.model == 'sonnet'
-          - __node_deploy_test_installed.effortLevel == 'high'
+          - __node_deploy_test_installed.effortLevel == 'medium'
           - __node_deploy_test_installed.theme == 'light'
           - __node_deploy_test_installed.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS == '1'
           - __node_deploy_test_installed.ultracode is true
@@ -932,7 +932,7 @@
           - __node_deploy_test_deny | length == __node_deploy_test_deny | unique | length
         fail_msg: "The installed policy: {{ __node_deploy_test_installed | to_json }}"
         success_msg: >-
-          PASSED claude_code_podman installed each setting of claude_code_settings (acceptEdits, sonnet, high
+          PASSED claude_code_podman installed each setting of claude_code_settings (acceptEdits, sonnet, medium
           effort, the light theme, agent teams and ultracode on) as claude_code_settings hands them to every target,
           with the container's part and the project's ({{ __node_deploy_test_deny | length }} deny rules, none
           twice; the project's plansDirectory over the base's).

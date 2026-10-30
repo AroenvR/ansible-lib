@@ -58,7 +58,7 @@ aslib.infra with that setting may read and write. It installs the command
 **How a session starts** comes from the `claude_code_settings_*` settings in
 `group_vars/all/project.yml` (or `-e`), the same as in aslib.infra's VM for
 Claude Code: by default bypassPermissions mode, without permission prompts
-(`claude_code_settings_permission_mode: default` keeps them), Opus at xhigh
+(`claude_code_settings_permission_mode: default` keeps them), Opus at high
 effort, the dark theme, agent teams and ultracode off. The policy's deny rules
 apply in every mode. Claude Code starts ready to work, without asking to trust a
 folder, to confirm the mode or for its first-run setup. With

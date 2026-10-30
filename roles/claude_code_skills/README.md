@@ -51,13 +51,14 @@ subagents in Claude Code's managed settings directory, `/etc/claude-code/`:
 | `.claude/skills/qa/protocol.md` | The protocol QA and every expert follow: roles, ownership, artifacts, the four review gates, the handoff, when to stop |
 | `.claude/agents/architect.md` | Technical architecture and contracts |
 | `.claude/agents/tester.md` | Tests and their RED |
-| `.claude/agents/reviewer.md` | The gates' verdicts; never edits what it reviews |
+| `.claude/agents/reviewer.md` | The gates' verdicts; never edits what it reviews. Runs on Sonnet |
 | `.claude/agents/developer.md` | Production code, GREEN and REFACTOR |
-| `.claude/agents/documenter.md` | Docs and code comments |
+| `.claude/agents/documenter.md` | Docs and code comments. Runs on Sonnet |
 
 Its description has Claude take the skill for any request to change a
 project, without being told; a question is answered without it, and `/qa`
-starts it by hand. QA writes the spec and the acceptance, and runs the experts
+starts it by hand. The architect, the tester and the developer run on the
+session's model, the reviewer and the documenter on Sonnet. QA writes the spec and the acceptance, and runs the experts
 one at a time, passing each one's report on to the next, in the protocol's
 order: spec, architect, review of the architecture, tester (RED), review of the
 tests, developer (GREEN), review of the code, documenter, final review,
@@ -72,6 +73,10 @@ that it proves mechanically (a version number replaced everywhere, whitespace,
 a label removed from a comment, a merge of reviewed work); the next review
 checks them. Each expert writes only the paths QA gives it, reading only the
 files and sections its brief names, so that each run fits its token budget.
+
+When the person brainstorms (ideas or problems for later, not a request to do
+the work now), QA changes nothing: it files each idea as an issue in the
+project's tracker, one per change, and starts work only when asked.
 
 QA works so that the person can leave the work with it. It decides what the
 project's own rules decide (the version number, who fixes a finding, re-running

@@ -110,7 +110,7 @@ or with `-e`; each deploy installs them:
 |---|---|
 | `claude_code_settings_permission_mode` | `bypassPermissions`: without permission prompts; `default` keeps them |
 | `claude_code_settings_model` | `opus`, the newest Opus |
-| `claude_code_settings_effort` | `xhigh` |
+| `claude_code_settings_effort` | `high` |
 | `claude_code_settings_theme` | `dark` |
 | `claude_code_settings_agent_teams` | `false` |
 | `claude_code_settings_ultracode` | `false` |

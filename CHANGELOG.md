@@ -97,8 +97,21 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   pull requests and everything that ships use plain words: no labels from the
   spec, and only the version file and the changelog's heading carry the
   upcoming version.
+- Changed: when the person brainstorms (ideas or problems for later, not a
+  request to do the work now), the qa skill changes nothing in the project: it
+  files each idea as an issue in the project's tracker and starts work only
+  when asked. Its description says so, as Claude takes the skill by it.
+- Changed: the qa skill's reviewer and documenter run on Sonnet; the
+  architect, the tester and the developer keep the session's model.
+- Changed: `claude_code_settings_effort` defaults to `high` (it was `xhigh`).
 
 ### Upgrading from 0.8.0
+
+- The new effort default reaches new VM settings files and new container
+  projects only: a VM host's `/etc/claude-vm/settings.yml` and a container
+  project's `ansible/group_vars/all/project.yml` keep the
+  `claude_code_settings_effort: xhigh` line their setup wrote. Change that line
+  to `high` to follow the new default.
 
 - In the VM (claude_code_vm), Claude's Edit tool no longer refuses changes to
   the policy in `/etc/claude-code/` (its files are root's, so a change needs

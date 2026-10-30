@@ -21,7 +21,7 @@ The same names and defaults in every target. Options and their choices:
 |---|---|---|
 | `claude_code_settings_permission_mode` | `bypassPermissions` | this permission mode |
 | `claude_code_settings_model` | `opus` | this model (`opus`: the newest Opus) |
-| `claude_code_settings_effort` | `xhigh` | this effort level |
+| `claude_code_settings_effort` | `high` | this effort level |
 | `claude_code_settings_theme` | `dark` | this theme |
 | `claude_code_settings_agent_teams` | `false` | agent teams on or off |
 | `claude_code_settings_ultracode` | `false` | ultracode on or off |

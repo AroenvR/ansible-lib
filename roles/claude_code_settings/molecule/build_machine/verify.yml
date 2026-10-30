@@ -15,7 +15,7 @@
           - __claude_code_settings_test_policy.permissions.defaultMode == 'bypassPermissions'
           - __claude_code_settings_test_policy.skipDangerousModePermissionPrompt is true
           - __claude_code_settings_test_policy.model == 'opus'
-          - __claude_code_settings_test_policy.effortLevel == 'xhigh'
+          - __claude_code_settings_test_policy.effortLevel == 'high'
           - __claude_code_settings_test_policy.theme == 'dark'
           - __claude_code_settings_test_policy.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS == '0'
           - __claude_code_settings_test_policy.ultracode is false
@@ -33,7 +33,7 @@
         fail_msg: "Policy: {{ claude_code_settings_policy }}"
         success_msg: >-
           PASSED claude_code_settings: by default, sessions start in bypassPermissions mode without its
-          confirmation, with Opus at xhigh effort and the dark theme, agent teams and ultracode off, every
+          confirmation, with Opus at high effort and the dark theme, agent teams and ultracode off, every
           directory a working directory, every folder trusted and the first-run setup done.
 
     # The skills are claude_code_skills' since 0.8.0; the only files this role

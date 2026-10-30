@@ -131,7 +131,8 @@
         that:
           - __claude_code_skills_test_text is match('---\n')
           - __claude_code_skills_test_front.name == __claude_code_skills_test_name
-          - __claude_code_skills_test_front.model == 'inherit'
+          # The reviewer and the documenter run on Sonnet, the others on the session's model.
+          - "__claude_code_skills_test_front.model == ('sonnet' if __claude_code_skills_test_name in ['reviewer', 'documenter'] else 'inherit')"
           - __claude_code_skills_test_front.tools == 'Read, Grep, Glob, Bash, Write, Edit'
           - __claude_code_skills_test_front.description is search('^Serves the qa skill')
         fail_msg: "{{ item.name }}: {{ __claude_code_skills_test_text.split('---')[1] }}"
@@ -152,10 +153,12 @@
           - __claude_code_skills_test_front.name == 'qa'
           - __claude_code_skills_test_front.description is search('^Use this skill before changing anything in a project')
           - __claude_code_skills_test_front.description is search('[Nn]ot for questions')
+          - __claude_code_skills_test_front.description is search('brainstorm')
         fail_msg: "{{ __claude_code_skills_test_text.split('---')[1] }}"
         success_msg: >-
-          PASSED the five experts' frontmatter names each after its file, with the package's tools, the session's
-          model and a description that says it serves the qa skill; the skill's is for change requests, not questions.
+          PASSED the five experts' frontmatter names each after its file, with the package's tools, Sonnet for the
+          reviewer and the documenter and the session's model for the others, and a description that says it
+          serves the qa skill; the skill's is for change requests and brainstorming, not questions.
 
     # The first version of these files was written for agent teams; these run
     # synchronously, from a skill, and serve any project.

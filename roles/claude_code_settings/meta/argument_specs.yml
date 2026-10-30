@@ -36,7 +36,7 @@ argument_specs:
           a full model ID. /model still switches within a session.
       claude_code_settings_effort:
         type: str
-        default: xhigh
+        default: high
         choices: [low, medium, high, xhigh]
         description: The effort level a new session starts with (C(effortLevel)). /effort still changes it.
       claude_code_settings_theme:

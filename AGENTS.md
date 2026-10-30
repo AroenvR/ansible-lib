@@ -592,6 +592,12 @@ Each with its reason, newest first. A decision is changed by a new one here.
   shipped with them). Each gate takes one review round (qa-budget's `budget.md`
   caps it at two); lower findings go to the list of improvements. Reports to
   the person use plain words.
+- 2026-10-30, cheaper defaults (the maintainer's call): sessions start at
+  effort `high` (was `xhigh`); the qa skill's reviewer and documenter run on
+  Sonnet, while the architect, the tester and the developer keep the session's
+  model (#11's `model: inherit`). When the person brainstorms, the qa skill
+  files issues instead of changing the project; its description says so, as
+  the description is what makes Claude take the skill.
 - 2026-10-25, loop-to-delivery's hook program, the exception to "Markdown and
   Ansible only" of the qa decision (which stands for qa): the maintainer asked
   for work that keeps going across interruptions, and only a hook can block a
