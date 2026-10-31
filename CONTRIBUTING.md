@@ -52,7 +52,7 @@ root there, away from the host and the local network. See
 | `roles/<role>/` | The library. `defaults/` + `meta/argument_specs.yml` are the public interface; `README.md` is the role's reference |
 | `roles/<role>/molecule/server/` | Tests of a role that runs on servers, in the test server containers |
 | `roles/<role>/molecule/build_machine/` | Tests of a role that runs where Ansible runs (e.g. `node_image`), on the test machine itself |
-| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code_podman's deploy, side by side with the Node.js service |
+| `roles/node_deploy/molecule/server/` | Also the tests of `podman_service`, `podman_overview` and claude_code_podman's deploy with a scheduled job, side by side with the Node.js service |
 | `roles/claude_code_podman/molecule/mock/` | A stand-in for Claude Code with the image's contract, for tests that cannot reach Anthropic's repository |
 | `roles/claude_code_vm/molecule/vm/` | Creates the VM on the test machine, which needs KVM; not part of `make test` (`sudo make test-vm-2.16`; CI runs it on GitHub) |
 | `roles/gitlab/molecule/gitlab/` | Deploys and uses GitLab on the RHEL 9 test server; not part of `make test` (`make test-gitlab-<ansible-core>`). `mock/` is a stand-in for GitLab's image (`gitlab_test_real: false`) |
@@ -131,9 +131,9 @@ without taking another's account, UID or files.
 
 | Scenario | For roles that run on | Runs in | Make target |
 |---|---|---|---|
-| `roles/<role>/molecule/server/` | Servers (`sudoers`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
+| `roles/<role>/molecule/server/` | Servers (`sudoers`, `systemd_timer`, `node_deploy`) | Test server containers that mimic default installs (`dev/images/`) | `make test-servers-<ansible-core>` |
 | `roles/<role>/molecule/build_machine/` | The machine Ansible runs on (`node_setup`, `node_image`, `claude_code_podman`'s setup and image, `claude_code_settings`, `claude_code_skills`, which also runs the unit tests of its hook program) | The machine running the tests | `make test-build-machine-<ansible-core>` |
-| `roles/claude_code_vm/molecule/vm/` | A host with KVM (`claude_code_vm`, its settings file and the real Claude Code in the VM) | The machine running the tests, which needs KVM; not part of `make test`; with 2.16 only. It deletes `/etc/claude-vm/settings.yml` first and removes the VM at the end | `sudo make test-vm-2.16` |
+| `roles/claude_code_vm/molecule/vm/` | A host with KVM (`claude_code_vm`, its settings file, a scheduled job and the real Claude Code in the VM) | The machine running the tests, which needs KVM; not part of `make test`; with 2.16 only. It deletes `/etc/claude-vm/settings.yml` first and removes the VM at the end | `sudo make test-vm-2.16` |
 | `roles/gitlab/molecule/gitlab/` | A server running GitLab (`gitlab`) | The RHEL 9 test server; needs Docker Hub, about 4 GB of memory, 15 GB of disk and half an hour, so not part of `make test` (with `gitlab_test_real: false` in its `vars/test.yml`, a stand-in takes minutes, offline) | `make test-gitlab-<ansible-core>` |
 
 Each target runs every role that has that scenario (`ROLES=` picks some) with

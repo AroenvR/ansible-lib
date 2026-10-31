@@ -42,8 +42,9 @@ argument_specs:
           container:
             type: str
             default: ""
-            description: The name of a rootless container of I(user) to run the command in with podman exec.
-              Empty runs it on the host. Not with C(root).
+            description: The name of a rootless container of I(user) to run the command in with podman exec;
+              the role checks the name's form only, not that the container exists. Empty runs it on the host. Not
+              with C(root).
           state:
             type: str
             choices: [present, absent]

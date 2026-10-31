@@ -98,6 +98,9 @@ to keep a terminal around, use tmux or screen on your side.
   budget](../roles/claude_code_skills/README.md#how-it-stays-inside-the-budget)).
   qa-budget is required: a deploy with the loop on and qa-budget off stops,
   naming both. Off by default.
+- **Commands on a schedule**: `claude_code_podman_jobs` in `project.yml`, then
+  `ansible-playbook deploy.yml`: each job runs in the container, as Claude
+  ([how](../roles/claude_code_podman/README.md#on-the-server)).
 - **A newer Claude Code**: every build is also the update to its newest
   version, so run `ansible-playbook build-and-deploy.yml` again.
 - **The policy or the instructions**: edit `config/`, then

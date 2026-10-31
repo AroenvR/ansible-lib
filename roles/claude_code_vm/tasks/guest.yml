@@ -3,8 +3,8 @@
 # Claude Code and aslib.infra's tests need: Podman, git, make, Python 3.11 next to
 # Ubuntu's 3.12, and Claude Code from Anthropic's signed repository with the
 # settings of aslib.infra.claude_code_settings, the skills of
-# aslib.infra.claude_code_skills and Claude's token. Running it again changes
-# nothing.
+# aslib.infra.claude_code_skills and Claude's token, and claude's scheduled jobs
+# (claude_code_vm_jobs). Running it again changes nothing.
 - name: Wait until the VM lets Ansible in
   ansible.builtin.wait_for_connection:
     timeout: 600

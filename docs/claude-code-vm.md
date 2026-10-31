@@ -67,7 +67,9 @@ and qa-budget off stops, naming both), Claude [keeps long
 work going](../roles/claude_code_skills/README.md#the-loop-to-delivery-skill) by
 itself until it is delivered, within [the budget](../roles/claude_code_skills/README.md#how-it-stays-inside-the-budget)
 and at most 5 wake-ups and 24 hours a loop. Both are off by default, as their
-names win over skills and agents of your own.
+names win over skills and agents of your own. With `claude_code_vm_jobs`
+there, commands run in the VM on a schedule, as claude
+([how](../roles/claude_code_vm/README.md#in-the-vm)).
 
 To work on aslib.infra there, clone it in the VM (`<repository>` is the URL of
 the aslib.infra repository you use) and run its tests as CI does; the rest is
