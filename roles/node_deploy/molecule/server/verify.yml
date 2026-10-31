@@ -329,6 +329,116 @@
           with every folder trusted (CLAUDE_CODE_SANDBOXED) and the first-run setup done, and Claude found its
           policy and instructions in /etc/claude-code and could not change them.
 
+    # converge.yml gives Claude Code a scheduled job, which writes `id -un` to the
+    # container's /tmp and prints a line. Its timer lives in the account's own
+    # systemd, which the restart of the server brought back (lingering).
+    - name: Ask the account's systemd about the scheduled job's timer, after the restart of the server
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
+          - systemctl
+          - --user
+          - show
+          - --property=LoadState,UnitFileState,ActiveState,NextElapseUSecRealtime
+          - aslib-test-job.timer
+        chdir: /
+      register: __node_deploy_test_job_timer
+      changed_when: false
+      failed_when: false
+
+    - name: Remove what the scheduled job wrote before, in Claude Code's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
+          - podman
+          - exec
+          - claude-code
+          - rm
+          - -f
+          - /tmp/test-job.ran
+        chdir: /
+      changed_when: true
+
+    - name: Start the scheduled job's service as the account, as its timer would
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
+          - systemctl
+          - --user
+          - start
+          - aslib-test-job.service
+        chdir: /
+      register: __node_deploy_test_job_run
+      changed_when: true
+      failed_when: false
+
+    - name: Read what the scheduled job wrote, in Claude Code's container
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - --user=claude-code
+          - --
+          - env
+          - XDG_RUNTIME_DIR=/run/user/{{ __node_deploy_test_claude_uid }}
+          - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __node_deploy_test_claude_uid }}/bus
+          - podman
+          - exec
+          - claude-code
+          - cat
+          - /tmp/test-job.ran
+        chdir: /
+      register: __node_deploy_test_job_ran
+      changed_when: false
+      failed_when: false
+
+    # As a person looks for a job's output, as root: by the job's user and name.
+    - name: Read the scheduled job's output from the journal
+      ansible.builtin.command:
+        argv: [journalctl, --no-pager, --output=cat, "_UID={{ __node_deploy_test_claude_uid }}", --identifier=aslib-test-job]
+      register: __node_deploy_test_job_journal
+      changed_when: false
+      failed_when: false
+      until: "'test-job ran' in __node_deploy_test_job_journal.stdout_lines"
+      retries: 5
+      delay: 1
+
+    - name: Check the scheduled job's timer came back with the server, and the job runs in Claude Code's container as its account
+      ansible.builtin.assert:
+        that:
+          - __node_deploy_test_job_timer.rc == 0
+          - "'LoadState=loaded' in __node_deploy_test_job_timer.stdout_lines"
+          - "'UnitFileState=enabled' in __node_deploy_test_job_timer.stdout_lines"
+          - "'ActiveState=active' in __node_deploy_test_job_timer.stdout_lines"
+          - __node_deploy_test_job_timer.stdout is search('^NextElapseUSecRealtime=.+$', multiline=True)
+          - __node_deploy_test_job_run.rc == 0
+          - __node_deploy_test_job_ran.stdout == 'claude'
+          - "'test-job ran' in __node_deploy_test_job_journal.stdout_lines"
+        fail_msg: >-
+          Timer: {{ __node_deploy_test_job_timer.stdout_lines + __node_deploy_test_job_timer.stderr_lines }};
+          start: rc {{ __node_deploy_test_job_run.rc }} {{ __node_deploy_test_job_run.stderr }};
+          the job's file in the container: {{ __node_deploy_test_job_ran.stdout }} {{ __node_deploy_test_job_ran.stderr }};
+          journal: {{ __node_deploy_test_job_journal.stdout_lines }}
+        success_msg: >-
+          PASSED claude_code_podman's scheduled job: its timer in claude-code's own systemd came back with the server,
+          active, {{ __node_deploy_test_job_timer.stdout_lines | select('match', 'NextElapse') | join }}; started as
+          its timer would, the job ran in Claude Code's container as claude, and the journal keeps its output under
+          the account's UID and the job's name.
+
     # converge.yml deploys Claude Code with the qa skill, qa-budget and
     # loop-to-delivery on, the loop with 7 wake-ups and 48 hours.
     - name: Compute what claude_code_settings hands every target with qa-budget on, as the deploy had it

@@ -9,17 +9,17 @@
     # As converge.yml installs them.
     __systemd_timer_test_jobs:
       - name: timer-test-root
-        command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran; sleep 1'"
+        command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran'"
         schedule: hourly
         user: root
       - name: timer-test-account
-        command: "sh -c 'id -un > /home/timer-test/timer-test-account.ran; echo timer-test-account ran; sleep 1'"
+        command: "sh -c 'id -un > /home/timer-test/timer-test-account.ran; echo timer-test-account ran'"
         schedule: "*-*-* 04:30:00"
         user: timer-test
     # A new schedule for root's job, a new command for the account's.
     __systemd_timer_test_changed_jobs:
       - name: timer-test-root
-        command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran; sleep 1'"
+        command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran'"
         schedule: "*-*-* 05:45:00"
         user: root
       - name: timer-test-account
@@ -186,9 +186,11 @@
             == ['root', 'timer-test']
         success_msg: PASSED systemd_timer, started as its timer would, root's job ran as root and the account's as timer-test.
 
+    # As a person looks for a job's output, as root: by the job's user and the
+    # job's name in the journal.
     - name: Read root's job's output from the journal
       ansible.builtin.command:
-        argv: [journalctl, --no-pager, --output=cat, --unit=aslib-timer-test-root.service]
+        argv: [journalctl, --no-pager, --output=cat, _UID=0, --identifier=aslib-timer-test-root]
       register: __systemd_timer_test_root_journal
       changed_when: false
       until: "'timer-test-root ran' in __systemd_timer_test_root_journal.stdout_lines"
@@ -201,8 +203,8 @@
           - journalctl
           - --no-pager
           - --output=cat
-          - _SYSTEMD_USER_UNIT=aslib-timer-test-account.service
           - _UID={{ __systemd_timer_test_uid }}
+          - --identifier=aslib-timer-test-account
       register: __systemd_timer_test_account_journal
       changed_when: false
       until: "'timer-test-account ran' in __systemd_timer_test_account_journal.stdout_lines"
@@ -214,7 +216,9 @@
         that:
           - "'timer-test-root ran' in __systemd_timer_test_root_journal.stdout_lines"
           - "'timer-test-account ran' in __systemd_timer_test_account_journal.stdout_lines"
-        success_msg: PASSED systemd_timer, the journal keeps each job's output under its unit (and the account's UID).
+        success_msg: >-
+          PASSED systemd_timer, the journal keeps each short job's output under the job's name (aslib-<name>) and
+          its user's UID.
 
     # Change
 

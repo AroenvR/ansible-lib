@@ -6,7 +6,8 @@
 # port and name it is given (as for GitLab on the host). Also checks the host's
 # settings file, Claude's token in the VM, that Claude Code starts there ready
 # to work, that it finds the qa skill and its experts, and loop-to-delivery
-# (whose hook runs, and asks qa-budget's guard), that a run adjusts the VM's
+# (whose hook runs, and asks qa-budget's guard), that a scheduled job runs in
+# the VM as claude, its timer back after a reset, that a run adjusts the VM's
 # memory and vCPUs and restarts it when it must, never forcing it off, and that
 # the old name of the qa option stops a run. Not part of `make test`:
 # run it with `sudo make test-vm-2.16` on a machine with KVM (claude_code_vm needs
@@ -39,3 +40,8 @@ provisioner:
         claude_code_skills_loop_to_delivery: true
         claude_code_skills_loop_to_delivery_max_wakes: 7
         claude_code_skills_loop_to_delivery_max_hours: 48
+        # A scheduled job, which notes in /tmp who ran it and prints a line.
+        claude_code_vm_jobs:
+          - name: test-job
+            command: "sh -c 'id -un > /tmp/test-job.ran; echo test-job ran'"
+            schedule: hourly

@@ -9,15 +9,14 @@
       ansible.builtin.include_role:
         name: aslib.infra.systemd_timer
       vars:
-        # Each job's shell prints a line itself and lives on for a second:
-        # journald ties a line to the job's unit only while the process that
-        # wrote it still runs.
+        # Short jobs, which end as soon as they have printed their line: the
+        # journal must keep that line all the same.
         systemd_timer_jobs:
           - name: timer-test-root
-            command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran; sleep 1'"
+            command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran'"
             schedule: hourly
             user: root
           - name: timer-test-account
-            command: "sh -c 'id -un > /home/timer-test/timer-test-account.ran; echo timer-test-account ran; sleep 1'"
+            command: "sh -c 'id -un > /home/timer-test/timer-test-account.ran; echo timer-test-account ran'"
             schedule: "*-*-* 04:30:00"
             user: timer-test
