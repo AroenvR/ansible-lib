@@ -239,6 +239,15 @@
     group: root
     mode: "0644"
 
+# Timers of claude's own systemd, which runs from boot (lingering), each
+# starting its job's command as claude. Before the sync below, so that a reset
+# soon after keeps their unit files.
+- name: Install, change or remove claude's scheduled jobs, claude_code_vm_jobs
+  ansible.builtin.include_role:
+    name: aslib.infra.systemd_timer
+  vars:
+    systemd_timer_jobs: "{{ claude_code_vm_jobs | map('combine', {'user': 'claude'}) | list }}"
+
 # A reset soon after (UEFI may restart an ARM64 VM; the test resets it on
 # purpose) loses what ext4 has not written out yet, up to 30 seconds' worth: a
 # new file then comes back empty, as the policy did in CI 19 seconds after it was

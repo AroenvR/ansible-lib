@@ -24,6 +24,7 @@ claude_code_podman_rpm_repos: ""              # a directory of .repo files (a mi
 
 # Deploying: ansible-playbook deploy.yml. More in templates/service.container.j2.
 claude_code_podman_memory: 4g                 # the most memory Claude's container may use; "" for no limit
+claude_code_podman_jobs: []                   # commands run in Claude's container on a schedule: name, command, schedule, state
 podman_service_tmp_size: 512m          # Claude's /tmp, in memory
 podman_service_shared: true            # the shared zone /opt/containers/shared/, shared with the other services
 podman_service_user: ""                # the account Claude runs as; empty: claude-code

@@ -89,6 +89,17 @@
     podman_service_health_cmd: ""
     podman_service_memory: "{{ claude_code_podman_memory | default('') }}"
 
+# Timers of the service account's own systemd, each running its job's command in
+# the container with podman exec, as Claude. After the deploy, which creates the
+# account and its container.
+- name: Install, change or remove the scheduled jobs in Claude's container, claude_code_podman_jobs
+  ansible.builtin.include_role:
+    name: aslib.infra.systemd_timer
+  vars:
+    systemd_timer_jobs: >-
+      {{ claude_code_podman_jobs
+         | map('combine', {'user': __claude_code_podman_user, 'container': __claude_code_podman_name}) | list }}
+
 # Claude Code reads ~/.bashrc when it starts a session's shell. RHEL's default
 # one loads /etc/bashrc and with it /etc/profile.d/, where the image's nvm is.
 # Written once, as useradd would from /etc/skel; it is Claude's from then on.

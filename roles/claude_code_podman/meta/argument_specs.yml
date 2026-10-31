@@ -38,6 +38,36 @@ argument_specs:
           - The most memory Claude's container may use (podman_service_memory), its /tmp included, so a runaway build
             cannot starve the server. Past it, the kernel stops a process in the container.
           - Empty sets no limit.
+      claude_code_podman_jobs:
+        type: list
+        elements: dict
+        default: []
+        description:
+          - Commands that run in Claude's container on a schedule, as Claude, each a timer of the service account's
+            own systemd (aslib.infra.systemd_timer) that runs the command with podman exec. A job not listed stays as
+            it is; to remove one, list it once with I(state=absent).
+        options:
+          name:
+            type: str
+            required: true
+            description: The job's name, in its units' names (aslib-<name>). Lowercase letters, digits and '-', 64 at
+              most.
+          command:
+            type: str
+            description:
+              - The command, as a line of systemd's ExecStart, without a shell, run in the container. Write C(%%) for
+                a C(%) and C($$) for a C($); for pipes or redirection use C(sh -c '...').
+              - Unit files are readable by every account, so the command must not hold a secret.
+              - Required when I(state=present).
+          schedule:
+            type: str
+            description: When the job runs, in systemd's calendar syntax (OnCalendar), e.g. C(hourly) or
+              C(*-*-* 04:30:00). Required when I(state=present).
+          state:
+            type: str
+            choices: [present, absent]
+            default: present
+            description: C(absent) removes the job.
   setup:
     short_description: Write a Claude Code project, ready to build and deploy with aslib.infra
     description:
