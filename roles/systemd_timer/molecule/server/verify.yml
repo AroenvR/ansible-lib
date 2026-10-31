@@ -1,0 +1,404 @@
+---
+# Runs the jobs converge.yml installed, as their timers would, changes them,
+# removes them, and checks that the entry point verify names a job whose timer is
+# missing or stopped. Ends with the jobs installed as converge.yml left them.
+- name: Check systemd_timer's jobs of root and of an account
+  hosts: all
+  gather_facts: false
+  vars:
+    # As converge.yml installs them.
+    __systemd_timer_test_jobs:
+      - name: timer-test-root
+        command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran; sleep 1'"
+        schedule: hourly
+        user: root
+      - name: timer-test-account
+        command: "sh -c 'id -un > /home/timer-test/timer-test-account.ran; echo timer-test-account ran; sleep 1'"
+        schedule: "*-*-* 04:30:00"
+        user: timer-test
+    # A new schedule for root's job, a new command for the account's.
+    __systemd_timer_test_changed_jobs:
+      - name: timer-test-root
+        command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran; sleep 1'"
+        schedule: "*-*-* 05:45:00"
+        user: root
+      - name: timer-test-account
+        command: "sh -c 'id -un > /home/timer-test/timer-test-account.changed'"
+        schedule: "*-*-* 04:30:00"
+        user: timer-test
+  tasks:
+    - name: Look up the account
+      ansible.builtin.getent:
+        database: passwd
+        key: timer-test
+
+    # As a role reaches an account's systemd (see AGENTS.md's Known pitfalls).
+    - name: Prepare running systemctl as root and as the account
+      ansible.builtin.set_fact:
+        __systemd_timer_test_uid: "{{ ansible_facts.getent_passwd['timer-test'][1] }}"
+        __systemd_timer_test_home: "{{ ansible_facts.getent_passwd['timer-test'][4] }}"
+        __systemd_timer_test_systemctl:
+          root: [systemctl]
+          timer-test:
+            - runuser
+            - --user=timer-test
+            - --
+            - env
+            - XDG_RUNTIME_DIR=/run/user/{{ ansible_facts.getent_passwd['timer-test'][1] }}
+            - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ ansible_facts.getent_passwd['timer-test'][1] }}/bus
+            - systemctl
+            - --user
+
+    # Installed
+
+    - name: Inspect root's job's unit files
+      ansible.builtin.stat:
+        path: /etc/systemd/system/{{ __systemd_timer_test_item }}
+      loop: [aslib-timer-test-root.service, aslib-timer-test-root.timer]
+      loop_control:
+        loop_var: __systemd_timer_test_item
+      register: __systemd_timer_test_root_units
+
+    - name: Inspect the account's job's unit files
+      ansible.builtin.stat:
+        path: "{{ __systemd_timer_test_home }}/.config/systemd/user/{{ __systemd_timer_test_item }}"
+      loop: [aslib-timer-test-account.service, aslib-timer-test-account.timer]
+      loop_control:
+        loop_var: __systemd_timer_test_item
+      register: __systemd_timer_test_account_units
+
+    - name: Look for the account's job among root's units
+      ansible.builtin.stat:
+        path: /etc/systemd/system/{{ __systemd_timer_test_item }}
+      loop: [aslib-timer-test-account.service, aslib-timer-test-account.timer]
+      loop_control:
+        loop_var: __systemd_timer_test_item
+      register: __systemd_timer_test_misplaced
+
+    - name: Inspect the account's lingering
+      ansible.builtin.stat:
+        path: /var/lib/systemd/linger/timer-test
+      register: __systemd_timer_test_linger
+
+    - name: Check root's units are root's, the account's are in its home and its own, and it lingers
+      ansible.builtin.assert:
+        that:
+          - __systemd_timer_test_root_units.results | map(attribute='stat.exists') is all
+          - __systemd_timer_test_root_units.results | map(attribute='stat.pw_name') | unique | list == ['root']
+          - __systemd_timer_test_root_units.results | map(attribute='stat.mode') | unique | list == ['0644']
+          - __systemd_timer_test_account_units.results | map(attribute='stat.exists') is all
+          - __systemd_timer_test_account_units.results | map(attribute='stat.pw_name') | unique | list == ['timer-test']
+          - __systemd_timer_test_account_units.results | map(attribute='stat.mode') | unique | list == ['0644']
+          - __systemd_timer_test_misplaced.results | map(attribute='stat.exists') is not any
+          - __systemd_timer_test_linger.stat.exists
+        success_msg: >-
+          PASSED systemd_timer: root's job is in /etc/systemd/system, the account's in
+          {{ __systemd_timer_test_home }}/.config/systemd/user (its own files, not root's units), each 0644,
+          and the account lingers.
+
+    - name: Ask systemd about each job's timer
+      ansible.builtin.command:
+        argv: >-
+          {{ __systemd_timer_test_systemctl[__systemd_timer_test_job.user]
+             + ['show', '--property=LoadState,UnitFileState,ActiveState,NextElapseUSecRealtime',
+                'aslib-' ~ __systemd_timer_test_job.name ~ '.timer'] }}
+        chdir: /
+      loop: "{{ __systemd_timer_test_jobs }}"
+      loop_control:
+        loop_var: __systemd_timer_test_job
+        label: "{{ __systemd_timer_test_job.name }}"
+      register: __systemd_timer_test_timers
+      changed_when: false
+      failed_when: false
+
+    - name: Check each job's timer is enabled and active, with a next run
+      ansible.builtin.assert:
+        that:
+          - __systemd_timer_test_item.rc == 0
+          - "'LoadState=loaded' in __systemd_timer_test_item.stdout_lines"
+          - "'UnitFileState=enabled' in __systemd_timer_test_item.stdout_lines"
+          - "'ActiveState=active' in __systemd_timer_test_item.stdout_lines"
+          - __systemd_timer_test_item.stdout is search('^NextElapseUSecRealtime=.+$', multiline=True)
+        fail_msg: "{{ __systemd_timer_test_item.stdout_lines + __systemd_timer_test_item.stderr_lines }}"
+        success_msg: >-
+          PASSED systemd_timer: {{ __systemd_timer_test_item.__systemd_timer_test_job.name }}'s timer
+          ({{ __systemd_timer_test_item.__systemd_timer_test_job.user }}) is enabled and active,
+          {{ __systemd_timer_test_item.stdout_lines | select('match', 'NextElapse') | join }}.
+      loop: "{{ __systemd_timer_test_timers.results }}"
+      loop_control:
+        loop_var: __systemd_timer_test_item
+        label: "{{ __systemd_timer_test_item.__systemd_timer_test_job.name }}"
+
+    - name: Run systemd_timer's verify for the installed jobs
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+        tasks_from: verify
+      vars:
+        systemd_timer_jobs: "{{ __systemd_timer_test_jobs }}"
+
+    # Run
+
+    - name: Remove what the jobs wrote before
+      ansible.builtin.file:
+        path: "{{ __systemd_timer_test_item }}"
+        state: absent
+      loop:
+        - /root/timer-test-root.ran
+        - /home/timer-test/timer-test-account.ran
+        - /home/timer-test/timer-test-account.changed
+      loop_control:
+        loop_var: __systemd_timer_test_item
+
+    - name: Start each job's service, as its timer would
+      ansible.builtin.command:
+        argv: "{{ __systemd_timer_test_systemctl[__systemd_timer_test_job.user] + ['start', 'aslib-' ~ __systemd_timer_test_job.name ~ '.service'] }}"
+        chdir: /
+      loop: "{{ __systemd_timer_test_jobs }}"
+      loop_control:
+        loop_var: __systemd_timer_test_job
+        label: "{{ __systemd_timer_test_job.name }}"
+      changed_when: true
+
+    - name: Inspect what the jobs wrote
+      ansible.builtin.stat:
+        path: "{{ __systemd_timer_test_item }}"
+      loop: [/root/timer-test-root.ran, /home/timer-test/timer-test-account.ran]
+      loop_control:
+        loop_var: __systemd_timer_test_item
+      register: __systemd_timer_test_ran
+
+    - name: Read what the jobs wrote
+      ansible.builtin.slurp:
+        src: "{{ __systemd_timer_test_item }}"
+      loop: [/root/timer-test-root.ran, /home/timer-test/timer-test-account.ran]
+      loop_control:
+        loop_var: __systemd_timer_test_item
+      register: __systemd_timer_test_ran_content
+      failed_when: false
+
+    - name: Check each job ran its command as its user
+      ansible.builtin.assert:
+        that:
+          - __systemd_timer_test_ran.results | map(attribute='stat.exists') is all
+          - __systemd_timer_test_ran.results | map(attribute='stat.pw_name') | list == ['root', 'timer-test']
+          - >-
+            __systemd_timer_test_ran_content.results | map(attribute='content') | map('b64decode') | map('trim') | list
+            == ['root', 'timer-test']
+        success_msg: PASSED systemd_timer, started as its timer would, root's job ran as root and the account's as timer-test.
+
+    - name: Read root's job's output from the journal
+      ansible.builtin.command:
+        argv: [journalctl, --no-pager, --output=cat, --unit=aslib-timer-test-root.service]
+      register: __systemd_timer_test_root_journal
+      changed_when: false
+      until: "'timer-test-root ran' in __systemd_timer_test_root_journal.stdout_lines"
+      retries: 5
+      delay: 1
+
+    - name: Read the account's job's output from the journal, as root
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - --no-pager
+          - --output=cat
+          - _SYSTEMD_USER_UNIT=aslib-timer-test-account.service
+          - _UID={{ __systemd_timer_test_uid }}
+      register: __systemd_timer_test_account_journal
+      changed_when: false
+      until: "'timer-test-account ran' in __systemd_timer_test_account_journal.stdout_lines"
+      retries: 5
+      delay: 1
+
+    - name: Check the journal keeps each job's output
+      ansible.builtin.assert:
+        that:
+          - "'timer-test-root ran' in __systemd_timer_test_root_journal.stdout_lines"
+          - "'timer-test-account ran' in __systemd_timer_test_account_journal.stdout_lines"
+        success_msg: PASSED systemd_timer, the journal keeps each job's output under its unit (and the account's UID).
+
+    # Change
+
+    - name: Run systemd_timer with a new schedule for root's job and a new command for the account's
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+      vars:
+        systemd_timer_jobs: "{{ __systemd_timer_test_changed_jobs }}"
+
+    - name: Ask systemd for root's job's next run
+      ansible.builtin.command:
+        argv: [systemctl, show, --property=NextElapseUSecRealtime, --value, aslib-timer-test-root.timer]
+      register: __systemd_timer_test_next_run
+      changed_when: false
+
+    - name: Start the account's job's service, as its timer would
+      ansible.builtin.command:
+        argv: "{{ __systemd_timer_test_systemctl['timer-test'] + ['start', 'aslib-timer-test-account.service'] }}"
+        chdir: /
+      changed_when: true
+
+    - name: Inspect what the account's new command wrote
+      ansible.builtin.stat:
+        path: /home/timer-test/timer-test-account.changed
+      register: __systemd_timer_test_changed
+
+    - name: Check the timer follows the new schedule and the service runs the new command
+      ansible.builtin.assert:
+        that:
+          - __systemd_timer_test_next_run.stdout is search('05:45:00')
+          - __systemd_timer_test_changed.stat.exists
+          - __systemd_timer_test_changed.stat.pw_name == 'timer-test'
+        fail_msg: >-
+          Next run of root's job: {{ __systemd_timer_test_next_run.stdout }};
+          the account's new command ran: {{ __systemd_timer_test_changed.stat.exists }}.
+        success_msg: >-
+          PASSED systemd_timer applies a changed job: root's timer runs next at {{ __systemd_timer_test_next_run.stdout }},
+          the account's service runs its new command.
+
+    # Remove
+
+    - name: Run systemd_timer with both jobs turned off
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+      vars:
+        systemd_timer_jobs:
+          - name: timer-test-root
+            user: root
+            state: absent
+          - name: timer-test-account
+            user: timer-test
+            state: absent
+
+    # Lingering stays: the account may have other services that need it.
+    - name: Look for anything left of the jobs, units, enable links and timer stamps
+      ansible.builtin.stat:
+        path: "{{ __systemd_timer_test_item }}"
+        follow: false
+      loop:
+        - /etc/systemd/system/aslib-timer-test-root.service
+        - /etc/systemd/system/aslib-timer-test-root.timer
+        - /etc/systemd/system/timers.target.wants/aslib-timer-test-root.timer
+        - /var/lib/systemd/timers/stamp-aslib-timer-test-root.timer
+        - "{{ __systemd_timer_test_home }}/.config/systemd/user/aslib-timer-test-account.service"
+        - "{{ __systemd_timer_test_home }}/.config/systemd/user/aslib-timer-test-account.timer"
+        - "{{ __systemd_timer_test_home }}/.config/systemd/user/timers.target.wants/aslib-timer-test-account.timer"
+        - "{{ __systemd_timer_test_home }}/.local/share/systemd/timers/stamp-aslib-timer-test-account.timer"
+      loop_control:
+        loop_var: __systemd_timer_test_item
+      register: __systemd_timer_test_left
+
+    - name: Ask systemd about each job's timer and service
+      ansible.builtin.command:
+        argv: >-
+          {{ __systemd_timer_test_systemctl[__systemd_timer_test_item.0.user]
+             + ['show', '--property=LoadState,ActiveState', 'aslib-' ~ __systemd_timer_test_item.0.name ~ '.' ~ __systemd_timer_test_item.1] }}
+        chdir: /
+      loop: "{{ __systemd_timer_test_jobs | product(['timer', 'service']) | list }}"
+      loop_control:
+        loop_var: __systemd_timer_test_item
+        label: aslib-{{ __systemd_timer_test_item.0.name }}.{{ __systemd_timer_test_item.1 }}
+      register: __systemd_timer_test_gone_units
+      changed_when: false
+
+    - name: Check both jobs are gone, from disk and from systemd
+      ansible.builtin.assert:
+        that:
+          - __systemd_timer_test_left.results | map(attribute='stat.exists') is not any
+          - >-
+            __systemd_timer_test_gone_units.results | map(attribute='stdout_lines') | map('sort') | map('join', ' ') | unique | list
+            == ['ActiveState=inactive LoadState=not-found']
+        fail_msg: >-
+          Left: {{ __systemd_timer_test_left.results | selectattr('stat.exists') | map(attribute='__systemd_timer_test_item') | list }};
+          systemd: {{ __systemd_timer_test_gone_units.results | map(attribute='stdout_lines') | list }}
+        success_msg: >-
+          PASSED systemd_timer removes a job turned off: no unit file, enable link or timer stamp is left, and neither
+          root's nor the account's systemd knows the units any more.
+
+    # The entry point verify, failing
+
+    - name: Install the jobs again, as converge.yml does
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+      vars:
+        systemd_timer_jobs: "{{ __systemd_timer_test_jobs }}"
+
+    - name: Stop root's job's timer and delete it, as a mistake by hand would
+      ansible.builtin.command:
+        argv: [systemctl, stop, aslib-timer-test-root.timer]
+      changed_when: true
+
+    - name: Delete root's job's timer file
+      ansible.builtin.file:
+        path: /etc/systemd/system/aslib-timer-test-root.timer
+        state: absent
+
+    - name: Let systemd forget root's job's timer
+      ansible.builtin.command:
+        argv: [systemctl, daemon-reload]
+      changed_when: true
+
+    - name: Run verify, which must name root's job as its timer is missing
+      block:
+        - name: Run systemd_timer's verify with root's job's timer missing
+          ansible.builtin.include_role:
+            name: aslib.infra.systemd_timer
+            tasks_from: verify
+          vars:
+            systemd_timer_jobs: "{{ __systemd_timer_test_jobs }}"
+
+        - name: Fail, as verify passed
+          ansible.builtin.fail:
+            msg: systemd_timer's verify passed with a timer missing.
+      rescue:
+        - name: Check verify named root's job, and only that one
+          ansible.builtin.assert:
+            that:
+              - (ansible_failed_result.msg | default('')) is search('timer-test-root [(]root[)]')
+              - (ansible_failed_result.msg | default('')) is not search('timer-test-account')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: "PASSED systemd_timer's verify fails with a timer missing, naming that job: {{ ansible_failed_result.msg | default('') }}"
+
+    - name: Install the jobs again, which brings back root's job's timer
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+      vars:
+        systemd_timer_jobs: "{{ __systemd_timer_test_jobs }}"
+
+    - name: Stop the account's job's timer, as a mistake by hand would
+      ansible.builtin.command:
+        argv: "{{ __systemd_timer_test_systemctl['timer-test'] + ['stop', 'aslib-timer-test-account.timer'] }}"
+        chdir: /
+      changed_when: true
+
+    - name: Run verify, which must name the account's job as its timer is stopped
+      block:
+        - name: Run systemd_timer's verify with the account's job's timer stopped
+          ansible.builtin.include_role:
+            name: aslib.infra.systemd_timer
+            tasks_from: verify
+          vars:
+            systemd_timer_jobs: "{{ __systemd_timer_test_jobs }}"
+
+        - name: Fail, as verify passed
+          ansible.builtin.fail:
+            msg: systemd_timer's verify passed with a timer stopped.
+      rescue:
+        - name: Check verify named the account's job, and only that one
+          ansible.builtin.assert:
+            that:
+              - (ansible_failed_result.msg | default('')) is search('timer-test-account [(]timer-test[)]')
+              - (ansible_failed_result.msg | default('')) is not search('timer-test-root')
+            fail_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+            success_msg: "PASSED systemd_timer's verify fails with a timer stopped, naming that job: {{ ansible_failed_result.msg | default('') }}"
+
+    - name: Install the jobs again, which starts the account's job's timer
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+      vars:
+        systemd_timer_jobs: "{{ __systemd_timer_test_jobs }}"
+
+    - name: Run systemd_timer's verify, which passes again
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+        tasks_from: verify
+      vars:
+        systemd_timer_jobs: "{{ __systemd_timer_test_jobs }}"

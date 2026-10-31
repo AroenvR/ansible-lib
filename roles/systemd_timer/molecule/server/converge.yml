@@ -1,0 +1,23 @@
+---
+# Only installs, so that a second run must change nothing (Molecule's idempotence
+# step, the native test's second converge). verify.yml runs, changes and removes
+# the jobs, and installs them again as here at its end.
+- name: Install a job of root and a job of an account
+  hosts: all
+  tasks:
+    - name: Run systemd_timer
+      ansible.builtin.include_role:
+        name: aslib.infra.systemd_timer
+      vars:
+        # Each job's shell prints a line itself and lives on for a second:
+        # journald ties a line to the job's unit only while the process that
+        # wrote it still runs.
+        systemd_timer_jobs:
+          - name: timer-test-root
+            command: "sh -c 'id -un > /root/timer-test-root.ran; echo timer-test-root ran; sleep 1'"
+            schedule: hourly
+            user: root
+          - name: timer-test-account
+            command: "sh -c 'id -un > /home/timer-test/timer-test-account.ran; echo timer-test-account ran; sleep 1'"
+            schedule: "*-*-* 04:30:00"
+            user: timer-test
