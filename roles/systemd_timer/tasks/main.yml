@@ -221,18 +221,10 @@
   changed_when: false
   failed_when: __systemd_timer_read.rc not in [0, 1]
 
-# install sets the mode itself, where the account's umask would give 0664, and
-# replaces a link instead of writing where it points.
+# The account may not reopen /dev/stdin, a pipe of root's, so install cannot
+# read the text from there; dd reads it from the descriptor it was given.
 - name: Write the new and changed unit files of the accounts' jobs, as each account, readable by all
-  ansible.builtin.command:
-    argv: "{{ __systemd_timer_as[__systemd_timer_job.user] + ['install', '--mode=0644', '/dev/stdin', __systemd_timer_path] }}"
-    stdin: "{{ __systemd_timer_text }}"
-    stdin_add_newline: false
-    chdir: /
-  loop: "{{ __systemd_timer_read.results }}"
-  loop_control:
-    loop_var: __systemd_timer_found
-    label: "{{ __systemd_timer_path }}"
+  when: __systemd_timer_found.stdout != __systemd_timer_text
   vars:
     __systemd_timer_job: "{{ __systemd_timer_found.__systemd_timer_unit.0 }}"
     __systemd_timer_path: >-
@@ -241,9 +233,32 @@
     __systemd_timer_text: >-
       {{ lookup('ansible.builtin.template', 'aslib-job.' ~ __systemd_timer_found.__systemd_timer_unit.1 ~ '.j2',
                 convert_data=false) }}
-  when: __systemd_timer_found.stdout != __systemd_timer_text
-  register: __systemd_timer_written
-  changed_when: true
+  block:
+    # install sets the mode itself, where the account's umask would give 0664,
+    # and replaces a link instead of writing where it points. A run cut off
+    # before the text is in leaves an empty file, which the next run rewrites.
+    - name: Put an empty file readable by all in place of each, as the account
+      ansible.builtin.command:
+        argv: "{{ __systemd_timer_as[__systemd_timer_job.user] + ['install', '--mode=0644', '/dev/null', __systemd_timer_path] }}"
+        chdir: /
+      loop: "{{ __systemd_timer_read.results }}"
+      loop_control:
+        loop_var: __systemd_timer_found
+        label: "{{ __systemd_timer_path }}"
+      changed_when: true
+
+    - name: Write the unit's text into it, as the account
+      ansible.builtin.command:
+        argv: "{{ __systemd_timer_as[__systemd_timer_job.user] + ['dd', 'of=' ~ __systemd_timer_path, 'status=none'] }}"
+        stdin: "{{ __systemd_timer_text }}"
+        stdin_add_newline: false
+        chdir: /
+      loop: "{{ __systemd_timer_read.results }}"
+      loop_control:
+        loop_var: __systemd_timer_found
+        label: "{{ __systemd_timer_path }}"
+      register: __systemd_timer_written
+      changed_when: true
 
 - name: Note the accounts whose units changed, and the jobs whose timer changed
   ansible.builtin.set_fact:
