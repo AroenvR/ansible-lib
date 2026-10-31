@@ -80,10 +80,11 @@ naming each wrong job and its user.
 - With `container`, the job runs `podman exec <container> <command>` as the
   account. At boot it waits for the container's service, but does not start
   it.
-- A `%` systemd does not know as a specifier is a bad setting: a new job's
-  timer refuses to start, so the run fails; when only the command of an
-  existing job changed, the timer stays active, `verify` passes and each run
-  fails. `systemd-analyze verify <unit file>` finds it.
+- A `%` systemd does not know as a specifier is a bad setting. For a new job,
+  the timer refuses to start and the playbook fails. When only the command of
+  an existing job changed, the playbook and `verify` pass, but at the job's
+  next due time systemd does not start it and the timer fails, until the
+  command is fixed. `systemd-analyze verify <unit file>` finds it beforehand.
 - Unit files are readable by every account: a command must not hold a secret.
   Let it read one from a file.
 - systemd never starts a job that is still running, and does not retry one
