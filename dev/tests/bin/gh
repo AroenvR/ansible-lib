@@ -1,0 +1,72 @@
+#!/bin/sh
+# Stand-in for GitHub's gh in the script tests: answers from files in $STUB_DIR
+# and never reaches a network. Every call is appended to $STUB_DIR/calls as one
+# line ("gh" and its arguments, separated by spaces).
+#   gh-not-set-up   exists: "gh repo view" fails (gh is not set up for the repository)
+#   issue-<N>       OPEN or CLOSED: "gh issue view <N>" prints it; missing: the call fails
+#   prs             the answer of "gh pr list": open pull request numbers, one per line
+#   fail-close-<N>  exists: "gh issue close <N>" fails
+# "gh issue close <N> ... --comment <text>" writes CLOSED to issue-<N> and the text
+# to comment-<N>. --jq is not run: the answer is printed as the filter would give it.
+set -eu
+if [ -z "${STUB_DIR:-}" ]; then
+  echo "stand-in gh: STUB_DIR is not set" >&2
+  exit 1
+fi
+{
+  printf 'gh'
+  printf ' %s' "$@"
+  printf '\n'
+} >>"$STUB_DIR/calls"
+
+unexpected() {
+  echo "stand-in gh: unexpected call: gh $*" >&2
+  exit 1
+}
+
+case "${1:-} ${2:-}" in
+  "repo view")
+    if [ -e "$STUB_DIR/gh-not-set-up" ]; then
+      echo "none of the git remotes configured for this repository point to a known GitHub host" >&2
+      exit 1
+    fi
+    echo "example/project"
+    ;;
+  "issue view")
+    number=${3:-}
+    if [ ! -f "$STUB_DIR/issue-$number" ]; then
+      echo "GraphQL: Could not resolve to an issue or pull request with the number of $number. (repository.issue)" >&2
+      exit 1
+    fi
+    cat "$STUB_DIR/issue-$number"
+    ;;
+  "pr list")
+    if [ -f "$STUB_DIR/prs" ]; then
+      cat "$STUB_DIR/prs"
+    fi
+    ;;
+  "issue close")
+    number=${3:-}
+    shift 3
+    comment=
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --comment | -c) comment=${2:-}; shift ;;
+        --comment=*) comment=${1#--comment=} ;;
+      esac
+      shift
+    done
+    if [ -e "$STUB_DIR/fail-close-$number" ] || [ ! -f "$STUB_DIR/issue-$number" ]; then
+      echo "HTTP 403: Resource not accessible by integration" >&2
+      exit 1
+    fi
+    echo CLOSED >"$STUB_DIR/issue-$number"
+    if [ -n "$comment" ]; then
+      printf '%s\n' "$comment" >"$STUB_DIR/comment-$number"
+    fi
+    echo "Closed issue example/project#$number"
+    ;;
+  *)
+    unexpected "$@"
+    ;;
+esac

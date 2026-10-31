@@ -40,7 +40,7 @@ define molecule
 	done
 endef
 
-.PHONY: help setup images lint test test-native dist dist-release version version-raised build clean $(SELF)
+.PHONY: help setup images lint test-scripts test test-native dist dist-release version version-raised claim build clean $(SELF)
 
 help: ## List the targets
 	@grep -E '^[a-z0-9%.-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-26s %s\n", $$1, $$2}'
@@ -86,6 +86,10 @@ lint: $(VENV)/lint $(SELF) ## Lint all content and check every role's documented
 	  ANSIBLE_COLLECTIONS_PATH="$(CURDIR)/$(VENV)/self" $(VENV)/lint/bin/ansible-doc -t $$type aslib.infra.$$name >/dev/null || exit 1; \
 	done
 
+# Needs only sh and git: no venv, network or root.
+test-scripts: ## Test the scripts in dev/ with stand-ins for gh and glab
+	@for t in dev/tests/*.sh; do echo "sh $$t"; sh $$t || exit 1; done
+
 test: $(foreach v,$(ANSIBLE_VERSIONS),test-servers-$(v) test-build-machine-$(v) test-dist-$(v)) ## Run every test with every ansible-core version
 
 test-servers-%: $(VENV)/ansible-% $(VENV)/collections $(SELF) ## Test the server roles on the test servers, e.g. make test-servers-2.14 ROLES=sudoers
@@ -125,6 +129,10 @@ version: ## Print the collection's version (from galaxy.yml)
 # CI fetches accept first; locally, git fetch origin does.
 version-raised: ## Check galaxy.yml's version is higher than accept's, with its CHANGELOG section (BASE=origin/accept)
 	dev/ci/version-raised.sh $(or $(BASE),origin/accept)
+
+# Settings (AGENT_NAME, CLAIM_REMOTE, CLAIM_BASE, CLAIM_STALE_DAYS): dev/claim-issue.sh's header.
+claim: ## Claim an issue before working on it: push its branch issue/<N>, e.g. make claim ISSUE=57
+	dev/claim-issue.sh $(ISSUE)
 
 build: lint test test-native ## What CI runs before a release, except GitLab's test (test-gitlab-%)
 

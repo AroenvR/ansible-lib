@@ -113,6 +113,15 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   VM. A VM that does not shut down within 5 minutes is never forced off: the
   run stops and says how to go on. The disk size and the network are still for
   a new VM.
+- Changed, for developers of the collection: work on an issue starts with
+  `make claim ISSUE=<N>`, which pushes the branch `issue/<N>` with an empty
+  claim commit, so that agents that don't know of each other never take the
+  same issue. All work goes on that branch, pushed as it goes; it replaces the
+  `<kind>/<date>-<words>` branches and the backup branches. A new CI job
+  closes the issues that a commit on `develop` names in the `Closes #N` lines
+  ending its message (on GitLab, with the CI/CD variable `GITLAB_TOKEN`), and
+  `make test-scripts` tests both scripts. CONTRIBUTING.md's "Branches and pull
+  requests" says how. The roles and playbooks are unchanged.
 
 ### Upgrading from 0.8.0
 
