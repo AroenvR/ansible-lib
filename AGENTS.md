@@ -20,7 +20,10 @@ claude_code_vm in a VM where it may have root, for development, both starting
 sessions as claude_code_settings says and offering the skills that
 claude_code_skills holds (the qa skill and loop-to-delivery). gitlab runs
 GitLab CE as a rootless Podman service. node_deploy, claude_code_podman and
-gitlab are thin layers over podman_service. Consumers install a release tarball
+gitlab are thin layers over podman_service. systemd_timer runs commands on a
+schedule with systemd's timers, as root or as an account, also inside the
+account's container; the two Claude Code targets take their scheduled jobs
+through it. Consumers install a release tarball
 that holds only runtime files; tests and tooling never ship (`build_ignore` in
 `galaxy.yml`). What it offers and how it is used: [README.md](README.md), and
 the guides and the reference in [docs/](docs/README.md).
@@ -576,6 +579,26 @@ podman_service service, a smoke test after a deploy).
 
 Each with its reason, newest first. A decision is changed by a new one here.
 
+- 2026-10-31, scheduled jobs (#55): a role of their own, systemd_timer, on
+  systemd's timers (both systems have them, the journal keeps the output, no
+  package). A job is a service and a timer, `aslib-<name>`.
+  - An account's jobs are units of the account's own systemd, in its home,
+    written, enabled and removed only as the account: root writing in a
+    directory the account controls could follow a link planted there (to
+    `/etc/systemd/system`) and make the job root's. They go with the account.
+    Root still writes Quadlet files, which confine a container; a job's unit
+    gives the account nothing it lacks.
+  - Each job has a `state` (present or absent) instead of the role removing
+    the jobs not listed: root's systemd is shared by every playbook that calls
+    the role, and pruning would remove the others' jobs.
+  - The command is systemd's `ExecStart` line, without a shell (`%%`, `$$`,
+    `sh -c` for pipes): wrapping it in `/bin/sh -c` would add a second quoting
+    language and need a shell in every image.
+  - A target takes jobs through one list of its own (`claude_code_vm_jobs`,
+    `claude_code_podman_jobs`, which the tests and a person use) and sets the
+    user and container itself; a role that needs a job (the first: #53) will
+    hand the target a fact of the same shape, its jobs `absent` while its
+    feature is off.
 - 2026-10-30, the branch is the claim (#57): agents that don't know of each
   other, soon a second one with its own priorities next to Claude, could take
   the same issue, and nothing showed that one was in work. A branch
@@ -937,12 +960,13 @@ Each with its reason, newest first. A decision is changed by a new one here.
 
 ## Status
 
-Last updated 2026-10-27. v0.6.0 is the latest release; accept holds 0.7.0 (the
+Last updated 2026-10-31. v0.6.0 is the latest release; accept holds 0.7.0 (the
 Claude Code family, issue #25) and 0.8.0 (the qa skill, issue #26); develop
 holds the next version's work so far: qa-budget, and the role claude_code_skills
 with the qa skill, moved there from claude_code_settings with its setting
-renamed and new working rules, and loop-to-delivery, which needs qa-budget
-(CHANGELOG.md's top section lists it).
+renamed and new working rules, loop-to-delivery, which needs qa-budget, and
+the role systemd_timer with the targets' scheduled jobs (CHANGELOG.md's top
+section lists it).
 
 - CI passes every job before a release is tagged. Memory limits are checked
   only where cgroup v2 delegates the memory controller (CI's runners).

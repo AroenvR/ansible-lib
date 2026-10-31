@@ -3,8 +3,8 @@
 # Claude Code and aslib.infra's tests need: Podman, git, make, Python 3.11 next to
 # Ubuntu's 3.12, and Claude Code from Anthropic's signed repository with the
 # settings of aslib.infra.claude_code_settings, the skills of
-# aslib.infra.claude_code_skills and Claude's token. Running it again changes
-# nothing.
+# aslib.infra.claude_code_skills and Claude's token, and claude's scheduled jobs
+# (claude_code_vm_jobs). Running it again changes nothing.
 - name: Wait until the VM lets Ansible in
   ansible.builtin.wait_for_connection:
     timeout: 600
@@ -238,6 +238,15 @@
     owner: root
     group: root
     mode: "0644"
+
+# Timers of claude's own systemd, which runs from boot (lingering), each
+# starting its job's command as claude. Before the sync below, so that a reset
+# soon after keeps their unit files.
+- name: Install, change or remove claude's scheduled jobs, claude_code_vm_jobs
+  ansible.builtin.include_role:
+    name: aslib.infra.systemd_timer
+  vars:
+    systemd_timer_jobs: "{{ claude_code_vm_jobs | map('combine', {'user': 'claude'}) | list }}"
 
 # A reset soon after (UEFI may restart an ARM64 VM; the test resets it on
 # purpose) loses what ext4 has not written out yet, up to 30 seconds' worth: a

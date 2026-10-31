@@ -1,0 +1,45 @@
+---
+- name: Let the test machine in over SSH as root
+  ansible.builtin.import_playbook: ../../../../dev/molecule/test-server-ssh.yml
+
+# An account's jobs run in its own systemd instance (user@.service). A default
+# install has what starts it; the test containers lack some of it: Ubuntu's image
+# has neither D-Bus nor the PAM module, and Red Hat's ubi-init needs the same
+# changes as node_deploy's test server (dev/molecule/prepare-podman-server.yml),
+# without Podman.
+- name: Give the test servers an account, and what a default install has for its systemd
+  hosts: all
+  tasks:
+    - name: Install D-Bus and the PAM module that starts an account's systemd, as Ubuntu Server has them
+      ansible.builtin.apt:
+        name: [dbus, libpam-systemd]
+        state: present
+      when: ansible_facts.os_family == 'Debian'
+
+    - name: Install the PAM module that starts an account's systemd, as RHEL has it
+      ansible.builtin.dnf:
+        name: systemd-pam
+        state: present
+      when: ansible_facts.os_family == 'RedHat'
+
+    - name: Run systemd-logind, as on any RHEL server
+      ansible.builtin.systemd:
+        name: systemd-logind
+        masked: false
+        state: started
+      when: ansible_facts.os_family == 'RedHat'
+
+    - name: Give an account's systemd instance a PAM stack that works in this container
+      ansible.builtin.copy:
+        content: |
+          # Test container only. A real server keeps the stack systemd ships.
+          # pam_systemd gives the systemd instance its runtime directory.
+          account  required pam_permit.so
+          session  optional pam_systemd.so
+        dest: /etc/pam.d/systemd-user
+        mode: "0644"
+      when: ansible_facts.os_family == 'RedHat'
+
+    - name: Create the account whose job the test installs
+      ansible.builtin.user:
+        name: timer-test

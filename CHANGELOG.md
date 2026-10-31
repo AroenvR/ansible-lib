@@ -6,6 +6,16 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
 
 ## 0.9.0
 
+- Added: role `systemd_timer`, which runs commands on a schedule with
+  systemd's own timers, as root or as an account, on the host or inside one of
+  the account's rootless containers. Each job has a name, a command (a line of
+  systemd's `ExecStart`), a schedule (systemd's calendar syntax) and a state;
+  its `verify` entry point checks that each job's timer is active with a next
+  run. Its [README](roles/systemd_timer/README.md) says how.
+- Added: `claude_code_vm_jobs` and `claude_code_podman_jobs`, empty by
+  default: commands that run on a schedule, in the VM as claude and inside
+  Claude's container as Claude, through systemd_timer. The VM's is a setting
+  of its settings file.
 - Added: role `claude_code_skills`, the skills Claude Code gets, with the same
   names and defaults in the container and the VM. It holds the qa skill with
   its five experts and loop-to-delivery, both off by default; turning one off
@@ -145,9 +155,9 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   value: a run never changes a line of the file. The run after that appends
   the settings the file lacks, at the value it uses
   (`claude_code_settings_qa_budget: false`, `claude_code_skills_loop_to_delivery: false`,
-  `_max_wakes: 5`, `_max_hours: 24`) and changes no line there. An inventory or
-  a `-e` that sets the old name stops the run likewise, before it touches the
-  VM: rename it there.
+  `_max_wakes: 5`, `_max_hours: 24`, `claude_code_vm_jobs: []`) and changes no
+  line there. An inventory or a `-e` that sets the old name stops the run
+  likewise, before it touches the VM: rename it there.
 - A Claude Code project (container) set up with 0.8.0 has
   `claude_code_settings_qa` in `ansible/group_vars/all/project.yml`: the setup
   wrote every setting at its default, `false` included. It has no loop
@@ -175,11 +185,14 @@ a breaking change to any role's interface (meta/argument_specs.yml) means a new 
   qa-budget's only now.
 - Rolling back to 0.8.0: turn the loop off first, or remove
   `/etc/claude-code/.claude/skills/loop-to-delivery/` by hand, as 0.8.0 does not
-  know it and the skill would stay without its hooks. A VM host's settings file
-  must lose the `claude_code_skills_*` lines too, or 0.8.0 stops on them; put
-  `claude_code_settings_qa` back where you had `claude_code_skills_qa`. In a
-  container project, rename that line in `project.yml` back as well: 0.8.0
-  does not read `claude_code_skills_qa`, so the qa skill would be off.
+  know it and the skill would stay without its hooks. Remove scheduled jobs
+  first too (`state: absent`, one run): 0.8.0 does not know them, and their
+  timers would keep running. A VM host's settings file must lose the
+  `claude_code_skills_*` lines and the `claude_code_vm_jobs` line too, or 0.8.0
+  stops on them; put `claude_code_settings_qa` back where you had
+  `claude_code_skills_qa`. In a container project, rename that line in
+  `project.yml` back as well: 0.8.0 does not read `claude_code_skills_qa`, so
+  the qa skill would be off.
 
 ## 0.8.0
 

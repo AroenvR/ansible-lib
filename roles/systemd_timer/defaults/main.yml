@@ -1,0 +1,3 @@
+---
+# Public interface. Documented and validated in meta/argument_specs.yml.
+systemd_timer_jobs: []

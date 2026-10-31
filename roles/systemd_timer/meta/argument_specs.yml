@@ -1,0 +1,65 @@
+---
+argument_specs:
+  main:
+    short_description: Run commands on a schedule as systemd timers, as root or as an account
+    description:
+      - Installs, changes and removes scheduled jobs. A job is a service unit that runs its command once and a
+        timer that starts it on its schedule, both named aslib-<name>.
+      - Root's jobs are system units in /etc/systemd/system. An account's jobs are units of the account's own
+        systemd instance, in ~/.config/systemd/user, written and enabled as the account; the account may run
+        them while nobody is logged in (lingering, which the role never turns off).
+      - A job's output goes to the journal; as root, journalctl _UID=<UID of its user> -t aslib-<name> shows it.
+      - Only the jobs listed are touched; a job not listed stays as it is. To remove a job, list it once with
+        state absent.
+      - Works as root on the server. Checks every job before it changes anything, and ends with the checks of
+        the entry point verify.
+    options:
+      systemd_timer_jobs:
+        type: list
+        elements: dict
+        default: []
+        description: The jobs to install, change or remove. A job is known by its name and its user.
+        options: &systemd_timer_job
+          name:
+            type: str
+            required: true
+            description: The job's name, in its units' names. Lowercase letters, digits and '-', 64 at most.
+          command:
+            type: str
+            description:
+              - The command, as a line of systemd's ExecStart, without a shell. Write C(%%) for a C(%) and C($$)
+                for a C($); for pipes or redirection use C(sh -c '...').
+              - Unit files are readable by every account, so the command must not hold a secret.
+              - Required when I(state=present).
+          schedule:
+            type: str
+            description: When the job runs, in systemd's calendar syntax (OnCalendar), e.g. C(hourly) or
+              C(*-*-* 04:30:00). Required when I(state=present).
+          user:
+            type: str
+            default: root
+            description: Who runs the job, C(root) or an existing account with a home directory.
+          container:
+            type: str
+            default: ""
+            description: The name of a rootless container of I(user) to run the command in with podman exec;
+              the role checks the name's form only, not that the container exists. Empty runs it on the host. Not
+              with C(root).
+          state:
+            type: str
+            choices: [present, absent]
+            default: present
+            description: C(absent) removes the job.
+  verify:
+    short_description: Check that the jobs aslib.infra.systemd_timer installed will run on their schedule
+    description:
+      - Checks, changing nothing, that each job listed as present has an active timer with a next run and, for an
+        account, lingering. Fails naming each job that does not, with what is wrong and where its log is.
+      - Works as root on the server, like main.
+    options:
+      systemd_timer_jobs:
+        type: list
+        elements: dict
+        default: []
+        description: The jobs, as given to main. Jobs with state absent are not checked.
+        options: *systemd_timer_job

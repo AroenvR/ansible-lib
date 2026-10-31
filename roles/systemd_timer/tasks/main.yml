@@ -1,0 +1,417 @@
+---
+# Entry point "main": installs, changes and removes the jobs listed in
+# systemd_timer_jobs, and only those: root's systemd is shared by every playbook
+# that schedules jobs. Every check comes before the first change; the role ends
+# with the checks of the entry point verify.
+- name: Check that Ansible acts as root, complete the jobs with their defaults and check their fields
+  ansible.builtin.import_tasks: common.yml
+
+# Nothing may act in the home of an account that is gone: root does not write
+# there, and the account cannot.
+- name: Sort the jobs into root's and the accounts', to install and to remove
+  ansible.builtin.set_fact:
+    __systemd_timer_root_present: "{{ __systemd_timer_jobs | selectattr('user', 'eq', 'root') | selectattr('state', 'eq', 'present') | list }}"
+    __systemd_timer_root_absent: "{{ __systemd_timer_jobs | selectattr('user', 'eq', 'root') | selectattr('state', 'eq', 'absent') | list }}"
+    __systemd_timer_account_present: >-
+      {{ __systemd_timer_jobs | rejectattr('user', 'eq', 'root') | selectattr('state', 'eq', 'present') | list }}
+    __systemd_timer_account_absent: >-
+      {{ __systemd_timer_jobs | rejectattr('user', 'eq', 'root') | selectattr('state', 'eq', 'absent')
+         | selectattr('user', 'in', __systemd_timer_accounts) | list }}
+
+- name: Ask systemd whether it understands each schedule
+  ansible.builtin.command:
+    argv: [systemd-analyze, calendar, --, "{{ __systemd_timer_job.schedule }}"]
+  loop: "{{ __systemd_timer_root_present + __systemd_timer_account_present }}"
+  loop_control:
+    loop_var: __systemd_timer_job
+    label: "{{ __systemd_timer_job.name }} ({{ __systemd_timer_job.user }})"
+  register: __systemd_timer_calendar
+  changed_when: false
+  failed_when: false
+
+- name: Look up the home directories of the accounts with jobs to install
+  ansible.builtin.stat:
+    path: "{{ __systemd_timer_accounts[__systemd_timer_user][4] }}"
+  loop: >-
+    {{ __systemd_timer_account_present | map(attribute='user') | unique
+       | select('in', __systemd_timer_accounts) | list }}
+  loop_control:
+    loop_var: __systemd_timer_user
+  register: __systemd_timer_homes
+
+- name: Check each job to install has its account and a schedule systemd understands
+  ansible.builtin.assert:
+    that: __systemd_timer_wrong | length == 0
+    fail_msg: "Job {{ __systemd_timer_job.name }} ({{ __systemd_timer_job.user }}): {{ __systemd_timer_wrong }}."
+    quiet: true
+  loop: "{{ __systemd_timer_calendar.results }}"
+  loop_control:
+    loop_var: __systemd_timer_calendar_result
+    label: "{{ __systemd_timer_job.name }} ({{ __systemd_timer_job.user }})"
+  vars:
+    __systemd_timer_job: "{{ __systemd_timer_calendar_result.__systemd_timer_job }}"
+    __systemd_timer_with_home: >-
+      {{ __systemd_timer_homes.results | selectattr('stat.isdir', 'defined') | selectattr('stat.isdir')
+         | map(attribute='__systemd_timer_user') | list }}
+    __systemd_timer_rules:
+      - ok: "{{ __systemd_timer_job.user == 'root' or __systemd_timer_job.user in __systemd_timer_accounts }}"
+        msg: there is no account {{ __systemd_timer_job.user }}; the role creates none
+      - ok: >-
+          {{ __systemd_timer_job.user == 'root' or __systemd_timer_job.user not in __systemd_timer_accounts
+             or __systemd_timer_job.user in __systemd_timer_with_home }}
+        msg: the account has no home directory, where its jobs' units belong
+      - ok: "{{ __systemd_timer_calendar_result.rc == 0 }}"
+        msg: "systemd does not understand its schedule ({{ __systemd_timer_calendar_result.stderr }}); see man systemd.time"
+    __systemd_timer_wrong: "{{ __systemd_timer_rules | rejectattr('ok') | map(attribute='msg') | join('; ') }}"
+
+# Root's jobs: system units in /etc/systemd/system.
+
+- name: Install the services of root's jobs
+  ansible.builtin.template:
+    src: aslib-job.service.j2
+    dest: /etc/systemd/system/aslib-{{ __systemd_timer_job.name }}.service
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __systemd_timer_root_present }}"
+  loop_control:
+    loop_var: __systemd_timer_job
+    label: aslib-{{ __systemd_timer_job.name }}.service
+  register: __systemd_timer_root_services
+
+- name: Install the timers of root's jobs
+  ansible.builtin.template:
+    src: aslib-job.timer.j2
+    dest: /etc/systemd/system/aslib-{{ __systemd_timer_job.name }}.timer
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __systemd_timer_root_present }}"
+  loop_control:
+    loop_var: __systemd_timer_job
+    label: aslib-{{ __systemd_timer_job.name }}.timer
+  register: __systemd_timer_root_timers
+
+# A job that is running finishes with the command it started with.
+- name: Make root's systemd read the changed units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: __systemd_timer_root_services is changed or __systemd_timer_root_timers is changed
+
+# A restart applies a new schedule. It runs the job only to catch up on a run
+# missed while the timer was stopped (Persistent=true).
+- name: Start the timers of root's jobs and enable them at boot, restarting those that changed
+  ansible.builtin.systemd:
+    name: aslib-{{ __systemd_timer_timer.__systemd_timer_job.name }}.timer
+    enabled: true
+    state: "{{ 'restarted' if __systemd_timer_timer is changed else 'started' }}"
+  loop: "{{ __systemd_timer_root_timers.results }}"
+  loop_control:
+    loop_var: __systemd_timer_timer
+    label: aslib-{{ __systemd_timer_timer.__systemd_timer_job.name }}.timer
+
+- name: Ask root's systemd whether the jobs to remove still run
+  ansible.builtin.command:
+    argv: [systemctl, show, --property=ActiveState, --value, "aslib-{{ __systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.1 }}"]
+  loop: "{{ __systemd_timer_root_absent | product(['timer', 'service']) | list }}"
+  loop_control:
+    loop_var: __systemd_timer_unit
+    label: aslib-{{ __systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.1 }}
+  register: __systemd_timer_root_gone
+  changed_when: false
+
+- name: Stop the timers and services of root's jobs to remove
+  ansible.builtin.systemd:
+    name: aslib-{{ __systemd_timer_unit.__systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.__systemd_timer_unit.1 }}
+    state: stopped
+  loop: "{{ __systemd_timer_root_gone.results }}"
+  loop_control:
+    loop_var: __systemd_timer_unit
+    label: aslib-{{ __systemd_timer_unit.__systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.__systemd_timer_unit.1 }}
+  when: __systemd_timer_unit.stdout not in ['inactive', 'failed']
+
+# The link in timers.target.wants is what enabling made; the stamp is where the
+# timer notes its last run.
+- name: Remove the units, enable links and timer stamps of root's jobs to remove
+  ansible.builtin.file:
+    path: "{{ __systemd_timer_file.1 | format(__systemd_timer_file.0.name) }}"
+    state: absent
+  loop: "{{ __systemd_timer_root_absent | product(__systemd_timer_root_files) | list }}"
+  loop_control:
+    loop_var: __systemd_timer_file
+    label: "{{ __systemd_timer_file.1 | format(__systemd_timer_file.0.name) }}"
+  vars:
+    __systemd_timer_root_files:
+      - /etc/systemd/system/aslib-%s.service
+      - /etc/systemd/system/aslib-%s.timer
+      - /etc/systemd/system/timers.target.wants/aslib-%s.timer
+      - /var/lib/systemd/timers/stamp-aslib-%s.timer
+  register: __systemd_timer_root_removed
+
+# Not a handler: systemd must forget the units before their failed state is
+# cleared, and handlers would not run when a later task fails.
+- name: Make root's systemd forget the removed units  # noqa: no-handler
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: __systemd_timer_root_removed is changed
+
+- name: Clear the failed state of root's removed units
+  ansible.builtin.command:
+    argv: [systemctl, reset-failed, "aslib-{{ __systemd_timer_unit.__systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.__systemd_timer_unit.1 }}"]
+  loop: "{{ __systemd_timer_root_gone.results }}"
+  loop_control:
+    loop_var: __systemd_timer_unit
+    label: aslib-{{ __systemd_timer_unit.__systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.__systemd_timer_unit.1 }}
+  when: __systemd_timer_unit.stdout == 'failed'
+  changed_when: true
+
+# The accounts' jobs: units of each account's own systemd instance, in
+# ~/.config/systemd/user. They are written, enabled and removed only as the
+# account, with the commands common.yml prepares: root writing in a directory
+# the account controls could follow a link the account planted there, to
+# /etc/systemd/system for instance. A unit's text goes to the account's command
+# on stdin, never as an argument, which ansible-core 2.14 would search for $VAR.
+
+- name: Let each account with jobs run them while nobody is logged in, from boot on
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ __systemd_timer_user }}"]
+    creates: /var/lib/systemd/linger/{{ __systemd_timer_user }}
+  loop: "{{ __systemd_timer_account_present | map(attribute='user') | unique | list }}"
+  loop_control:
+    loop_var: __systemd_timer_user
+
+- name: Wait for the systemd instance of each account with jobs
+  ansible.builtin.wait_for:
+    path: /run/user/{{ __systemd_timer_accounts[__systemd_timer_user][1] }}/systemd/private
+    timeout: 60
+    msg: >-
+      The systemd instance of {{ __systemd_timer_user }}, which runs the jobs
+      {{ __systemd_timer_account_present | selectattr('user', 'eq', __systemd_timer_user) | map(attribute='name') | join(', ') }},
+      did not start on {{ inventory_hostname }}. See why with:
+      journalctl --unit user@{{ __systemd_timer_accounts[__systemd_timer_user][1] }}.service
+  loop: "{{ __systemd_timer_account_present | map(attribute='user') | unique | list }}"
+  loop_control:
+    loop_var: __systemd_timer_user
+
+- name: Create the unit directory of each account with jobs, as the account
+  ansible.builtin.command:
+    argv: "{{ __systemd_timer_as[__systemd_timer_user] + ['mkdir', '--parents', '--', __systemd_timer_dir] }}"
+    chdir: /
+    creates: "{{ __systemd_timer_dir }}"
+  loop: "{{ __systemd_timer_account_present | map(attribute='user') | unique | list }}"
+  loop_control:
+    loop_var: __systemd_timer_user
+  vars:
+    __systemd_timer_dir: "{{ __systemd_timer_accounts[__systemd_timer_user][4] }}/.config/systemd/user"
+
+- name: Read the unit files of the accounts' jobs, as each account
+  ansible.builtin.command:
+    argv: "{{ __systemd_timer_as[__systemd_timer_unit.0.user] + ['cat', '--', __systemd_timer_path] }}"
+    chdir: /
+    strip_empty_ends: false
+  loop: "{{ __systemd_timer_account_present | product(['service', 'timer']) | list }}"
+  loop_control:
+    loop_var: __systemd_timer_unit
+    label: "{{ __systemd_timer_path }}"
+  vars:
+    __systemd_timer_path: >-
+      {{ __systemd_timer_accounts[__systemd_timer_unit.0.user][4] ~ '/.config/systemd/user/aslib-'
+         ~ __systemd_timer_unit.0.name ~ '.' ~ __systemd_timer_unit.1 }}
+  register: __systemd_timer_read
+  changed_when: false
+  failed_when: __systemd_timer_read.rc not in [0, 1]
+
+# The account may not reopen /dev/stdin, a pipe of root's, so install cannot
+# read the text from there; dd reads it from the descriptor it was given.
+- name: Write the new and changed unit files of the accounts' jobs, as each account, readable by all
+  when: __systemd_timer_found.stdout != __systemd_timer_text
+  vars:
+    __systemd_timer_job: "{{ __systemd_timer_found.__systemd_timer_unit.0 }}"
+    __systemd_timer_path: >-
+      {{ __systemd_timer_accounts[__systemd_timer_job.user][4] ~ '/.config/systemd/user/aslib-'
+         ~ __systemd_timer_job.name ~ '.' ~ __systemd_timer_found.__systemd_timer_unit.1 }}
+    __systemd_timer_text: >-
+      {{ lookup('ansible.builtin.template', 'aslib-job.' ~ __systemd_timer_found.__systemd_timer_unit.1 ~ '.j2',
+                convert_data=false) }}
+  block:
+    # install sets the mode itself, where the account's umask would give 0664,
+    # and replaces a link instead of writing where it points. A run cut off
+    # before the text is in leaves an empty file, which the next run rewrites.
+    - name: Put an empty file readable by all in place of each, as the account
+      ansible.builtin.command:
+        argv: "{{ __systemd_timer_as[__systemd_timer_job.user] + ['install', '--mode=0644', '/dev/null', __systemd_timer_path] }}"
+        chdir: /
+      loop: "{{ __systemd_timer_read.results }}"
+      loop_control:
+        loop_var: __systemd_timer_found
+        label: "{{ __systemd_timer_path }}"
+      changed_when: true
+
+    - name: Write the unit's text into it, as the account
+      ansible.builtin.command:
+        argv: "{{ __systemd_timer_as[__systemd_timer_job.user] + ['dd', 'of=' ~ __systemd_timer_path, 'status=none'] }}"
+        stdin: "{{ __systemd_timer_text }}"
+        stdin_add_newline: false
+        chdir: /
+      loop: "{{ __systemd_timer_read.results }}"
+      loop_control:
+        loop_var: __systemd_timer_found
+        label: "{{ __systemd_timer_path }}"
+      register: __systemd_timer_written
+      changed_when: true
+
+- name: Note the accounts whose units changed, and the jobs whose timer changed
+  ansible.builtin.set_fact:
+    __systemd_timer_reload: >-
+      {{ __systemd_timer_written.results | selectattr('changed')
+         | map(attribute='__systemd_timer_found.__systemd_timer_unit.0.user') | unique | list }}
+    __systemd_timer_new_timers: >-
+      {{ __systemd_timer_written.results | selectattr('changed') | map(attribute='__systemd_timer_found.__systemd_timer_unit')
+         | selectattr('1', 'eq', 'timer') | map('first') | list }}
+
+- name: Make each account whose units changed read them
+  ansible.builtin.command:
+    argv: "{{ __systemd_timer_as[__systemd_timer_user] + ['systemctl', '--user', 'daemon-reload'] }}"
+    chdir: /
+  loop: "{{ __systemd_timer_reload }}"
+  loop_control:
+    loop_var: __systemd_timer_user
+  changed_when: true
+
+- name: Ask each account's systemd about its jobs' timers
+  ansible.builtin.command:
+    argv: >-
+      {{ __systemd_timer_as[__systemd_timer_job.user]
+         + ['systemctl', '--user', 'show', '--property=UnitFileState,ActiveState', 'aslib-' ~ __systemd_timer_job.name ~ '.timer'] }}
+    chdir: /
+  loop: "{{ __systemd_timer_account_present }}"
+  loop_control:
+    loop_var: __systemd_timer_job
+    label: "{{ __systemd_timer_job.name }} ({{ __systemd_timer_job.user }})"
+  register: __systemd_timer_account_timers
+  changed_when: false
+
+- name: Enable the accounts' timers, so that each starts with its account's systemd at boot
+  ansible.builtin.command:
+    argv: >-
+      {{ __systemd_timer_as[__systemd_timer_timer.__systemd_timer_job.user]
+         + ['systemctl', '--user', 'enable', 'aslib-' ~ __systemd_timer_timer.__systemd_timer_job.name ~ '.timer'] }}
+    chdir: /
+  loop: "{{ __systemd_timer_account_timers.results }}"
+  loop_control:
+    loop_var: __systemd_timer_timer
+    label: "{{ __systemd_timer_timer.__systemd_timer_job.name }} ({{ __systemd_timer_timer.__systemd_timer_job.user }})"
+  when: "'UnitFileState=enabled' not in __systemd_timer_timer.stdout_lines"
+  changed_when: true
+
+# As for root's jobs: a restart applies a new schedule.
+- name: Start the accounts' timers, restarting those that changed
+  ansible.builtin.command:
+    argv: >-
+      {{ __systemd_timer_as[__systemd_timer_timer.__systemd_timer_job.user]
+         + ['systemctl', '--user', 'restart', 'aslib-' ~ __systemd_timer_timer.__systemd_timer_job.name ~ '.timer'] }}
+    chdir: /
+  loop: "{{ __systemd_timer_account_timers.results }}"
+  loop_control:
+    loop_var: __systemd_timer_timer
+    label: "{{ __systemd_timer_timer.__systemd_timer_job.name }} ({{ __systemd_timer_timer.__systemd_timer_job.user }})"
+  when: >-
+    __systemd_timer_timer.__systemd_timer_job in __systemd_timer_new_timers
+    or 'ActiveState=active' not in __systemd_timer_timer.stdout_lines
+  changed_when: true
+
+# An account without a running systemd instance has no job running: its files
+# are all there is to remove.
+- name: Look up which accounts with jobs to remove have their systemd instance running
+  ansible.builtin.stat:
+    path: /run/user/{{ __systemd_timer_accounts[__systemd_timer_user][1] }}/systemd/private
+  loop: "{{ __systemd_timer_account_absent | map(attribute='user') | unique | list }}"
+  loop_control:
+    loop_var: __systemd_timer_user
+  register: __systemd_timer_instances
+
+- name: Note those accounts
+  ansible.builtin.set_fact:
+    __systemd_timer_running: >-
+      {{ __systemd_timer_instances.results | selectattr('stat.exists') | map(attribute='__systemd_timer_user') | list }}
+
+- name: Ask each account's systemd whether its jobs to remove still run
+  ansible.builtin.command:
+    argv: >-
+      {{ __systemd_timer_as[__systemd_timer_unit.0.user]
+         + ['systemctl', '--user', 'show', '--property=ActiveState', '--value',
+            'aslib-' ~ __systemd_timer_unit.0.name ~ '.' ~ __systemd_timer_unit.1] }}
+    chdir: /
+  loop: >-
+    {{ __systemd_timer_account_absent | selectattr('user', 'in', __systemd_timer_running)
+       | product(['timer', 'service']) | list }}
+  loop_control:
+    loop_var: __systemd_timer_unit
+    label: aslib-{{ __systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.1 }} ({{ __systemd_timer_unit.0.user }})
+  register: __systemd_timer_account_gone
+  changed_when: false
+
+- name: Stop the timers and services of the accounts' jobs to remove
+  ansible.builtin.command:
+    argv: >-
+      {{ __systemd_timer_as[__systemd_timer_unit.__systemd_timer_unit.0.user]
+         + ['systemctl', '--user', 'stop',
+            'aslib-' ~ __systemd_timer_unit.__systemd_timer_unit.0.name ~ '.' ~ __systemd_timer_unit.__systemd_timer_unit.1] }}
+    chdir: /
+  loop: "{{ __systemd_timer_account_gone.results }}"
+  loop_control:
+    loop_var: __systemd_timer_unit
+    label: >-
+      aslib-{{ __systemd_timer_unit.__systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.__systemd_timer_unit.1 }}
+      ({{ __systemd_timer_unit.__systemd_timer_unit.0.user }})
+  when: __systemd_timer_unit.stdout not in ['inactive', 'failed']
+  changed_when: true
+
+- name: Remove the units, enable links and timer stamps of the accounts' jobs to remove, as each account
+  ansible.builtin.command:
+    argv: >-
+      {{ __systemd_timer_as[__systemd_timer_job.user]
+         + ['rm', '--force', '--verbose', '--',
+            __systemd_timer_home ~ '/.config/systemd/user/aslib-' ~ __systemd_timer_job.name ~ '.service',
+            __systemd_timer_home ~ '/.config/systemd/user/aslib-' ~ __systemd_timer_job.name ~ '.timer',
+            __systemd_timer_home ~ '/.config/systemd/user/timers.target.wants/aslib-' ~ __systemd_timer_job.name ~ '.timer',
+            __systemd_timer_home ~ '/.local/share/systemd/timers/stamp-aslib-' ~ __systemd_timer_job.name ~ '.timer'] }}
+    chdir: /
+  loop: "{{ __systemd_timer_account_absent }}"
+  loop_control:
+    loop_var: __systemd_timer_job
+    label: "{{ __systemd_timer_job.name }} ({{ __systemd_timer_job.user }})"
+  vars:
+    __systemd_timer_home: "{{ __systemd_timer_accounts[__systemd_timer_job.user][4] }}"
+  register: __systemd_timer_account_removed
+  changed_when: __systemd_timer_account_removed.stdout | length > 0
+
+- name: Make each account whose units were removed forget them
+  ansible.builtin.command:
+    argv: "{{ __systemd_timer_as[__systemd_timer_user] + ['systemctl', '--user', 'daemon-reload'] }}"
+    chdir: /
+  loop: >-
+    {{ __systemd_timer_account_removed.results | selectattr('changed') | map(attribute='__systemd_timer_job.user')
+       | unique | select('in', __systemd_timer_running) | list }}
+  loop_control:
+    loop_var: __systemd_timer_user
+  changed_when: true
+
+- name: Clear the failed state of the accounts' removed units
+  ansible.builtin.command:
+    argv: >-
+      {{ __systemd_timer_as[__systemd_timer_unit.__systemd_timer_unit.0.user]
+         + ['systemctl', '--user', 'reset-failed',
+            'aslib-' ~ __systemd_timer_unit.__systemd_timer_unit.0.name ~ '.' ~ __systemd_timer_unit.__systemd_timer_unit.1] }}
+    chdir: /
+  loop: "{{ __systemd_timer_account_gone.results }}"
+  loop_control:
+    loop_var: __systemd_timer_unit
+    label: >-
+      aslib-{{ __systemd_timer_unit.__systemd_timer_unit.0.name }}.{{ __systemd_timer_unit.__systemd_timer_unit.1 }}
+      ({{ __systemd_timer_unit.__systemd_timer_unit.0.user }})
+  when: __systemd_timer_unit.stdout == 'failed'
+  changed_when: true
+
+- name: Check each job's timer
+  ansible.builtin.import_tasks: checks.yml

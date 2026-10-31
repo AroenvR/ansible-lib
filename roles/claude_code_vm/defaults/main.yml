@@ -25,6 +25,10 @@ claude_code_vm_authorized_keys: []
 # prints. A secret: set it from Ansible Vault. Empty: claude signs in by hand.
 claude_code_vm_oauth_token: ""
 
+# Commands that run in the VM on a schedule, as claude: each a list item with
+# name, command, schedule and state, see meta/argument_specs.yml.
+claude_code_vm_jobs: []
+
 # Ubuntu 24.04's cloud image, checked against its published checksums. Empty:
 # the one for the host's architecture (amd64 or arm64).
 claude_code_vm_image_url: ""

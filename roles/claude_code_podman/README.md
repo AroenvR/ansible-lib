@@ -71,6 +71,14 @@ The container may use at most 4 GiB of memory (`claude_code_podman_memory: 4g`),
 runaway build in a session cannot starve the server; past it, the kernel stops a
 process in the container. Set another size in `project.yml`, or `""` for no limit.
 
+**Scheduled jobs:** `claude_code_podman_jobs` in `project.yml` runs commands
+inside Claude's container on a schedule, as Claude, with
+[systemd_timer](../systemd_timer/README.md): each job is a timer of the
+service's account that runs its `command` (systemd's `ExecStart` syntax, so
+`%%` and `$$`) with `podman exec`, on its `schedule`; a `state` of `absent`
+removes it, and a job dropped from the list stays. The deploy installs them
+after the service; a removal takes them away with the account.
+
 ## The policy
 
 Claude Code reads an organisation's policy, above every other setting, from

@@ -31,6 +31,7 @@ to the role READMEs for every option and mechanism.
   and where each role's options are.
 - The role READMEs, each the reference of its role: what it does, how, and its
   options: [sudoers](../roles/sudoers/README.md),
+  [systemd_timer](../roles/systemd_timer/README.md),
   [node_setup](../roles/node_setup/README.md),
   [node_image](../roles/node_image/README.md),
   [node_deploy](../roles/node_deploy/README.md),

@@ -1,0 +1,7 @@
+# Installed by aslib.infra.systemd_timer; its next run replaces this file.
+[Timer]
+OnCalendar={{ __systemd_timer_job.schedule }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+---
+# Entry point "verify": checks, changing nothing, that each job listed as
+# present will run on its schedule (checks.yml). main ends with the same checks.
+- name: Check that Ansible acts as root, complete the jobs with their defaults and check their fields
+  ansible.builtin.import_tasks: common.yml
+
+- name: Check each job's timer
+  ansible.builtin.import_tasks: checks.yml

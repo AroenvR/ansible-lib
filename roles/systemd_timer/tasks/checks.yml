@@ -1,0 +1,69 @@
+---
+# The checks of the entry point verify, which main also runs at its end: each
+# job listed as present has an active timer with a next run, and the account of
+# an account's job lingers, so that its timers run while nobody is logged in and
+# start at boot. Changes nothing.
+- name: Ask systemd about the timer of each job to check
+  ansible.builtin.command:
+    argv: >-
+      {{ (['systemctl'] if __systemd_timer_job.user == 'root'
+          else __systemd_timer_as[__systemd_timer_job.user] + ['systemctl', '--user'])
+         + ['show', '--property=LoadState,ActiveState,NextElapseUSecRealtime', 'aslib-' ~ __systemd_timer_job.name ~ '.timer'] }}
+    chdir: /
+  loop: "{{ __systemd_timer_jobs | selectattr('state', 'eq', 'present') | list }}"
+  loop_control:
+    loop_var: __systemd_timer_job
+    label: "{{ __systemd_timer_job.name }} ({{ __systemd_timer_job.user }})"
+  when: __systemd_timer_job.user == 'root' or __systemd_timer_job.user in __systemd_timer_as
+  register: __systemd_timer_timers
+  changed_when: false
+  failed_when: false
+
+- name: Look up whether each account with jobs lingers
+  ansible.builtin.stat:
+    path: /var/lib/systemd/linger/{{ __systemd_timer_user }}
+  loop: >-
+    {{ __systemd_timer_jobs | selectattr('state', 'eq', 'present') | map(attribute='user') | unique
+       | select('in', __systemd_timer_as) | list }}
+  loop_control:
+    loop_var: __systemd_timer_user
+  register: __systemd_timer_lingering
+
+# What is wrong with each job, and where its output is: the journal keeps it
+# under the job's unit name and its user's UID.
+- name: Check each job's timer is active, with a next run
+  ansible.builtin.assert:
+    that: __systemd_timer_wrong | length == 0
+    fail_msg: "Jobs that will not run on their schedule on {{ inventory_hostname }}: {{ __systemd_timer_wrong }}."
+    success_msg: "{{ __systemd_timer_next or 'No job to check.' }}"
+  vars:
+    __systemd_timer_lingers: >-
+      {{ __systemd_timer_lingering.results | selectattr('stat.exists') | map(attribute='__systemd_timer_user') | list }}
+    __systemd_timer_wrong: >-
+      {%- set found = namespace(wrong=[]) -%}
+      {%- for probe in __systemd_timer_timers.results -%}
+        {%- set job = probe.__systemd_timer_job -%}
+        {%- set lines = probe.stdout_lines | default([]) -%}
+        {%- set timer = 'no timer, as there is no account ' ~ job.user if probe is skipped
+              else 'no timer, as the systemd instance of ' ~ job.user ~ ' does not answer' if probe.rc != 0
+              else 'no timer' if 'LoadState=loaded' not in lines
+              else 'its timer is not active' if 'ActiveState=active' not in lines
+              else 'no next run' if 'NextElapseUSecRealtime=' in lines
+              else '' -%}
+        {%- set linger = '' if job.user == 'root' or job.user in __systemd_timer_lingers
+              else 'no lingering for ' ~ job.user -%}
+        {%- set uid = 0 if job.user == 'root' else __systemd_timer_accounts.get(job.user, ['', '<UID>'])[1] -%}
+        {%- if timer or linger -%}
+          {%- set found.wrong = found.wrong + [job.name ~ ' (' ~ job.user ~ '): ' ~ [timer, linger] | select | join(', ')
+                ~ '; its log: journalctl _UID=' ~ uid ~ ' -t aslib-' ~ job.name] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ found.wrong | join('. ') }}
+    __systemd_timer_next: >-
+      {%- set found = namespace(next=[]) -%}
+      {%- for probe in __systemd_timer_timers.results -%}
+        {%- set next = probe.stdout_lines | default([]) | select('match', 'NextElapseUSecRealtime=') | first | default('=') -%}
+        {%- set found.next = found.next + [probe.__systemd_timer_job.name ~ ' (' ~ probe.__systemd_timer_job.user ~ ') runs next '
+              ~ next.split('=', 1)[1]] -%}
+      {%- endfor -%}
+      {{ found.next | join(', ') }}

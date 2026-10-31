@@ -1,0 +1,15 @@
+# Installed by aslib.infra.systemd_timer; its next run replaces this file.
+[Unit]
+Description={{ __systemd_timer_job.name }}, a scheduled job
+{% if __systemd_timer_job.container %}
+After={{ __systemd_timer_job.container }}.service
+{% endif %}
+
+[Service]
+Type=oneshot
+SyslogIdentifier=aslib-{{ __systemd_timer_job.name }}
+{% if __systemd_timer_job.container %}
+ExecStart=/usr/bin/podman exec {{ __systemd_timer_job.container }} {{ __systemd_timer_job.command }}
+{% else %}
+ExecStart={{ __systemd_timer_job.command }}
+{% endif %}

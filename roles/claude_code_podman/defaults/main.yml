@@ -14,3 +14,4 @@ claude_code_podman_nvm_url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8
 claude_code_podman_nvm_sha256: a64806abf6aab85c456f9ffa2a3be737e35c3a1e6ac99a44ea20c69bdc923467
 claude_code_podman_rpm_repos: ""
 claude_code_podman_memory: 4g
+claude_code_podman_jobs: []

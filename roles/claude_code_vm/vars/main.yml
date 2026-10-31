@@ -52,6 +52,8 @@ __claude_code_vm_settings:
     comment: Public keys that may also log in as claude, besides the key of the machine that runs the playbook.
   - name: claude_code_vm_oauth_token
     comment: "Claude's sign-in: the one-year token that claude setup-token prints; empty: sign in by hand."
+  - name: claude_code_vm_jobs
+    comment: Commands that run in the VM on a schedule, as claude, each with name, command, schedule (systemd's calendar) and state.
   - name: claude_code_settings_permission_mode
     comment: The permission mode a session starts in, bypassPermissions or default (prompts), acceptEdits, plan, auto, dontAsk.
   - name: claude_code_settings_model

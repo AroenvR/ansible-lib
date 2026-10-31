@@ -9,6 +9,7 @@ job from start to end.
 | Role | Purpose | Runs on | Needs network access |
 |---|---|---|---|
 | [sudoers](../roles/sudoers/README.md) | sudo rules as validated drop-in files | Servers | Only if sudo is missing |
+| [systemd_timer](../roles/systemd_timer/README.md) | Commands on a schedule with systemd's timers, as root or as an account, on the host or in the account's container | Servers | No |
 | [node_setup](../roles/node_setup/README.md) | Prepares a Node.js project: its `ansible/` directory with settings, inventory, playbooks and guide | The project's machine | No |
 | [node_image](../roles/node_image/README.md) | Production container image of a Node.js project, and its node_modules for development, built in containers | The build machine | Yes, from sources you choose |
 | [node_deploy](../roles/node_deploy/README.md) | Runs that image as a rootless Podman service that starts at boot, with podman_service | Servers (RHEL 9.6+) | Only if the `acl` package is missing |
@@ -66,6 +67,7 @@ each README covers its options:
 | Role | Where its README covers its options |
 |---|---|
 | sudoers | [Interface](../roles/sudoers/README.md#interface), and an [example](../roles/sudoers/README.md#example) |
+| systemd_timer | [Interface](../roles/systemd_timer/README.md#interface), and an [example](../roles/systemd_timer/README.md#example) |
 | node_setup | [Options](../roles/node_setup/README.md#options) |
 | node_image | [Options](../roles/node_image/README.md#options), [Download sources](../roles/node_image/README.md#download-sources) |
 | node_deploy | [Settings](../roles/node_deploy/README.md#settings); the service's settings are podman_service's |

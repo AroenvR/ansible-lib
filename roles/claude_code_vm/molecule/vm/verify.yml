@@ -184,6 +184,64 @@
           reaches the internet, and reaches neither a machine on the local network nor the host's own services,
           except the one port it was given, by the host's name it was given.
 
+    # molecule.yml gives the VM a scheduled job, which writes `id -un` to /tmp.
+    # Its timer lives in claude's own systemd, which the reset above brought back
+    # (lingering).
+    - name: Look up claude's UID, which names its systemd's runtime directory
+      ansible.builtin.command:
+        argv: [id, -u]
+      register: __claude_code_vm_test_uid
+      changed_when: false
+
+    - name: Ask claude's systemd about the scheduled job's timer, after the reset
+      ansible.builtin.command:
+        argv: [systemctl, --user, show, "--property=LoadState,UnitFileState,ActiveState,NextElapseUSecRealtime", aslib-test-job.timer]
+      environment:
+        XDG_RUNTIME_DIR: /run/user/{{ __claude_code_vm_test_uid.stdout }}
+      register: __claude_code_vm_test_job_timer
+      changed_when: false
+      failed_when: false
+
+    - name: Remove what the scheduled job wrote before
+      ansible.builtin.file:
+        path: /tmp/test-job.ran
+        state: absent
+
+    - name: Start the scheduled job's service, as its timer would
+      ansible.builtin.command:
+        argv: [systemctl, --user, start, aslib-test-job.service]
+      environment:
+        XDG_RUNTIME_DIR: /run/user/{{ __claude_code_vm_test_uid.stdout }}
+      register: __claude_code_vm_test_job_run
+      changed_when: true
+      failed_when: false
+
+    - name: Read what the scheduled job wrote
+      ansible.builtin.slurp:
+        src: /tmp/test-job.ran
+      register: __claude_code_vm_test_job_ran
+      failed_when: false
+
+    - name: Check the scheduled job's timer came back with the VM, and the job runs as claude
+      ansible.builtin.assert:
+        that:
+          - __claude_code_vm_test_job_timer.rc == 0
+          - "'LoadState=loaded' in __claude_code_vm_test_job_timer.stdout_lines"
+          - "'UnitFileState=enabled' in __claude_code_vm_test_job_timer.stdout_lines"
+          - "'ActiveState=active' in __claude_code_vm_test_job_timer.stdout_lines"
+          - __claude_code_vm_test_job_timer.stdout is search('^NextElapseUSecRealtime=.+$', multiline=True)
+          - __claude_code_vm_test_job_run.rc == 0
+          - (__claude_code_vm_test_job_ran.content | default('') | b64decode | trim) == 'claude'
+        fail_msg: >-
+          Timer: {{ __claude_code_vm_test_job_timer.stdout_lines + __claude_code_vm_test_job_timer.stderr_lines }};
+          start: rc {{ __claude_code_vm_test_job_run.rc }} {{ __claude_code_vm_test_job_run.stderr }};
+          the job's file: {{ __claude_code_vm_test_job_ran.content | default('') | b64decode }}
+          {{ __claude_code_vm_test_job_ran.msg | default('') }}
+        success_msg: >-
+          PASSED claude_code_vm's scheduled job: its timer in claude's own systemd came back with the reset VM, active,
+          {{ __claude_code_vm_test_job_timer.stdout_lines | select('match', 'NextElapse') | join }}; started as its
+          timer would, the job ran as claude.
+
 - name: Check Claude Code in claude-dev starts signed in and ready to work, as claude
   hosts: claude-dev
   gather_facts: false
@@ -426,8 +484,13 @@
     __claude_code_vm_test_expected: >-
       {{ ['claude_code_vm_memory', 'claude_code_vm_vcpus', 'claude_code_vm_disk_size', 'claude_code_vm_network_prefix',
           'claude_code_vm_lan_block', 'claude_code_vm_host_ports', 'claude_code_vm_host_names',
-          'claude_code_vm_authorized_keys', 'claude_code_vm_oauth_token'] + __claude_code_vm_test_settings_options
-         + __claude_code_vm_test_skills_options }}
+          'claude_code_vm_authorized_keys', 'claude_code_vm_oauth_token', 'claude_code_vm_jobs']
+         + __claude_code_vm_test_settings_options + __claude_code_vm_test_skills_options }}
+    # As molecule.yml sets them.
+    __claude_code_vm_test_jobs:
+      - name: test-job
+        command: "sh -c 'id -un > /tmp/test-job.ran; echo test-job ran'"
+        schedule: hourly
     # What a run with -e gives the loop's settings, other than their defaults (false, 5, 24), and qa-budget, which
     # the loop needs: the run reads -e before it reads the file, where the same value is (the loop's need for qa-budget is checked then too).
     __claude_code_vm_test_loop_settings:
@@ -495,11 +558,12 @@
           - __claude_code_vm_test_values.claude_code_skills_loop_to_delivery_max_wakes == 7
           - __claude_code_vm_test_values.claude_code_skills_loop_to_delivery_max_hours == 48
           - __claude_code_vm_test_values.claude_code_vm_oauth_token == __claude_code_vm_test_token
+          - __claude_code_vm_test_values.claude_code_vm_jobs == __claude_code_vm_test_jobs
           - __claude_code_vm_test_setting_lines | length == __claude_code_vm_test_expected | length
         fail_msg: "{{ __claude_code_vm_test_stat.stat.mode | default('none') }}: {{ __claude_code_vm_test_values.keys() | list }}"
         success_msg: >-
           PASSED claude_code_vm wrote /etc/claude-vm/settings.yml (root, 0600) with every setting a person chooses, at the
-          values of the run (the inventory's ports, names and token), each after a comment of its own.
+          values of the run (the inventory's ports, names, token and scheduled job), each after a comment of its own.
 
     - name: Check each setting comes after a comment of its own
       vars:

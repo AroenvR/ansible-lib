@@ -1,0 +1,7 @@
+---
+# Tests systemd_timer on both test servers (Ubuntu 24.04 and RHEL 9.6 containers)
+# with a job of root and a job of an account. Platforms, driver and verifier come
+# from .config/molecule/config.yml: an account's own systemd runs in those
+# unprivileged containers once prepare.yml gives them what a default install has.
+scenario:
+  name: server

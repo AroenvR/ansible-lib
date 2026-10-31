@@ -11,8 +11,10 @@
     # The account takes the next free UID, as without a setting. With the qa
     # skill, qa-budget and loop-to-delivery (which needs qa-budget), so that the
     # idempotence step covers their files too, and other limits for the loop than
-    # the defaults, which verify.yml expects in the installed hooks.
-    - name: Deploy Claude Code next to it, with the qa skill, qa-budget and loop-to-delivery
+    # the defaults, which verify.yml expects in the installed hooks. With a
+    # scheduled job, which notes in the container's /tmp who ran it, and prints a
+    # line for the journal.
+    - name: Deploy Claude Code next to it, with the qa skill, qa-budget, loop-to-delivery and a scheduled job
       ansible.builtin.include_role:
         name: aslib.infra.claude_code_podman
       vars:
@@ -22,3 +24,7 @@
         claude_code_skills_loop_to_delivery: true
         claude_code_skills_loop_to_delivery_max_wakes: 7
         claude_code_skills_loop_to_delivery_max_hours: 48
+        claude_code_podman_jobs:
+          - name: test-job
+            command: "sh -c 'id -un > /tmp/test-job.ran; echo test-job ran'"
+            schedule: hourly

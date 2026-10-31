@@ -88,6 +88,36 @@ argument_specs:
             /etc/claude-vm/oauth-token, readable by root and claude, changeable only with sudo, and never in the
             policy, which everyone may read. The VM's claude command passes it on to Claude Code. Emptying it removes
             it from the VM at the next run; a new token replaces the old one there.
+      claude_code_vm_jobs:
+        type: list
+        elements: dict
+        default: []
+        description:
+          - Commands that run in the VM on a schedule, as claude, each a timer of claude's own systemd
+            (aslib.infra.systemd_timer), which runs from boot. A job not listed stays as it is; to remove one, list it
+            once with I(state=absent). Passed on to the entry point guest, which installs them.
+        options: &claude_code_vm_job
+          name:
+            type: str
+            required: true
+            description: The job's name, in its units' names (aslib-<name>). Lowercase letters, digits and '-', 64 at
+              most.
+          command:
+            type: str
+            description:
+              - The command, as a line of systemd's ExecStart, without a shell. Write C(%%) for a C(%) and C($$) for
+                a C($); for pipes or redirection use C(sh -c '...').
+              - Unit files are readable by every account, so the command must not hold a secret.
+              - Required when I(state=present).
+          schedule:
+            type: str
+            description: When the job runs, in systemd's calendar syntax (OnCalendar), e.g. C(hourly) or
+              C(*-*-* 04:30:00). Required when I(state=present).
+          state:
+            type: str
+            choices: [present, absent]
+            default: present
+            description: C(absent) removes the job.
       claude_code_vm_image_url:
         type: str
         default: ""
@@ -140,6 +170,13 @@ argument_specs:
         no_log: true
         description: Claude's sign-in, the token of C(claude setup-token), installed as /etc/claude-vm/oauth-token;
           empty removes it.
+      claude_code_vm_jobs:
+        type: list
+        elements: dict
+        default: []
+        description: Commands that run in the VM on a schedule, as claude, with aslib.infra.systemd_timer; see the
+          entry point main.
+        options: *claude_code_vm_job
       claude_code_vm_host_names:
         type: list
         elements: str

@@ -103,6 +103,21 @@ the VM. A loop gets at most 5 wake-ups and 24 hours by default
 (`claude_code_skills_loop_to_delivery_max_wakes` and `_max_hours`). Both skills
 are off by default.
 
+**Scheduled jobs:** `claude_code_vm_jobs` in the settings file runs commands in
+the VM on a schedule, as claude, with
+[systemd_timer](../systemd_timer/README.md): each job has a `name`, a `command`
+(systemd's `ExecStart` syntax, so `%%` and `$$`), a `schedule` and a `state`.
+They are timers of claude's own systemd, which runs from boot, with nobody
+logged in. A job dropped from the list stays: list it once with
+`state: absent` to remove it.
+
+```yaml
+claude_code_vm_jobs:
+  - name: fetch
+    command: "sh -c 'cd $$HOME/src/aslib && git fetch --quiet'"
+    schedule: hourly
+```
+
 aslib.infra's tests run there as in CI (`<repository>` is the URL of the
 aslib.infra repository you use):
 
@@ -138,8 +153,8 @@ Claude's own, never yours, and the branches you merge from are protected.
 
 What you choose for the VM lives on the host, in `/etc/claude-vm/settings.yml`
 (root's, mode 0600, as it may hold Claude's token): the VM's size, network,
-authorized keys, host ports and names, the token, and how Claude Code's
-sessions start. The first run writes it, with each setting at the value that
+authorized keys, host ports and names, the token, claude's scheduled jobs
+and how Claude Code's sessions start. The first run writes it, with each setting at the value that
 run uses (its default, or what the inventory or `-e` gives) and a comment of
 one line. Later runs add the settings it lacks, the same way, and never change,
 remove or reorder a line that is there, your comments included.
