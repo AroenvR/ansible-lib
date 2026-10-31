@@ -41,6 +41,7 @@
     __systemd_timer_rules:
       - ok: >-
           {{ __systemd_timer_job.name is string and __systemd_timer_job.name is match('^[a-z0-9][a-z0-9-]*$')
+             and __systemd_timer_job.name is not search(__systemd_timer_line_break)
              and __systemd_timer_job.name | length <= 64 }}
         msg: its name may hold lowercase letters, digits and '-', begins with a letter or a digit and has 64 characters at most
       - ok: >-
@@ -53,7 +54,8 @@
         msg: its state must be present or absent
       - ok: >-
           {{ __systemd_timer_job.container is string
-             and (__systemd_timer_job.container == '' or __systemd_timer_job.container is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')) }}
+             and (__systemd_timer_job.container == '' or (__systemd_timer_job.container is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+                  and __systemd_timer_job.container is not search(__systemd_timer_line_break))) }}
         msg: its container must be a container's name, of letters, digits, '_', '.' and '-', beginning with a letter or a digit
       - ok: "{{ __systemd_timer_job.user != 'root' or __systemd_timer_job.container == '' }}"
         msg: a job of root runs on the host, as container is for the jobs of an account
