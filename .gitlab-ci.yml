@@ -52,10 +52,9 @@ version-raised:
 # "Closes #N" lines name done (GitLab closes them when the change reaches the
 # default branch), an open issue is "in progress" while its branch issue/<N>
 # exists and "epic" while an open index lists it, and every issue links the
-# page. GitLab starts no pipeline for a claim (its commit skips CI), so a claim
-# shows at the next develop pipeline; add a daily schedule on develop (Build >
-# Pipeline schedules) so the labels also follow deleted branches and edited
-# indexes. One job at a time. Needs the CI/CD variable GITLAB_TOKEN, a project
+# page. GitLab starts no pipeline for a claim (its commit skips CI) nor for an
+# issue's edit: they show at the next develop pipeline (a merge, the weekly
+# schedule on develop, or one started by hand). One job at a time. Needs the CI/CD variable GITLAB_TOKEN, a project
 # access token (role Reporter, scope api), masked and protected, with develop a
 # protected branch so that no other branch's pipeline sees it. Without it the
 # job says so and passes. Each step runs even when one before it failed.
