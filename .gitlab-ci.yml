@@ -32,6 +32,8 @@ lint:
   image: $PYTHON_IMAGE
   script:
     - make lint PYTHON_LINT=python3
+    # The tests of the GitLab side of the issue scripts run the real jq.
+    - apt-get update -qq && apt-get install -y -qq jq
     - make test-scripts
 
 # A branch on its way to accept raises the version: galaxy.yml's must be higher
@@ -45,21 +47,38 @@ version-raised:
     - git fetch --quiet --depth=1 origin +refs/heads/accept:refs/remotes/origin/accept
     - make version-raised
 
-# A commit that reaches develop and ends with "Closes #N" lines closes those
-# issues: GitLab closes them by itself only on the default branch. Needs the
-# CI/CD variable GITLAB_TOKEN, a project access token (role Reporter, scope api),
-# masked and protected, with develop a protected branch so that no other
-# branch's pipeline sees it. Without it the job says so and passes.
-close-issues:
+# Keeps the issues' labels in step with the repository (docs/kanban-labels.md):
+# the labels file's labels exist, a merge into develop marks the issues its
+# "Closes #N" lines name done (GitLab closes them when the change reaches the
+# default branch), an open issue is "in progress" while its branch issue/<N>
+# exists and "epic" while an open index lists it, and every issue links the
+# page. GitLab starts no pipeline for a claim (its commit skips CI), so a claim
+# shows at the next develop pipeline; add a daily schedule on develop (Build >
+# Pipeline schedules) so the labels also follow deleted branches and edited
+# indexes. One job at a time. Needs the CI/CD variable GITLAB_TOKEN, a project
+# access token (role Reporter, scope api), masked and protected, with develop a
+# protected branch so that no other branch's pipeline sees it. Without it the
+# job says so and passes. Each step runs even when one before it failed.
+issues:
   stage: check
   image: registry.gitlab.com/gitlab-org/cli:latest
   needs: []
+  resource_group: issue-labels
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "develop" && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web")
   variables:
     GITLAB_HOST: $CI_SERVER_URL
   script:
-    - printf '%s\n' "$CI_COMMIT_MESSAGE" | sh dev/ci/close-issues.sh gitlab "$CI_COMMIT_SHA"
+    - failed=0
+    - sh dev/ci/sync-labels.sh gitlab dev/labels.tsv || failed=1
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = push ]; then
+        printf '%s\n' "$CI_COMMIT_MESSAGE" | sh dev/ci/mark-done.sh gitlab "$CI_COMMIT_SHA" dev/labels.tsv || failed=1
+      fi
+    - sh dev/ci/mark-in-progress.sh gitlab dev/labels.tsv || failed=1
+    - sh dev/ci/mark-epics.sh gitlab dev/labels.tsv || failed=1
+    - sh dev/ci/add-footer.sh gitlab docs/kanban-labels.md "$CI_PROJECT_URL/-/blob/develop/docs/kanban-labels.md" || failed=1
+    - exit "$failed"
 
 runner-check:
   stage: check

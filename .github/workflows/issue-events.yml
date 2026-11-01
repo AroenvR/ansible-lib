@@ -1,0 +1,45 @@
+---
+# Follows issue events (a new issue, an edited index, a label set by hand)
+# within a minute: "in progress", "epic" and the link to docs/kanban-labels.md,
+# which every run works out again from the branches and the issues. Kept apart
+# from issues.yml so that many events never queue in front of a merge's "done";
+# a newer event's run may replace a waiting one, as each run redoes it all.
+# GitHub runs issue events from main's copy of this file, so it starts working
+# once it is released. Its own edits use the job's token, which starts no
+# workflow, so it never triggers itself.
+name: issue events
+
+"on":
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-events
+  cancel-in-progress: false
+
+jobs:
+  issues:
+    name: issue labels (issue events)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PAGE_URL: ${{ github.server_url }}/${{ github.repository }}/blob/develop/docs/kanban-labels.md
+    # Each step runs even when one before it failed; the job still fails.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - if: ${{ !cancelled() }}
+        run: sh dev/ci/mark-in-progress.sh github dev/labels.tsv
+      - if: ${{ !cancelled() }}
+        run: sh dev/ci/mark-epics.sh github dev/labels.tsv
+      - if: ${{ !cancelled() }}
+        run: sh dev/ci/add-footer.sh github docs/kanban-labels.md "$PAGE_URL"

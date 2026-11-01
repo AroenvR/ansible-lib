@@ -1,0 +1,64 @@
+---
+# Keeps the issues' labels in step with the repository (docs/kanban-labels.md):
+# the labels file's labels exist on GitHub, a merge into develop marks the
+# issues its "Closes #N" lines name done (GitHub closes them when the change
+# reaches main, the default branch), an open issue is "in progress" while its
+# branch issue/<N> exists and "epic" while an open index lists it, and every
+# issue links the page. With issue-events.yml, the only workflows that may
+# write issues. Every forge-supplied text reaches the scripts through the
+# environment, never inside a command.
+name: issue labels
+
+"on":
+  # A claim pushes a new branch issue/<N>; its commit skips CI, which stops
+  # push pipelines only.
+  create:
+  # GitHub runs delete and schedule from main's copy of this file, so these
+  # two start working once it is released.
+  delete:
+  push:
+    branches: [develop]
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, and none that waits is dropped: a merge's "done" is an
+# event that no later run can work out again.
+concurrency:
+  group: issue-labels
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  issues:
+    name: issue labels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PAGE_URL: ${{ github.server_url }}/${{ github.repository }}/blob/develop/docs/kanban-labels.md
+    # Each step runs even when one before it failed; the job still fails.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # Develop's labels file is the source, never another branch's.
+      - if: ${{ !cancelled() && github.ref_name == 'develop' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        run: sh dev/ci/sync-labels.sh github dev/labels.tsv
+      - if: ${{ !cancelled() && github.event_name == 'push' }}
+        run: printf '%s\n' "$MESSAGE" | sh dev/ci/mark-done.sh github "$GITHUB_SHA" dev/labels.tsv
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+      - if: ${{ !cancelled() }}
+        run: sh dev/ci/mark-in-progress.sh github dev/labels.tsv
+      - if: ${{ !cancelled() }}
+        run: sh dev/ci/mark-epics.sh github dev/labels.tsv
+      - if: ${{ !cancelled() }}
+        run: sh dev/ci/add-footer.sh github docs/kanban-labels.md "$PAGE_URL"
