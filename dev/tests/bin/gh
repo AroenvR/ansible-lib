@@ -1,72 +1,352 @@
 #!/bin/sh
-# Stand-in for GitHub's gh in the script tests: answers from files in $STUB_DIR
-# and never reaches a network. Every call is appended to $STUB_DIR/calls as one
-# line ("gh" and its arguments, separated by spaces).
-#   gh-not-set-up   exists: "gh repo view" fails (gh is not set up for the repository)
-#   issue-<N>       OPEN or CLOSED: "gh issue view <N>" prints it; missing: the call fails
-#   prs             the answer of "gh pr list": open pull request numbers, one per line
-#   fail-close-<N>  exists: "gh issue close <N>" fails
-# "gh issue close <N> ... --comment <text>" writes CLOSED to issue-<N> and the text
-# to comment-<N>. --jq is not run: the answer is printed as the filter would give it.
+# Stand-in for GitHub's gh in the script tests. It never reaches a network: it
+# answers from a state in $STUB_DIR that the glab stand-in shares, renders it as
+# GitHub's JSON, keeps the fields --json asks for and runs the caller's --jq
+# filter on it with jq, so the scripts' own filters are tested. Every call is
+# appended to $STUB_DIR/calls as one line ("gh" and its arguments, separated by
+# spaces, line breaks as spaces); the calls that write go to $STUB_DIR/writes too.
+#   issues/<N>/state       open or closed: the issue exists when this file does
+#   issues/<N>/labels      its labels, one per line
+#   issues/<N>/body        its body, as it is
+#   issues/<N>/comments    the comments made on it, one per line
+#   issues/<N>/stale-body  if present, lists show it in place of the body (a
+#                          list made before the issue was last edited)
+#   labels                 the repository's labels: name<TAB>color<TAB>description
+#   branches               the remote's branches, one name per line
+#   prs.json               the open pull requests: [{number, headRefName, title, body}]
+#   gh-not-set-up          exists: "gh repo view" fails
+#   fail                   shell patterns, one per line: a call whose line in
+#                          calls matches one fails (for example "gh issue edit 12 *")
+# As gh does, "issue list" shows the open issues, newest first, and "issue list"
+# and "label list" show 30 entries, unless --state and --limit say otherwise.
 set -eu
 if [ -z "${STUB_DIR:-}" ]; then
   echo "stand-in gh: STUB_DIR is not set" >&2
   exit 1
 fi
-{
-  printf 'gh'
-  printf ' %s' "$@"
-  printf '\n'
-} >>"$STUB_DIR/calls"
+line=$(printf '%s' "gh $*" | tr '\n' ' ')
+printf '%s\n' "$line" >>"$STUB_DIR/calls"
 
 unexpected() {
-  echo "stand-in gh: unexpected call: gh $*" >&2
+  echo "stand-in gh: unexpected call: $line" >&2
   exit 1
 }
 
-case "${1:-} ${2:-}" in
+if ! command -v jq >/dev/null 2>&1; then
+  echo "stand-in gh: jq not found" >&2
+  exit 1
+fi
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+trap 'exit 1' HUP INT TERM
+
+# Whether a pattern in $STUB_DIR/fail matches this call.
+told_to_fail() {
+  [ -f "$STUB_DIR/fail" ] || return 1
+  while IFS= read -r pattern; do
+    [ -n "$pattern" ] || continue
+    # The pattern is meant as a pattern.
+    # shellcheck disable=SC2254
+    case $line in
+      $pattern) return 0 ;;
+    esac
+  done <"$STUB_DIR/fail"
+  return 1
+}
+
+check_failure() {
+  if told_to_fail; then
+    echo "HTTP 502: Bad Gateway (the test makes this call fail)" >&2
+    exit 1
+  fi
+}
+
+# A call that writes: logged, then failed if the test says so.
+writing() {
+  printf '%s\n' "$line" >>"$STUB_DIR/writes"
+  check_failure
+}
+
+# One issue as GitHub's JSON: issue_json <N> <file with the body>.
+issue_json() {
+  issue_labels=$STUB_DIR/issues/$1/labels
+  [ -f "$issue_labels" ] || issue_labels=/dev/null
+  issue_body=$2
+  [ -f "$issue_body" ] || issue_body=/dev/null
+  jq -n --argjson number "$1" --rawfile state "$STUB_DIR/issues/$1/state" --rawfile labels "$issue_labels" \
+    --rawfile body "$issue_body" '{
+    number: $number,
+    title: "Issue \($number)",
+    state: (if ($state | rtrimstr("\n")) == "open" then "OPEN" else "CLOSED" end),
+    labels: [$labels | split("\n")[] | select(. != "")
+      | {id: "LA_\(.)", name: ., description: "", color: "ededed"}],
+    body: $body
+  }'
+}
+
+# Every issue, newest first, as a list shows it.
+issues_json() {
+  for dir in "$STUB_DIR"/issues/*; do
+    [ -f "$dir/state" ] || continue
+    if [ -f "$dir/stale-body" ]; then
+      issue_json "${dir##*/}" "$dir/stale-body"
+    else
+      issue_json "${dir##*/}" "$dir/body"
+    fi
+  done | jq -s 'sort_by(-.number)'
+}
+
+labels_json() {
+  if [ -f "$STUB_DIR/labels" ]; then
+    jq -R -s 'split("\n") | map(select(. != "") | split("\t")
+      | {name: .[0], color: .[1], description: (.[2] // "")})' "$STUB_DIR/labels"
+  else
+    echo '[]'
+  fi
+}
+
+# Prints the JSON in $1 as gh does: only the --json fields (each one known, as
+# in $2), then the --jq filter or the JSON itself.
+answer() {
+  if [ -n "$json" ]; then
+    fields=$json,
+    while [ -n "$fields" ]; do
+      field=${fields%%,*}
+      fields=${fields#*,}
+      case ",$2," in
+        *",$field,"*) ;;
+        *)
+          echo "Unknown JSON field: \"$field\"" >&2
+          exit 1
+          ;;
+      esac
+    done
+    jq --arg fields "$json" '($fields | split(",")) as $f
+      | def keep: with_entries(select(.key | IN($f[])));
+      if type == "array" then map(keep) else keep end' "$1" >"$work/answer"
+  elif [ -n "$has_jq" ] && [ "$command" != api ]; then
+    echo "cannot use \`--jq\` without specifying \`--json\`" >&2
+    exit 1
+  else
+    cp "$1" "$work/answer"
+  fi
+  if [ -n "$has_jq" ]; then
+    jq -r "$filter" "$work/answer"
+  else
+    jq . "$work/answer"
+  fi
+}
+
+existing_issue() {
+  case ${1:-} in
+    '' | *[!0-9]*) unexpected ;;
+  esac
+  if [ ! -f "$STUB_DIR/issues/$1/state" ]; then
+    echo "GraphQL: Could not resolve to an issue or pull request with the number of $1. (repository.issue)" >&2
+    exit 1
+  fi
+}
+
+command=${1:-}
+if [ "$command" = api ]; then
+  shift
+else
+  [ "$#" -ge 2 ] || unexpected
+  command="$command $2"
+  shift 2
+fi
+json=
+filter=
+has_jq=
+state=open
+limit=30
+label=
+color=
+description=
+has_description=
+body=
+has_body=
+body_file=
+positional=
+: >"$work/add"
+: >"$work/remove"
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --json | --jq | -q | --state | --limit | -L | --label | --add-label | --remove-label | --color | \
+      --description | --body | --body-file | --comment | --reason | --repo | -R)
+      [ "$#" -ge 2 ] || unexpected
+      ;;
+  esac
+  case $1 in
+    --json) json=$2 ;;
+    --jq | -q) filter=$2; has_jq=1 ;;
+    --state) state=$2 ;;
+    --limit | -L) limit=$2 ;;
+    --label) label=$2 ;;
+    --add-label) printf '%s\n' "$2" | tr ',' '\n' >>"$work/add" ;;
+    --remove-label) printf '%s\n' "$2" | tr ',' '\n' >>"$work/remove" ;;
+    --color) color=$2 ;;
+    --description) description=$2; has_description=1 ;;
+    --body | --comment) body=$2; has_body=1 ;;
+    --body-file) body_file=$2 ;;
+    --reason | --repo | -R) ;;
+    --paginate) ;;
+    -*) unexpected ;;
+    *)
+      [ -z "$positional" ] || unexpected
+      positional=$1
+      ;;
+  esac
+  case $1 in
+    --paginate) ;;
+    -*) shift ;;
+  esac
+  shift
+done
+case $limit in
+  '' | *[!0-9]*) unexpected ;;
+esac
+
+case $command in
   "repo view")
+    check_failure
     if [ -e "$STUB_DIR/gh-not-set-up" ]; then
       echo "none of the git remotes configured for this repository point to a known GitHub host" >&2
       exit 1
     fi
-    echo "example/project"
+    jq -n --arg repo "${GH_REPO:-example/project}" '{nameWithOwner: $repo}' >"$work/repo"
+    answer "$work/repo" nameWithOwner
     ;;
   "issue view")
-    number=${3:-}
-    if [ ! -f "$STUB_DIR/issue-$number" ]; then
-      echo "GraphQL: Could not resolve to an issue or pull request with the number of $number. (repository.issue)" >&2
-      exit 1
-    fi
-    cat "$STUB_DIR/issue-$number"
+    check_failure
+    existing_issue "$positional"
+    issue_json "$positional" "$STUB_DIR/issues/$positional/body" >"$work/issue"
+    answer "$work/issue" number,title,state,labels,body
     ;;
-  "pr list")
-    if [ -f "$STUB_DIR/prs" ]; then
-      cat "$STUB_DIR/prs"
+  "issue list")
+    check_failure
+    case $state in
+      open | closed | all) ;;
+      *) unexpected ;;
+    esac
+    issues_json >"$work/all"
+    jq --arg state "$state" --arg label "$label" --argjson limit "$limit" '
+      [.[] | select($state == "all" or .state == ($state | ascii_upcase))
+        | select($label == "" or any(.labels[]; (.name | ascii_downcase) == ($label | ascii_downcase)))
+      ][:$limit]' "$work/all" >"$work/list"
+    answer "$work/list" number,title,state,labels,body
+    ;;
+  "issue edit")
+    existing_issue "$positional"
+    writing
+    dir=$STUB_DIR/issues/$positional
+    touch "$dir/labels"
+    while IFS= read -r name; do
+      if [ -n "$name" ] && ! grep -Fxq -e "$name" "$dir/labels"; then
+        printf '%s\n' "$name" >>"$dir/labels"
+      fi
+    done <"$work/add"
+    while IFS= read -r name; do
+      if [ -n "$name" ]; then
+        grep -Fxv -e "$name" "$dir/labels" >"$work/labels" || true
+        cat "$work/labels" >"$dir/labels"
+      fi
+    done <"$work/remove"
+    if [ "$body_file" = - ]; then
+      cat >"$dir/body"
+    elif [ -n "$body_file" ]; then
+      cat "$body_file" >"$dir/body"
+    elif [ -n "$has_body" ]; then
+      printf '%s' "$body" >"$dir/body"
     fi
+    echo "https://github.com/${GH_REPO:-example/project}/issues/$positional"
+    ;;
+  "issue comment")
+    existing_issue "$positional"
+    writing
+    if [ "$body_file" = - ]; then
+      body=$(cat)
+    elif [ -z "$has_body" ]; then
+      unexpected
+    fi
+    printf '%s\n' "$(printf '%s' "$body" | tr '\n' ' ')" >>"$STUB_DIR/issues/$positional/comments"
+    echo "https://github.com/${GH_REPO:-example/project}/issues/$positional#issuecomment-1"
     ;;
   "issue close")
-    number=${3:-}
-    shift 3
-    comment=
-    while [ "$#" -gt 0 ]; do
-      case "$1" in
-        --comment | -c) comment=${2:-}; shift ;;
-        --comment=*) comment=${1#--comment=} ;;
-      esac
-      shift
-    done
-    if [ -e "$STUB_DIR/fail-close-$number" ] || [ ! -f "$STUB_DIR/issue-$number" ]; then
-      echo "HTTP 403: Resource not accessible by integration" >&2
+    existing_issue "$positional"
+    writing
+    echo closed >"$STUB_DIR/issues/$positional/state"
+    if [ -n "$has_body" ]; then
+      printf '%s\n' "$(printf '%s' "$body" | tr '\n' ' ')" >>"$STUB_DIR/issues/$positional/comments"
+    fi
+    echo "Closed issue ${GH_REPO:-example/project}#$positional"
+    ;;
+  "label list")
+    check_failure
+    labels_json | jq --argjson limit "$limit" '.[:$limit]' >"$work/labels"
+    answer "$work/labels" name,color,description
+    ;;
+  "label create")
+    [ -n "$positional" ] || unexpected
+    writing
+    printf '%s' "$color" | grep -Eqx '[0-9A-Fa-f]{6}' || {
+      echo "HTTP 422: Validation Failed (color \"$color\")" >&2
+      exit 1
+    }
+    touch "$STUB_DIR/labels"
+    if name=$positional awk -F'\t' 'tolower($1) == tolower(ENVIRON["name"]) { found = 1 } END { exit !found }' "$STUB_DIR/labels"; then
+      echo "label with name \"$positional\" already exists; use \`--force\` to update its color and description" >&2
       exit 1
     fi
-    echo CLOSED >"$STUB_DIR/issue-$number"
-    if [ -n "$comment" ]; then
-      printf '%s\n' "$comment" >"$STUB_DIR/comment-$number"
+    printf '%s\t%s\t%s\n' "$positional" "$color" "$description" >>"$STUB_DIR/labels"
+    echo "Label \"$positional\" created in ${GH_REPO:-example/project}"
+    ;;
+  "label edit")
+    [ -n "$positional" ] || unexpected
+    writing
+    if [ -n "$color" ] && ! printf '%s' "$color" | grep -Eqx '[0-9A-Fa-f]{6}'; then
+      echo "HTTP 422: Validation Failed (color \"$color\")" >&2
+      exit 1
     fi
-    echo "Closed issue example/project#$number"
+    touch "$STUB_DIR/labels"
+    if ! name=$positional awk -F'\t' 'tolower($1) == tolower(ENVIRON["name"]) { found = 1 } END { exit !found }' "$STUB_DIR/labels"; then
+      echo "HTTP 404: Not Found (label \"$positional\")" >&2
+      exit 1
+    fi
+    name=$positional color=$color description=$description has_description=$has_description awk -F'\t' '
+      BEGIN { OFS = "\t" }
+      tolower($1) == tolower(ENVIRON["name"]) {
+        if (ENVIRON["color"] != "") $2 = ENVIRON["color"]
+        if (ENVIRON["has_description"] != "") $3 = ENVIRON["description"]
+      }
+      { print }' "$STUB_DIR/labels" >"$work/labels"
+    cat "$work/labels" >"$STUB_DIR/labels"
+    echo "Label \"$positional\" updated in ${GH_REPO:-example/project}"
+    ;;
+  "pr list")
+    check_failure
+    [ "$state" = open ] || unexpected
+    if [ -f "$STUB_DIR/prs.json" ]; then
+      jq --argjson limit "$limit" '.[:$limit]' "$STUB_DIR/prs.json" >"$work/prs"
+    else
+      echo '[]' >"$work/prs"
+    fi
+    answer "$work/prs" number,headRefName,title,body
+    ;;
+  api)
+    check_failure
+    [ "$positional" = "repos/${GH_REPO:-}/git/matching-refs/heads/issue/" ] || unexpected
+    if [ -f "$STUB_DIR/branches" ]; then
+      grep '^issue/' "$STUB_DIR/branches" | sort || true
+    fi | jq -R -s --arg repo "${GH_REPO:-}" 'split("\n") | map(select(. != "") | {
+      ref: "refs/heads/\(.)",
+      node_id: "REF_\(.)",
+      url: "https://api.github.com/repos/\($repo)/git/refs/heads/\(.)",
+      object: {sha: "0123456789abcdef0123456789abcdef01234567", type: "commit"}
+    })' >"$work/refs"
+    answer "$work/refs" ""
     ;;
   *)
-    unexpected "$@"
+    unexpected
     ;;
 esac

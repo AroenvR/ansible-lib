@@ -1,0 +1,9 @@
+name	color	kanban	description
+core	1d76db	-	Shared code, the build and the release.
+tools and agents	5319e7	-	Development tools and the agents that use them.
+in work	fbca04	in-progress	Someone works on it: a branch issue/<N> exists. Set and removed by CI.
+parked	c5def5	backlog	Not now: do not claim it.
+finished	0e8a16	done	Merged into develop; it closes when the change reaches the default branch.
+epic item	3e4b9e	epic	An open plan issue lists it as a task.
+plan	d4c5f9	index	Lists the issues of a larger piece of work as a task list.
+documentation	0075ca	-	Docs: "how to", $(not run) and 100% plain text.

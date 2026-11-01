@@ -1,8 +1,10 @@
 #!/bin/sh
 # Tests dev/claim-issue.sh, which claims an issue by pushing a branch issue/<N>
 # with one empty commit, against a scratch bare repository and clones of it.
-# The stand-in for gh in bin/ answers whether an issue is open and has an open
-# pull request; one case runs without any gh.
+# The stand-in for gh in bin/ answers whether an issue is open, which labels it
+# has and which pull requests are open; one case runs without any gh. The labels
+# file of the tests names its labels unlike the project's own (backlog is
+# "parked", done is "finished"), so a label name written into the script shows.
 # Run: sh dev/tests/claim-issue.sh (make test-scripts runs every test here).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -15,6 +17,12 @@ if [ ! -x "$script" ]; then
   echo "FAIL: $script is not executable (it needs mode 755)."
   exit 1
 fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "FAIL: jq not found: the stand-ins for gh and glab need it."
+  exit 1
+fi
+labels=$here/fixtures/labels.tsv
+tab=$(printf '\t')
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -23,7 +31,7 @@ cd "$tmp"
 
 # Only the settings the cases give count: no agent name, git configuration or
 # gh repository from outside.
-unset AGENT_NAME CLAIM_REMOTE CLAIM_BASE CLAIM_STALE_DAYS GH_REPO GH_HOST GH_TOKEN GITHUB_TOKEN \
+unset AGENT_NAME CLAIM_REMOTE CLAIM_BASE CLAIM_STALE_DAYS CLAIM_LABELS_FILE GH_REPO GH_HOST GH_TOKEN GITHUB_TOKEN \
   GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
   GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE EMAIL XDG_CONFIG_HOME \
   GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
@@ -43,7 +51,9 @@ git init -q "$tmp/seed"
 git -C "$tmp/seed" config user.name Seed
 git -C "$tmp/seed" remote add origin "$origin"
 echo "A project" >"$tmp/seed/README"
-git -C "$tmp/seed" add README
+mkdir "$tmp/seed/dev"
+cp "$labels" "$tmp/seed/dev/labels.tsv"
+git -C "$tmp/seed" add README dev/labels.tsv
 git -C "$tmp/seed" commit -q -m "Start the project"
 git -C "$tmp/seed" push -q origin develop
 git -C "$tmp/seed" checkout -q -b trunk
@@ -142,8 +152,20 @@ start() {
   : >"$STUB_DIR/calls"
 }
 
+# issue <N> <open|closed> [<label>...]: an issue on the forge.
+issue() {
+  issue_dir=$STUB_DIR/issues/$1
+  mkdir -p "$issue_dir"
+  echo "$2" >"$issue_dir/state"
+  shift 2
+  : >"$issue_dir/labels"
+  for label in "$@"; do
+    printf '%s\n' "$label" >>"$issue_dir/labels"
+  done
+}
+
 set_open() {
-  for number in "$@"; do echo OPEN >"$STUB_DIR/issue-$number"; done
+  for number in "$@"; do issue "$number" open; done
 }
 
 # claim <clone> <agent name, or "" to leave AGENT_NAME unset> [<arguments>]
@@ -263,7 +285,7 @@ for argument in "" abc 07 0 -1; do
   fi
   expect_rc 2
   expect_text err "usage: claim-issue.sh <issue number>"
-  for setting in AGENT_NAME CLAIM_REMOTE CLAIM_BASE CLAIM_STALE_DAYS; do
+  for setting in AGENT_NAME CLAIM_REMOTE CLAIM_BASE CLAIM_STALE_DAYS CLAIM_LABELS_FILE; do
     expect_text err "$setting"
   done
 done
@@ -296,7 +318,7 @@ expect_nothing_left "$tmp/A" 15
 expect_not_on_origin 15
 
 start "a closed issue is not claimed"
-echo CLOSED >"$STUB_DIR/issue-10"
+issue 10 closed
 claim "$tmp/A" "Agent A" 10
 expect_rc 1
 expect_line err "Issue #10 is closed: not claimed."
@@ -305,7 +327,14 @@ expect_not_on_origin 10
 
 start "an issue with open pull requests is not claimed"
 set_open 11
-printf '21\n23\n' >"$STUB_DIR/prs"
+# 21 is the issue's branch, 23 closes it; 22 is about another issue.
+cat >"$STUB_DIR/prs.json" <<'EOF'
+[
+  {"number": 21, "headRefName": "issue/11", "title": "Work on the issue", "body": ""},
+  {"number": 22, "headRefName": "issue/110", "title": "Another issue", "body": "Closes #110"},
+  {"number": 23, "headRefName": "fix-things", "title": "Fix things", "body": "Some text.\n\nCloses #11"}
+]
+EOF
 claim "$tmp/A" "Agent A" 11
 expect_rc 1
 expect_line err "Issue #11 has an open pull request (#21, #23): not claimed."
@@ -325,7 +354,7 @@ start "gh not set up for the repository: a note, and the claim, named by git's u
 touch "$STUB_DIR/gh-not-set-up"
 claim "$tmp/B" "" 13
 expect_rc 0
-expect_line err "gh is not set up for this repository: not checking that #13 is open and has no open pull request."
+expect_line err "gh is not set up for this repository: not checking the state, labels and pull requests of #13."
 expect_line out "Claimed #13 as Bob: issue/13 is on origin. Next: git switch issue/13"
 expect_claim "$tmp/B" 13 Bob "$develop"
 if grep -q '^gh issue view\|^gh pr list' "$STUB_DIR/calls"; then
@@ -337,7 +366,7 @@ PATH=$no_gh
 claim "$tmp/A" "Agent A" 14
 PATH=$here/bin:$plain_path
 expect_rc 0
-expect_line err "gh is not set up for this repository: not checking that #14 is open and has no open pull request."
+expect_line err "gh is not set up for this repository: not checking the state, labels and pull requests of #14."
 expect_claim "$tmp/A" 14 "Agent A" "$develop"
 
 start "a claim without a push for more than 7 days: the refusal says how to take it over"
@@ -437,6 +466,88 @@ expect_rc 2
 expect_line err "Could not push issue/17 to origin: not claimed."
 expect_nothing_left "$tmp/A" 17
 expect_not_on_origin 17
+
+start "a backlog issue is not claimed, before its pull requests are asked for"
+issue 30 open parked core
+claim "$tmp/A" "Agent A" 30
+expect_rc 1
+expect_line err "Issue #30 is labelled \"parked\": not claimed. Take another issue."
+expect_no_text out "Claimed #30"
+expect_nothing_left "$tmp/A" 30
+expect_not_on_origin 30
+if grep -q '^gh pr list' "$STUB_DIR/calls"; then
+  fail "gh was asked for pull requests of an issue it refuses"
+fi
+
+start "a done issue is not claimed"
+issue 31 open finished
+claim "$tmp/A" "Agent A" 31
+expect_rc 1
+expect_line err "Issue #31 is labelled \"finished\": not claimed. Take another issue."
+expect_nothing_left "$tmp/A" 31
+expect_not_on_origin 31
+
+start "an issue both done and in the backlog: the refusal names done"
+issue 32 open parked finished
+claim "$tmp/A" "Agent A" 32
+expect_rc 1
+expect_line err "Issue #32 is labelled \"finished\": not claimed. Take another issue."
+expect_no_text err "\"parked\""
+expect_not_on_origin 32
+
+start "a closed issue labelled done is refused as closed"
+issue 33 closed finished
+claim "$tmp/A" "Agent A" 33
+expect_rc 1
+expect_line err "Issue #33 is closed: not claimed."
+expect_no_text err "labelled"
+expect_not_on_origin 33
+
+start "an issue with area labels only is claimed as before"
+issue 34 open core "tools and agents"
+claim "$tmp/A" "Agent A" 34
+expect_rc 0
+expect_line out "Claimed #34 as Agent A: issue/34 is on origin. Next: git switch issue/34"
+expect_claim "$tmp/A" 34 "Agent A" "$develop"
+expect_no_text err "label"
+
+start "CLAIM_LABELS_FILE names the labels file"
+# The same labels, but the backlog's label is called "someday".
+sed "s/^parked$tab/someday$tab/" "$labels" >"$tmp/other-labels.tsv"
+issue 35 open someday
+CLAIM_LABELS_FILE=$tmp/other-labels.tsv
+export CLAIM_LABELS_FILE
+claim "$tmp/A" "Agent A" 35
+unset CLAIM_LABELS_FILE
+expect_rc 1
+expect_line err "Issue #35 is labelled \"someday\": not claimed. Take another issue."
+expect_not_on_origin 35
+# With the file in the clone, dev/labels.tsv, "someday" is just a label.
+issue 38 open someday
+claim "$tmp/A" "Agent A" 38
+expect_rc 0
+expect_claim "$tmp/A" 38 "Agent A" "$develop"
+
+start "a labels file that cannot be read: a note, and the claim"
+issue 36 open parked
+CLAIM_LABELS_FILE=$tmp/no-such-labels.tsv
+export CLAIM_LABELS_FILE
+claim "$tmp/A" "Agent A" 36
+unset CLAIM_LABELS_FILE
+expect_rc 0
+expect_line err "$tmp/no-such-labels.tsv names no backlog or done label: not checking the labels of #36."
+expect_claim "$tmp/A" 36 "Agent A" "$develop"
+
+start "a labels file without backlog and done labels: a note, and the claim"
+grep -v -e "${tab}backlog$tab" -e "${tab}done$tab" "$labels" >"$tmp/area-labels.tsv"
+issue 37 open parked finished
+CLAIM_LABELS_FILE=$tmp/area-labels.tsv
+export CLAIM_LABELS_FILE
+claim "$tmp/A" "Agent A" 37
+unset CLAIM_LABELS_FILE
+expect_rc 0
+expect_line err "$tmp/area-labels.tsv names no backlog or done label: not checking the labels of #37."
+expect_claim "$tmp/A" 37 "Agent A" "$develop"
 
 start ""
 if [ "$failures" -gt 0 ]; then

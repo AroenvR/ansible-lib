@@ -1,82 +1,312 @@
 #!/bin/sh
-# Stand-in for GitLab's glab in the script tests: answers "glab api" calls from
-# the same files in $STUB_DIR as the gh stand-in and never reaches a network.
-# Every call is appended to $STUB_DIR/calls as one line ("glab" and its
-# arguments, separated by spaces). Like glab, it fails without GITLAB_TOKEN.
-#   GET  projects/<id>/issues?iids[]=<N>&state=opened  a one-issue list when issue-<N>
-#        holds OPEN, else [] (also when there is no issue-<N>)
-#   POST projects/<id>/issues/<N>/notes  with body=<text>: writes the text to comment-<N>
-#   PUT  projects/<id>/issues/<N>        with state_event=close: writes CLOSED to issue-<N>
+# Stand-in for GitLab's glab in the script tests. It never reaches a network: it
+# answers "glab api" calls from the state in $STUB_DIR that the gh stand-in
+# describes, rendered as GitLab's JSON (so the scripts' own jq filters run on
+# it). Every call is appended to $STUB_DIR/calls as one line ("glab" and its
+# arguments, separated by spaces, line breaks as spaces); the calls that write
+# (any method but GET) go to $STUB_DIR/writes too. A pattern in $STUB_DIR/fail
+# fails the calls whose "glab <METHOD> <endpoint>" it matches (for example
+# "glab PUT projects/42/issues/12"). Like glab, it fails without GITLAB_TOKEN;
+# like GitLab, a list gives per_page entries (20 by default) unless --paginate
+# asks for every page. Endpoints, under projects/$CI_PROJECT_ID/:
+#   GET  issues?...               every issue, newest first; iids[]=<N> and
+#                                 state=opened|closed narrow the list
+#   GET  issues/<N>
+#   PUT  issues/<N>               add_labels, remove_labels, description, state_event
+#   POST issues/<N>/notes         body
+#   GET  labels?...
+#   POST labels                   name, color (#rrggbb), description
+#   PUT  labels/<id>              color, description; a label's id is 100 plus
+#                                 its line number in the labels file
+#   GET  repository/branches?...  search=^<prefix> (URL-encoded) narrows the list
 set -eu
 if [ -z "${STUB_DIR:-}" ]; then
   echo "stand-in glab: STUB_DIR is not set" >&2
   exit 1
 fi
-{
-  printf 'glab'
-  printf ' %s' "$@"
-  printf '\n'
-} >>"$STUB_DIR/calls"
+line=$(printf '%s' "glab $*" | tr '\n' ' ')
+printf '%s\n' "$line" >>"$STUB_DIR/calls"
 
 unexpected() {
-  echo "stand-in glab: unexpected call: glab $*" >&2
+  echo "stand-in glab: unexpected call: $line" >&2
+  exit 1
+}
+
+not_found() {
+  echo "glab: 404 Not Found (HTTP 404)" >&2
   exit 1
 }
 
 if [ "${1:-}" != api ]; then
-  unexpected "$@"
+  unexpected
 fi
 if [ -z "${GITLAB_TOKEN:-}" ]; then
   echo "glab: no token found; set GITLAB_TOKEN" >&2
   exit 1
 fi
-all="$*"
+if ! command -v jq >/dev/null 2>&1; then
+  echo "stand-in glab: jq not found" >&2
+  exit 1
+fi
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+trap 'exit 1' HUP INT TERM
+
 shift
 method=GET
 endpoint=
-body=
-state_event=
+paginate=
 while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --method | -X) method=${2:-}; shift ;;
-    --method=*) method=${1#--method=} ;;
-    --raw-field | -f | --field | -F)
-      case "${2:-}" in
-        body=*) body=${2#body=} ;;
-        state_event=*) state_event=${2#state_event=} ;;
-      esac
-      shift
+  case $1 in
+    --method | -X | --raw-field | -f | --field | -F | --output)
+      [ "$#" -ge 2 ] || unexpected
       ;;
-    -*) ;;
-    *) [ -n "$endpoint" ] || endpoint=$1 ;;
+  esac
+  case $1 in
+    --method | -X) method=$2 ;;
+    --raw-field | -f | --field | -F)
+      field=${2%%=*}
+      case $field in
+        '' | *[!a-z_]*) unexpected ;;
+      esac
+      printf '%s' "${2#*=}" >"$work/field.$field"
+      ;;
+    --output) [ "$2" = json ] || unexpected ;;
+    --paginate) paginate=1 ;;
+    -*) unexpected ;;
+    *)
+      [ -z "$endpoint" ] || unexpected
+      endpoint=$1
+      ;;
+  esac
+  case $1 in
+    --paginate) ;;
+    -*) shift ;;
   esac
   shift
 done
 
-case "$method $endpoint" in
-  "GET projects/"*"/issues?"*"iids[]="*)
-    number=$(printf '%s\n' "$endpoint" | sed 's/.*iids\[\]=\([0-9]*\).*/\1/')
-    if [ "$(cat "$STUB_DIR/issue-$number" 2>/dev/null)" = OPEN ]; then
-      printf '[{"iid":%s,"state":"opened"}]\n' "$number"
-    else
-      echo '[]'
-    fi
+# The field's value, and whether it was given.
+field() {
+  [ -f "$work/field.$1" ] && cat "$work/field.$1"
+}
+
+has_field() {
+  [ -f "$work/field.$1" ]
+}
+
+request="glab $method $endpoint"
+if [ "$method" != GET ]; then
+  printf '%s\n' "$line" >>"$STUB_DIR/writes"
+fi
+if [ -f "$STUB_DIR/fail" ]; then
+  while IFS= read -r pattern; do
+    [ -n "$pattern" ] || continue
+    # The pattern is meant as a pattern.
+    # shellcheck disable=SC2254
+    case $request in
+      $pattern)
+        echo "glab: 502 Bad Gateway (HTTP 502) (the test makes this call fail)" >&2
+        exit 1
+        ;;
+    esac
+  done <"$STUB_DIR/fail"
+fi
+
+prefix="projects/${CI_PROJECT_ID:-}/"
+case $endpoint in
+  "$prefix"*) path=${endpoint#"$prefix"} ;;
+  *) unexpected ;;
+esac
+resource=${path%%\?*}
+query=
+case $path in
+  *\?*) query=$(printf '%s' "${path#*\?}" | sed 's/%5[Ee]/^/g; s/%2[Ff]/\//g; s/%5[Bb]/[/g; s/%5[Dd]/]/g') ;;
+esac
+
+# param <name as a basic regular expression>: its value in the query, or nothing.
+param() {
+  printf '%s\n' "$query" | tr '&' '\n' | sed -n "s/^$1=//p" | head -n 1
+}
+
+# A list as one page of per_page entries, or every page with --paginate.
+page() {
+  per_page=$(param per_page)
+  per_page=${per_page:-20}
+  if [ -n "$paginate" ]; then
+    jq . "$1"
+  else
+    jq --argjson n "$per_page" '.[:$n]' "$1"
+  fi
+}
+
+issue_json() {
+  issue_labels=$STUB_DIR/issues/$1/labels
+  [ -f "$issue_labels" ] || issue_labels=/dev/null
+  issue_body=$2
+  [ -f "$issue_body" ] || issue_body=/dev/null
+  jq -n --argjson iid "$1" --argjson project "$CI_PROJECT_ID" --rawfile state "$STUB_DIR/issues/$1/state" \
+    --rawfile labels "$issue_labels" --rawfile body "$issue_body" '{
+    id: (9000 + $iid),
+    iid: $iid,
+    project_id: $project,
+    title: "Issue \($iid)",
+    description: (if $body == "" then null else $body end),
+    state: (if ($state | rtrimstr("\n")) == "open" then "opened" else "closed" end),
+    labels: [$labels | split("\n")[] | select(. != "")],
+    milestone: {id: 7, iid: 3, project_id: $project, title: "next"},
+    web_url: "https://gitlab.example.invalid/group/project/-/issues/\($iid)"
+  }'
+}
+
+labels_json() {
+  if [ -f "$STUB_DIR/labels" ]; then
+    jq -R -s 'split("\n") | to_entries | map(select(.value != "") | (.value | split("\t")) as $l | {
+      id: (101 + .key),
+      name: $l[0],
+      color: "#\($l[1])",
+      description: (if ($l[2] // "") == "" then null else $l[2] end),
+      text_color: "#FFFFFF"
+    })' "$STUB_DIR/labels"
+  else
+    echo '[]'
+  fi
+}
+
+existing_issue() {
+  case $1 in
+    '' | *[!0-9]*) not_found ;;
+  esac
+  [ -f "$STUB_DIR/issues/$1/state" ] || not_found
+}
+
+valid_color() {
+  printf '%s' "$1" | grep -Eqx '#[0-9A-Fa-f]{6}' || {
+    echo "glab: 400 Bad Request (HTTP 400): color is invalid" >&2
+    exit 1
+  }
+}
+
+case "$method $resource" in
+  "GET issues")
+    for dir in "$STUB_DIR"/issues/*; do
+      [ -f "$dir/state" ] || continue
+      if [ -f "$dir/stale-body" ]; then
+        issue_json "${dir##*/}" "$dir/stale-body"
+      else
+        issue_json "${dir##*/}" "$dir/body"
+      fi
+    done | jq -s --arg state "$(param state)" --arg iid "$(param 'iids\[\]')" '
+      sort_by(-.iid)
+      | map(select($state == "" or $state == "all" or .state == $state)
+        | select($iid == "" or (.iid | tostring) == $iid))' >"$work/issues"
+    page "$work/issues"
     ;;
-  "POST projects/"*"/issues/"*"/notes")
-    number=${endpoint%/notes}
-    number=${number##*/}
-    printf '%s\n' "$body" >"$STUB_DIR/comment-$number"
-    echo '{"id":1}'
+  "GET issues/"*)
+    number=${resource#issues/}
+    existing_issue "$number"
+    issue_json "$number" "$STUB_DIR/issues/$number/body"
     ;;
-  "PUT projects/"*"/issues/"*)
-    number=${endpoint##*/}
-    if [ "$state_event" != close ] || [ ! -f "$STUB_DIR/issue-$number" ]; then
-      unexpected "$all"
+  "PUT issues/"*)
+    number=${resource#issues/}
+    existing_issue "$number"
+    dir=$STUB_DIR/issues/$number
+    touch "$dir/labels"
+    if has_field add_labels; then
+      printf '%s\n' "$(field add_labels)" | tr ',' '\n' | while IFS= read -r name; do
+        if [ -n "$name" ] && ! grep -Fxq -e "$name" "$dir/labels"; then
+          printf '%s\n' "$name" >>"$dir/labels"
+        fi
+      done
     fi
-    echo CLOSED >"$STUB_DIR/issue-$number"
-    printf '{"iid":%s,"state":"closed"}\n' "$number"
+    if has_field remove_labels; then
+      printf '%s\n' "$(field remove_labels)" | tr ',' '\n' | grep -v '^$' >"$work/remove" || true
+      grep -Fxv -f "$work/remove" "$dir/labels" >"$work/labels" || true
+      cat "$work/labels" >"$dir/labels"
+    fi
+    if has_field description; then
+      field description >"$dir/body"
+    fi
+    case $(field state_event || true) in
+      close) echo closed >"$dir/state" ;;
+      reopen) echo open >"$dir/state" ;;
+      '') ;;
+      *) unexpected ;;
+    esac
+    issue_json "$number" "$dir/body"
+    ;;
+  "POST issues/"*/notes)
+    number=${resource#issues/}
+    number=${number%/notes}
+    existing_issue "$number"
+    has_field body || unexpected
+    printf '%s\n' "$(field body | tr '\n' ' ')" >>"$STUB_DIR/issues/$number/comments"
+    field body | jq -R -s '{id: 1, body: .}'
+    ;;
+  "GET labels")
+    labels_json >"$work/labels"
+    page "$work/labels"
+    ;;
+  "POST labels")
+    has_field name || unexpected
+    name=$(field name)
+    color=$(field color || true)
+    valid_color "$color"
+    touch "$STUB_DIR/labels"
+    if cut -f 1 "$STUB_DIR/labels" | grep -Fxq -e "$name"; then
+      echo "glab: 409 Conflict (HTTP 409): Label already exists" >&2
+      exit 1
+    fi
+    printf '%s\t%s\t%s\n' "$name" "${color#\#}" "$(field description || true)" >>"$STUB_DIR/labels"
+    labels_json | jq --arg name "$name" '.[] | select(.name == $name)'
+    ;;
+  "PUT labels/"*)
+    id=${resource#labels/}
+    case $id in
+      '' | *[!0-9]*) not_found ;;
+    esac
+    [ -f "$STUB_DIR/labels" ] || not_found
+    [ "$id" -gt 100 ] && [ "$id" -le $((100 + $(wc -l <"$STUB_DIR/labels"))) ] || not_found
+    color=
+    if has_field color; then
+      color=$(field color)
+      valid_color "$color"
+    fi
+    has_description=
+    description=
+    if has_field description; then
+      has_description=1
+      description=$(field description)
+    fi
+    row=$((id - 100)) color=${color#\#} description=$description has_description=$has_description \
+      awk -F'\t' '
+        BEGIN { OFS = "\t" }
+        NR == ENVIRON["row"] + 0 {
+          if (ENVIRON["color"] != "") $2 = ENVIRON["color"]
+          if (ENVIRON["has_description"] != "") $3 = ENVIRON["description"]
+        }
+        { print }' "$STUB_DIR/labels" >"$work/labels"
+    cat "$work/labels" >"$STUB_DIR/labels"
+    labels_json | jq --argjson id "$id" '.[] | select(.id == $id)'
+    ;;
+  "GET repository/branches")
+    search=$(param search)
+    if [ -f "$STUB_DIR/branches" ]; then
+      sort "$STUB_DIR/branches"
+    fi | search=$search awk '
+      ENVIRON["search"] == "" { print; next }
+      substr(ENVIRON["search"], 1, 1) == "^" { if (index($0, substr(ENVIRON["search"], 2)) == 1) print; next }
+      index($0, ENVIRON["search"]) { print }' |
+      jq -R -s 'split("\n") | map(select(. != "") | {
+        name: .,
+        merged: false,
+        protected: false,
+        default: false,
+        commit: {id: "0123456789abcdef0123456789abcdef01234567"}
+      })' >"$work/branches"
+    page "$work/branches"
     ;;
   *)
-    unexpected "$all"
+    unexpected
     ;;
 esac
